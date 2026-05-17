@@ -14,9 +14,11 @@
 詳細仕様は以下の順で参照してください。
 
 1. [docs/requirements.md](docs/requirements.md)
-2. [docs/screen-list.md](docs/screen-list.md)
-3. [docs/database-design.md](docs/database-design.md)
-4. [docs/development-plan.md](docs/development-plan.md)
+2. [docs/user-roles.md](docs/user-roles.md)
+3. [docs/mvp-scope.md](docs/mvp-scope.md)
+4. [docs/screen-list.md](docs/screen-list.md)
+5. [docs/database-design.md](docs/database-design.md)
+6. [docs/development-plan.md](docs/development-plan.md)
 
 ---
 
@@ -54,6 +56,10 @@
 - **基準日 / 雇い入れ日**: 有給付与の起点となる入社日
 - **処遇改善加算 / 特定処遇改善加算**: 介護報酬の加算制度（将来対応）
 - **キャリアアップ助成金**: 非正規雇用者の処遇改善で支給される助成金（将来対応、必要情報は要件書参照）
+- **年5日取得義務**: 年10日以上の有給を持つ従業員に対し、年5日の取得を使用者側が確保する労基法上の義務（2019年4月施行）
+- **労働条件通知書**: 雇い入れ時に労基法で交付が義務付けられている文書。雇用契約書と兼用可
+- **職種**: 業務上の役割区分（介護職員 / 看護職員 / 生活相談員 / ケアマネ / 事務 など）。雇用形態とは別軸
+- **社労士**: 社会保険労務士。労務関連書類のチェック・行政手続代行を依頼する外部専門家
 
 ---
 

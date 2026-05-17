@@ -67,9 +67,14 @@ users ──── employees   (1:1、users.role で管理者/従業員を区別
 | phone | text (nullable) | |
 | address | text (nullable) | |
 | office_id | uuid | `offices.id` FK（主たる所属拠点） |
+| job_category | enum(`care_worker`, `nurse`, `life_counselor`, `care_manager`, `office_staff`, `other`) | 職種（介護職員 / 看護職員 / 生活相談員 / ケアマネ / 事務 / その他） |
 | employment_type | enum(`full_time`, `contract`, `part_time`) | 雇用形態 |
+| joined_at | date | 入社日（雇用契約上の入社日。通常 `hired_at` と同一だが、再雇用などで分かれる場合に備え別カラム） |
 | hired_at | date | 雇い入れ日（有給付与の基準日） |
 | retired_at | date (nullable) | 退職日 |
+| emergency_contact_name | text (nullable) | 緊急連絡先 氏名 |
+| emergency_contact_relation | text (nullable) | 緊急連絡先 続柄（配偶者・親 など） |
+| emergency_contact_phone | text (nullable) | 緊急連絡先 電話番号 |
 | weekly_work_days | numeric(3,1) | 所定労働日数 / 週（例 5.0） |
 | daily_work_hours | numeric(4,2) | 所定労働時間 / 日（例 8.00） |
 | base_wage_type | enum(`hourly`, `monthly`) | 時給 / 月給 |
@@ -247,3 +252,4 @@ users ──── employees   (1:1、users.role で管理者/従業員を区別
 - **削除運用**: 物理削除はせず、`is_active` / `retired_at` でソフト削除する。勤怠データは退職後も保持。
 - **マルチテナント拡張**: 将来 `tenant_id` を主要テーブルに付与できるよう、ユニーク制約や FK 設計を「列追加で済む」形にしておく（コメント参照）。
 - **時刻保存**: 全 `timestamptz` カラムは UTC 保存。UI 表示・集計の境界判定はサーバ側で JST 変換してから行う。
+- **年5日取得義務チェック**: `paid_leave_grants` から「年10日以上付与された付与履歴」を抽出し、付与日〜+1年の期間内に消化された `paid_leave_consumptions.consumed_days` の合計が5日未満となる従業員をアラート対象とする。バッチ事前計算ではなくクエリで都度算出（行数が少ないため）。

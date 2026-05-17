@@ -21,8 +21,9 @@
 - 月次勤務表の作成・編集
 - 従業員情報管理（雇用形態、雇い入れ日、所属拠点 など）
 - 雇い入れ日をもとにした有給自動付与・残数管理
+- 年5日取得義務のチェック（取得不足者を管理者画面でアラート）
 
-Phase2 以降の機能（打刻修正申請、希望休、給与CSV出力、ICカード打刻、雇用契約書、キャリアアップ助成金対応）については [`docs/requirements.md`](docs/requirements.md) を参照してください。
+Phase 2 以降の機能（打刻修正申請、希望休、給与CSV出力、ICカード打刻、雇用契約書、労働条件通知書、キャリアアップ助成金対応、社労士確認用PDF出力）については [`docs/requirements.md`](docs/requirements.md) と [`docs/mvp-scope.md`](docs/mvp-scope.md) を参照してください。
 
 ## 技術スタック
 
@@ -81,6 +82,8 @@ pnpm dev
 | [docs/screen-list.md](docs/screen-list.md) | 画面一覧と画面遷移 |
 | [docs/database-design.md](docs/database-design.md) | ER概要・テーブル定義 |
 | [docs/development-plan.md](docs/development-plan.md) | 開発フェーズと優先順位 |
+| [docs/user-roles.md](docs/user-roles.md) | ユーザーロールと権限マトリクス |
+| [docs/mvp-scope.md](docs/mvp-scope.md) | MVP / Phase 2 / Future のスコープ詳細 |
 | [CLAUDE.md](CLAUDE.md) | Claude Code 向けプロジェクトガイド |
 
 ## 現在のステータス
