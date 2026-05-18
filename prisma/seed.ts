@@ -11,6 +11,7 @@
  * 実行: `pnpm db:seed`
  */
 import { PrismaClient, ShiftKind } from "@prisma/client";
+import { seedEmployees } from "./seeds/employees";
 
 const prisma = new PrismaClient();
 
@@ -491,9 +492,14 @@ async function main(): Promise<void> {
   await seedShiftPatterns(officeIds);
   console.log(`  ${PATTERNS.length} patterns upserted`);
 
+  console.log("seeding employees...");
+  const employeeCount = await seedEmployees(prisma, officeIds);
+  console.log(`  ${employeeCount} employees upserted`);
+
   const counts = {
     offices: await prisma.office.count(),
     shiftPatterns: await prisma.shiftPattern.count(),
+    employees: await prisma.employee.count(),
   };
   console.log("done.", counts);
 }
