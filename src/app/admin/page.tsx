@@ -1,37 +1,43 @@
-import { auth, signOut } from "@/auth";
+import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-async function logoutAction(): Promise<void> {
-  "use server";
-  await signOut({ redirectTo: "/login" });
-}
-
-export default async function AdminHomePage() {
-  const session = await auth();
-  const name = session?.user?.name ?? "管理者";
+export default async function AdminDashboardPage() {
+  // 退職済（retired_at が未来含めて入っている）従業員も後で扱うが、
+  // 現段階では「在籍中」のみカウント。
+  const [officeCount, employeeCount] = await Promise.all([
+    prisma.office.count({ where: { isActive: true } }),
+    prisma.employee.count({ where: { retiredAt: null } }),
+  ]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">管理者ホーム</h1>
-        <form action={logoutAction}>
-          <button
-            type="submit"
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
-          >
-            ログアウト
-          </button>
-        </form>
-      </header>
+    <div className="flex flex-col gap-6">
+      <h1 className="text-2xl font-bold text-slate-900">ダッシュボード</h1>
+
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Stat label="稼働中の拠点" value={officeCount} unit="拠点" />
+        <Stat label="在籍中の従業員" value={employeeCount} unit="人" />
+      </section>
+
       <section className="rounded-xl bg-white p-5 shadow-sm">
-        <p className="text-slate-700">
-          ようこそ、<span className="font-semibold">{name}</span> さん。
-        </p>
-        <p className="mt-2 text-sm text-slate-500">
-          ※ メニューは次のスライス（拠点設定・従業員管理）で追加します。
+        <h2 className="text-base font-semibold text-slate-800">次にやること</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          左のメニューから「拠点設定」を開いて、登録済みの 5 拠点を確認・編集できます。従業員管理 /
+          シフト関連は次のスライスで追加します。
         </p>
       </section>
-    </main>
+    </div>
+  );
+}
+
+function Stat({ label, value, unit }: { label: string; value: number; unit: string }) {
+  return (
+    <div className="rounded-xl bg-white p-5 shadow-sm">
+      <p className="text-sm text-slate-500">{label}</p>
+      <p className="mt-2 text-3xl font-bold text-slate-900">
+        {value}
+        <span className="ml-1 text-base font-normal text-slate-500">{unit}</span>
+      </p>
+    </div>
   );
 }
