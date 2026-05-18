@@ -1,7 +1,12 @@
 import { Prisma } from "@prisma/client";
 import Link from "next/link";
 
-import { formatMinutes, summarize } from "@/lib/attendance/aggregate";
+import {
+  formatMinutes,
+  nightMinutes,
+  overtimeMinutes,
+  summarize,
+} from "@/lib/attendance/aggregate";
 import { currentJstYm, monthRange } from "@/lib/attendance/business-date";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
@@ -45,6 +50,7 @@ export default async function AdminAttendanceListPage({ searchParams }: Props) {
             firstName: true,
             lastNameKana: true,
             firstNameKana: true,
+            dailyWorkHours: true,
             office: { select: { id: true, code: true, name: true } },
           },
         },
@@ -64,8 +70,11 @@ export default async function AdminAttendanceListPage({ searchParams }: Props) {
     name: string;
     kana: string;
     officeName: string;
+    dailyWorkHours: number;
     attendedDays: number;
     totalWorkMinutes: number;
+    totalOvertimeMinutes: number;
+    totalNightMinutes: number;
     pendingCount: number; // OPEN + SUBMITTED + REJECTED
     approvedCount: number;
   };
@@ -81,8 +90,11 @@ export default async function AdminAttendanceListPage({ searchParams }: Props) {
         name: `${e.lastName} ${e.firstName}`,
         kana: `${e.lastNameKana} ${e.firstNameKana}`,
         officeName: e.office.name,
+        dailyWorkHours: e.dailyWorkHours.toNumber(),
         attendedDays: 0,
         totalWorkMinutes: 0,
+        totalOvertimeMinutes: 0,
+        totalNightMinutes: 0,
         pendingCount: 0,
         approvedCount: 0,
       };
@@ -95,6 +107,12 @@ export default async function AdminAttendanceListPage({ searchParams }: Props) {
       breakRecords: r.breakRecords,
     });
     row.totalWorkMinutes += s.workMinutes;
+    row.totalOvertimeMinutes += overtimeMinutes(s.workMinutes, row.dailyWorkHours);
+    row.totalNightMinutes += nightMinutes({
+      clockInAt: r.clockInAt,
+      clockOutAt: r.clockOutAt,
+      breakRecords: r.breakRecords,
+    });
     if (r.status === "APPROVED") row.approvedCount += 1;
     else row.pendingCount += 1;
   }
@@ -141,6 +159,8 @@ export default async function AdminAttendanceListPage({ searchParams }: Props) {
               <th className="px-4 py-3 font-medium">拠点</th>
               <th className="px-4 py-3 text-right font-medium">出勤日数</th>
               <th className="px-4 py-3 text-right font-medium">実労働</th>
+              <th className="px-4 py-3 text-right font-medium">残業</th>
+              <th className="px-4 py-3 text-right font-medium">深夜</th>
               <th className="px-4 py-3 text-right font-medium">未承認</th>
               <th className="px-4 py-3 text-right font-medium">承認済</th>
               <th className="px-4 py-3" />
@@ -168,6 +188,12 @@ export default async function AdminAttendanceListPage({ searchParams }: Props) {
                 <td className="px-4 py-3 text-right text-slate-900 tabular-nums">
                   {formatMinutes(r.totalWorkMinutes)}
                 </td>
+                <td className="px-4 py-3 text-right text-slate-700 tabular-nums">
+                  {r.totalOvertimeMinutes > 0 ? formatMinutes(r.totalOvertimeMinutes) : "—"}
+                </td>
+                <td className="px-4 py-3 text-right text-slate-700 tabular-nums">
+                  {r.totalNightMinutes > 0 ? formatMinutes(r.totalNightMinutes) : "—"}
+                </td>
                 <td className="px-4 py-3 text-right">
                   {r.pendingCount > 0 ? (
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
@@ -192,7 +218,7 @@ export default async function AdminAttendanceListPage({ searchParams }: Props) {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                   この月に打刻のある従業員はいません。
                 </td>
               </tr>

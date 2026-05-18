@@ -2,7 +2,12 @@ import type { AttendanceStatus } from "@prisma/client";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { formatMinutes, summarize } from "@/lib/attendance/aggregate";
+import {
+  formatMinutes,
+  nightMinutes,
+  overtimeMinutes,
+  summarize,
+} from "@/lib/attendance/aggregate";
 import { currentJstYm, fromJstYmd, monthRange, toJstYmd } from "@/lib/attendance/business-date";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
@@ -70,10 +75,12 @@ export default async function AdminAttendanceEmployeePage({ params, searchParams
       firstName: true,
       lastNameKana: true,
       firstNameKana: true,
+      dailyWorkHours: true,
       office: { select: { id: true, name: true } },
     },
   });
   if (!employee) notFound();
+  const dailyWorkHours = employee.dailyWorkHours.toNumber();
 
   const records = await prisma.attendanceRecord.findMany({
     where: {
@@ -90,16 +97,25 @@ export default async function AdminAttendanceEmployeePage({ params, searchParams
   }
 
   let totalWork = 0;
+  let totalOvertime = 0;
+  let totalNight = 0;
   let attendedDays = 0;
   let pendingCount = 0;
   let approvedCount = 0;
   for (const r of records) {
     if (r.clockInAt) attendedDays += 1;
-    totalWork += summarize({
+    const s = summarize({
       clockInAt: r.clockInAt,
       clockOutAt: r.clockOutAt,
       breakRecords: r.breakRecords,
-    }).workMinutes;
+    });
+    totalWork += s.workMinutes;
+    totalOvertime += overtimeMinutes(s.workMinutes, dailyWorkHours);
+    totalNight += nightMinutes({
+      clockInAt: r.clockInAt,
+      clockOutAt: r.clockOutAt,
+      breakRecords: r.breakRecords,
+    });
     if (r.status === "APPROVED") approvedCount += 1;
     else pendingCount += 1;
   }
@@ -147,9 +163,11 @@ export default async function AdminAttendanceEmployeePage({ params, searchParams
         </div>
       </header>
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <SummaryCard label="出勤日数" value={`${attendedDays} 日`} />
         <SummaryCard label="実労働" value={formatMinutes(totalWork)} />
+        <SummaryCard label="残業" value={totalOvertime > 0 ? formatMinutes(totalOvertime) : "—"} />
+        <SummaryCard label="深夜" value={totalNight > 0 ? formatMinutes(totalNight) : "—"} />
         <SummaryCard label="未承認" value={`${pendingCount}`} accent={pendingCount > 0} />
         <SummaryCard label="承認済" value={`${approvedCount}`} />
       </section>
@@ -181,6 +199,8 @@ export default async function AdminAttendanceEmployeePage({ params, searchParams
               <th className="px-3 py-3 text-right font-medium">退勤</th>
               <th className="px-3 py-3 text-right font-medium">休憩</th>
               <th className="px-3 py-3 text-right font-medium">実働</th>
+              <th className="px-3 py-3 text-right font-medium">残業</th>
+              <th className="px-3 py-3 text-right font-medium">深夜</th>
               <th className="px-3 py-3 font-medium">状態</th>
               <th className="px-3 py-3" />
             </tr>
@@ -199,6 +219,14 @@ export default async function AdminAttendanceEmployeePage({ params, searchParams
                     breakRecords: rec.breakRecords,
                   })
                 : null;
+              const overtime = summary ? overtimeMinutes(summary.workMinutes, dailyWorkHours) : 0;
+              const night = rec
+                ? nightMinutes({
+                    clockInAt: rec.clockInAt,
+                    clockOutAt: rec.clockOutAt,
+                    breakRecords: rec.breakRecords,
+                  })
+                : 0;
               const badge = rec ? STATUS_BADGE[rec.status] : null;
 
               return (
@@ -220,6 +248,12 @@ export default async function AdminAttendanceEmployeePage({ params, searchParams
                   </td>
                   <td className="px-3 py-2 text-right font-medium text-slate-900 tabular-nums">
                     {summary && summary.workMinutes > 0 ? formatMinutes(summary.workMinutes) : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-700 tabular-nums">
+                    {overtime > 0 ? formatMinutes(overtime) : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-700 tabular-nums">
+                    {night > 0 ? formatMinutes(night) : "—"}
                   </td>
                   <td className="px-3 py-2">
                     {badge ? (
