@@ -13,7 +13,7 @@ type Item = {
 const ITEMS: Item[] = [
   { label: "ダッシュボード", href: "/admin" },
   { label: "拠点設定", href: "/admin/offices" },
-  { label: "従業員", disabled: true },
+  { label: "従業員", href: "/admin/employees" },
   { label: "シフトパターン", disabled: true },
   { label: "勤務表", disabled: true },
   { label: "勤怠", disabled: true },
