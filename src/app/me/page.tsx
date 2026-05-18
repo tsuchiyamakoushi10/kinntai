@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth, signOut } from "@/auth";
@@ -99,6 +100,18 @@ export default async function MyHomePage({ searchParams }: PageProps) {
           ))}
         </div>
       )}
+
+      <nav className="mt-2 grid grid-cols-1 gap-2">
+        <Link
+          href="/me/attendance"
+          className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
+        >
+          <span>今月の勤怠を見る</span>
+          <span aria-hidden className="text-slate-400">
+            →
+          </span>
+        </Link>
+      </nav>
 
       <p className="mt-auto text-center text-xs text-slate-400">
         ※ 月別シフト・有給残数は次のスライスで追加します。
