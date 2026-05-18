@@ -1,0 +1,25 @@
+# ローカル開発用の PostgreSQL。本番には使わない。
+# 起動: pnpm db:up   停止: pnpm db:down   完全リセット: pnpm db:nuke
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kinntai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kinntai
+      POSTGRES_PASSWORD: kinntai
+      POSTGRES_DB: kinntai
+      TZ: Asia/Tokyo
+      PGTZ: Asia/Tokyo
+    ports:
+      - "5432:5432"
+    volumes:
+      - kinntai-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kinntai -d kinntai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  kinntai-pgdata:

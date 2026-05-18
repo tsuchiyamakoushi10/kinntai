@@ -1,0 +1,344 @@
+// kinntai データベーススキーマ
+//
+// このファイルは docs/database-design.md §2（MVP）を Prisma DSL に書き下したもの。
+// Phase 2 以降（attendance_corrections / leave_requests など）と Future（雇用契約書 等）は
+// 必要になってから追加する。
+//
+// 命名規約（CLAUDE.md §4 準拠）:
+//   - DB 側（テーブル / カラム / enum 値）は snake_case / lower_case
+//   - TypeScript 側は PascalCase / UPPER_CASE
+//   - 上記ギャップは `@map` / `@@map` で吸収する
+//
+// マルチテナント拡張（docs §6）に備え、主要テーブルへの tenant_id 追加を
+// 「列追加で済む」形にしてある（一意制約のスコープは将来 tenant 内に絞る想定）。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// Enums
+// =============================================================================
+
+enum UserRole {
+  ADMIN    @map("admin")
+  EMPLOYEE @map("employee")
+
+  @@map("user_role")
+}
+
+enum Gender {
+  MALE   @map("male")
+  FEMALE @map("female")
+  OTHER  @map("other")
+
+  @@map("gender")
+}
+
+enum JobCategory {
+  CARE_WORKER    @map("care_worker")
+  NURSE          @map("nurse")
+  LIFE_COUNSELOR @map("life_counselor")
+  CARE_MANAGER   @map("care_manager")
+  OFFICE_STAFF   @map("office_staff")
+  OTHER          @map("other")
+
+  @@map("job_category")
+}
+
+enum EmploymentType {
+  FULL_TIME @map("full_time")
+  CONTRACT  @map("contract")
+  PART_TIME @map("part_time")
+
+  @@map("employment_type")
+}
+
+enum WageType {
+  HOURLY  @map("hourly")
+  MONTHLY @map("monthly")
+
+  @@map("wage_type")
+}
+
+enum QualificationType {
+  CARE_WORKER        @map("care_worker")
+  INITIAL_TRAINING   @map("initial_training")
+  PRACTICAL_TRAINING @map("practical_training")
+  CHIEF_CARE_WORKER  @map("chief_care_worker")
+  NURSE              @map("nurse")
+  OTHER              @map("other")
+
+  @@map("qualification_type")
+}
+
+enum ShiftKind {
+  WORK          @map("work")
+  NIGHT         @map("night")
+  AFTER_NIGHT   @map("after_night")
+  OFF           @map("off")
+  PAID_LEAVE    @map("paid_leave")
+  ABSENCE       @map("absence")
+  REQUESTED_OFF @map("requested_off")
+
+  @@map("shift_kind")
+}
+
+enum AttendanceStatus {
+  OPEN      @map("open")
+  SUBMITTED @map("submitted")
+  APPROVED  @map("approved")
+  REJECTED  @map("rejected")
+
+  @@map("attendance_status")
+}
+
+enum LeaveGrantType {
+  STATUTORY         @map("statutory")
+  MANUAL_ADJUSTMENT @map("manual_adjustment")
+  CARRY_OVER        @map("carry_over")
+
+  @@map("leave_grant_type")
+}
+
+// =============================================================================
+// Models
+// =============================================================================
+
+// 拠点
+// TODO(multi-tenant): tenant_id を追加する際は (tenant_id, code) の複合一意に切り替える
+model Office {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  code      String   @unique
+  address   String?
+  timezone  String   @default("Asia/Tokyo")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employees         Employee[]
+  shiftPatterns     ShiftPattern[]
+  shifts            Shift[]
+  attendanceRecords AttendanceRecord[]
+
+  @@map("offices")
+}
+
+// ログインアカウント。employee_id は管理者でも従業員情報を持つ場合があるため nullable。
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         UserRole
+  employeeId   String?   @unique @map("employee_id") @db.Uuid
+  pinCodeHash  String?   @map("pin_code_hash")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee           Employee?          @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdShifts      Shift[]            @relation("ShiftCreatedBy")
+  updatedShifts      Shift[]            @relation("ShiftUpdatedBy")
+  approvedAttendance AttendanceRecord[] @relation("AttendanceApprovedBy")
+
+  @@map("users")
+}
+
+// 従業員。退職後も勤怠データを保持するため、退職は retired_at で表現（物理削除しない）。
+// TODO(multi-tenant): tenant_id を追加する際は employee_code の一意性を tenant 内に絞る
+model Employee {
+  id                       String         @id @default(uuid()) @db.Uuid
+  employeeCode             String         @unique @map("employee_code")
+  lastName                 String         @map("last_name")
+  firstName                String         @map("first_name")
+  lastNameKana             String         @map("last_name_kana")
+  firstNameKana            String         @map("first_name_kana")
+  birthDate                DateTime       @map("birth_date") @db.Date
+  gender                   Gender?
+  phone                    String?
+  address                  String?
+  officeId                 String         @map("office_id") @db.Uuid
+  jobCategory              JobCategory    @map("job_category")
+  employmentType           EmploymentType @map("employment_type")
+  joinedAt                 DateTime       @map("joined_at") @db.Date
+  hiredAt                  DateTime       @map("hired_at") @db.Date
+  retiredAt                DateTime?      @map("retired_at") @db.Date
+  emergencyContactName     String?        @map("emergency_contact_name")
+  emergencyContactRelation String?        @map("emergency_contact_relation")
+  emergencyContactPhone    String?        @map("emergency_contact_phone")
+  weeklyWorkDays           Decimal        @map("weekly_work_days") @db.Decimal(3, 1)
+  dailyWorkHours           Decimal        @map("daily_work_hours") @db.Decimal(4, 2)
+  baseWageType             WageType       @map("base_wage_type")
+  baseWageAmount           Int            @map("base_wage_amount")
+  notes                    String?
+  createdAt                DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  office                Office                 @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  user                  User?
+  qualifications        Qualification[]
+  shifts                Shift[]
+  attendanceRecords     AttendanceRecord[]
+  paidLeaveGrants       PaidLeaveGrant[]
+  paidLeaveConsumptions PaidLeaveConsumption[]
+
+  @@index([officeId, retiredAt])
+  @@map("employees")
+}
+
+// 保有資格（介護福祉士 / 初任者研修 など）。キャリアアップ助成金や加算で参照する。
+model Qualification {
+  id                String            @id @default(uuid()) @db.Uuid
+  employeeId        String            @map("employee_id") @db.Uuid
+  qualificationType QualificationType @map("qualification_type")
+  acquiredOn        DateTime          @map("acquired_on") @db.Date
+  certificateNumber String?           @map("certificate_number")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("qualifications")
+}
+
+// シフトパターン定義（早番 / 日勤 / 遅番 / 夜勤 / 明け / 公休 / 有休 / 欠勤 / 希望休）。
+// office_id が NULL のものは全拠点共通パターン。
+model ShiftPattern {
+  id              String    @id @default(uuid()) @db.Uuid
+  officeId        String?   @map("office_id") @db.Uuid
+  code            String    @unique
+  name            String
+  shiftKind       ShiftKind @map("shift_kind")
+  startTime       DateTime? @map("start_time") @db.Time(0)
+  endTime         DateTime? @map("end_time") @db.Time(0)
+  crossesMidnight Boolean   @default(false) @map("crosses_midnight")
+  breakMinutes    Int       @default(0) @map("break_minutes")
+  color           String    @default("#888888")
+  sortOrder       Int       @default(0) @map("sort_order")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  office            Office?            @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  shifts            Shift[]
+  attendanceRecords AttendanceRecord[]
+
+  @@map("shift_patterns")
+}
+
+// 月次シフト（勤務表）。office_id は応援勤務に備え employee.office_id と独立に保持。
+model Shift {
+  id             String   @id @default(uuid()) @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  officeId       String   @map("office_id") @db.Uuid
+  workDate       DateTime @map("work_date") @db.Date
+  shiftPatternId String   @map("shift_pattern_id") @db.Uuid
+  note           String?
+  createdBy      String   @map("created_by") @db.Uuid
+  updatedBy      String   @map("updated_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee              Employee               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  office                Office                 @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  shiftPattern          ShiftPattern           @relation(fields: [shiftPatternId], references: [id], onDelete: Restrict)
+  creator               User                   @relation("ShiftCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  updater               User                   @relation("ShiftUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  paidLeaveConsumptions PaidLeaveConsumption[]
+
+  @@unique([employeeId, workDate])
+  @@index([officeId, workDate])
+  @@map("shifts")
+}
+
+// 打刻実績。1 日 1 レコード。夜勤の work_date は出勤日基準（docs §6 参照）。
+model AttendanceRecord {
+  id                String           @id @default(uuid()) @db.Uuid
+  employeeId        String           @map("employee_id") @db.Uuid
+  officeId          String           @map("office_id") @db.Uuid
+  workDate          DateTime         @map("work_date") @db.Date
+  clockInAt         DateTime?        @map("clock_in_at") @db.Timestamptz(6)
+  clockOutAt        DateTime?        @map("clock_out_at") @db.Timestamptz(6)
+  shiftPatternId    String?          @map("shift_pattern_id") @db.Uuid
+  totalWorkMinutes  Int?             @map("total_work_minutes")
+  totalBreakMinutes Int?             @map("total_break_minutes")
+  overtimeMinutes   Int?             @map("overtime_minutes")
+  nightMinutes      Int?             @map("night_minutes")
+  status            AttendanceStatus @default(OPEN)
+  approvedBy        String?          @map("approved_by") @db.Uuid
+  approvedAt        DateTime?        @map("approved_at") @db.Timestamptz(6)
+  note              String?
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  office       Office        @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  shiftPattern ShiftPattern? @relation(fields: [shiftPatternId], references: [id], onDelete: SetNull)
+  approver     User?         @relation("AttendanceApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+  breakRecords BreakRecord[]
+
+  @@unique([employeeId, workDate])
+  @@map("attendance_records")
+}
+
+// 休憩打刻。進行中の休憩は break_end_at = NULL。
+model BreakRecord {
+  id                 String    @id @default(uuid()) @db.Uuid
+  attendanceRecordId String    @map("attendance_record_id") @db.Uuid
+  breakStartAt       DateTime  @map("break_start_at") @db.Timestamptz(6)
+  breakEndAt         DateTime? @map("break_end_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  attendanceRecord AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceRecordId])
+  @@map("break_records")
+}
+
+// 有給付与履歴。expires_on は付与日 + 2 年（労基法準拠）。
+model PaidLeaveGrant {
+  id          String         @id @default(uuid()) @db.Uuid
+  employeeId  String         @map("employee_id") @db.Uuid
+  grantedOn   DateTime       @map("granted_on") @db.Date
+  grantedDays Decimal        @map("granted_days") @db.Decimal(4, 1)
+  expiresOn   DateTime       @map("expires_on") @db.Date
+  grantType   LeaveGrantType @map("grant_type")
+  note        String?
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee     Employee               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  consumptions PaidLeaveConsumption[]
+
+  @@index([employeeId, grantedOn])
+  @@map("paid_leave_grants")
+}
+
+// 有給消化記録。半休は consumed_days = 0.5。
+// 古い付与から消化していくロジックは src/lib/leave/ 配下で扱う。
+model PaidLeaveConsumption {
+  id            String   @id @default(uuid()) @db.Uuid
+  employeeId    String   @map("employee_id") @db.Uuid
+  consumedOn    DateTime @map("consumed_on") @db.Date
+  consumedDays  Decimal  @map("consumed_days") @db.Decimal(3, 1)
+  sourceGrantId String?  @map("source_grant_id") @db.Uuid
+  shiftId       String?  @map("shift_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee    Employee        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  sourceGrant PaidLeaveGrant? @relation(fields: [sourceGrantId], references: [id], onDelete: SetNull)
+  shift       Shift?          @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, consumedOn])
+  @@map("paid_leave_consumptions")
+}
