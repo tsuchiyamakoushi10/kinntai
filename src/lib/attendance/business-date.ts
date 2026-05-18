@@ -54,3 +54,60 @@ export function todayJstYmd(now: Date = new Date()): string {
 export function todayJstDate(now: Date = new Date()): Date {
   return fromJstYmd(todayJstYmd(now));
 }
+
+const YM_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: TZ,
+  year: "numeric",
+  month: "2-digit",
+});
+
+/** いまの JST 年月を `YYYY-MM` で返す。 */
+export function currentJstYm(now: Date = new Date()): string {
+  return YM_FORMATTER.format(now);
+}
+
+export type MonthRange = {
+  /** `YYYY-MM` */
+  ym: string;
+  /** 月初 (JST 0 時) を UTC Date で。Prisma の Date 列クエリ用。 */
+  start: Date;
+  /** 翌月 1 日 (JST 0 時) を UTC Date で。range の上限 (exclusive)。 */
+  end: Date;
+  /** 月内の日付を `YYYY-MM-DD` で 1 日〜末日まで列挙したもの。 */
+  days: ReadonlyArray<string>;
+  /** 前月の `YYYY-MM`。 */
+  prevYm: string;
+  /** 翌月の `YYYY-MM`。 */
+  nextYm: string;
+};
+
+/**
+ * `YYYY-MM` を月全体の範囲・日リストに展開する。
+ * フォーマット不正なら例外。月末日は `new Date(y, m, 0).getUTCDate()` で得る。
+ */
+export function monthRange(ym: string): MonthRange {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) {
+    throw new Error(`invalid YYYY-MM: ${ym}`);
+  }
+  const [yStr, mStr] = ym.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+  const days: string[] = [];
+  for (let d = 1; d <= lastDay; d++) {
+    days.push(`${ym}-${String(d).padStart(2, "0")}`);
+  }
+
+  const start = fromJstYmd(`${ym}-01`);
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  const nextYm = `${nextY}-${String(nextM).padStart(2, "0")}`;
+  const end = fromJstYmd(`${nextYm}-01`);
+
+  const prevY = m === 1 ? y - 1 : y;
+  const prevM = m === 1 ? 12 : m - 1;
+  const prevYm = `${prevY}-${String(prevM).padStart(2, "0")}`;
+
+  return { ym, start, end, days, prevYm, nextYm };
+}
