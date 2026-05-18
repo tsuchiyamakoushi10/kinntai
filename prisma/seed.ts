@@ -12,6 +12,7 @@
  */
 import { PrismaClient, ShiftKind } from "@prisma/client";
 import { seedEmployees } from "./seeds/employees";
+import { seedUsers, DEV_CREDENTIALS } from "./seeds/users";
 
 const prisma = new PrismaClient();
 
@@ -496,12 +497,21 @@ async function main(): Promise<void> {
   const employeeCount = await seedEmployees(prisma, officeIds);
   console.log(`  ${employeeCount} employees upserted`);
 
+  console.log("seeding users...");
+  const users = await seedUsers(prisma);
+  console.log(`  ${users.admin} admin + ${users.employee} employee users ready`);
+
   const counts = {
     offices: await prisma.office.count(),
     shiftPatterns: await prisma.shiftPattern.count(),
     employees: await prisma.employee.count(),
+    users: await prisma.user.count(),
   };
   console.log("done.", counts);
+  console.log("");
+  console.log("  ── dev login (開発専用 / 本番投入禁止) ──");
+  console.log(`  admin   : ${DEV_CREDENTIALS.admin.email} / ${DEV_CREDENTIALS.admin.password}`);
+  console.log(`  employee: e0001..e0055@kinntai.local / ${DEV_CREDENTIALS.employeePassword}`);
 }
 
 main()
