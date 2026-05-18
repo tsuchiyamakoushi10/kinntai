@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一ブランチで複数 push が走った場合、古い実行は中断する
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: format / lint / typecheck / test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # package.json の packageManager と一致させること
+          version: 10.32.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Prisma Client の型を生成しないと、seed.ts や src/lib/db.ts の
+      # 型解決が落ちて typecheck / lint が失敗する。
+      - name: Prisma generate
+        run: pnpm prisma:generate
+
+      - name: Prisma validate
+        run: pnpm prisma:validate
+
+      - name: Prettier (format check)
+        run: pnpm format:check
+
+      - name: ESLint
+        run: pnpm lint
+
+      - name: TypeScript
+        run: pnpm typecheck
+
+      # vitest は現状 --passWithNoTests で空のまま通る。Phase 1-C 以降で
+      # ロジック層（src/lib/）にテストが入ったら自動的に効くようになる。
+      - name: Vitest
+        run: pnpm test
