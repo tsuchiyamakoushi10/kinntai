@@ -324,3 +324,105 @@ export async function updateEmployee(
   revalidatePath(`/admin/employees/${id}`);
   redirect(`/admin/employees/${id}`);
 }
+
+// =============================================================================
+// 退職処理 / 復職処理（S-A-06）
+// =============================================================================
+
+export type RetireFormState = {
+  error?: string;
+  values?: {
+    retiredAt: string;
+    notes: string;
+  };
+};
+
+/**
+ * 退職日を確定し、紐づくログインアカウントを無効化する。
+ *
+ * 有給失効処理はここでは触らない。Phase 1-F で src/lib/leave/ に
+ * 集約予定のため、ここでは退職日と備考の記録 + ログイン停止に留める。
+ */
+export async function retireEmployee(
+  id: string,
+  _prev: RetireFormState,
+  formData: FormData,
+): Promise<RetireFormState> {
+  await requireAdmin();
+  const values: NonNullable<RetireFormState["values"]> = {
+    retiredAt: String(formData.get("retiredAt") ?? "").trim(),
+    notes: String(formData.get("notes") ?? "").trim(),
+  };
+
+  const retiredAt = parseDateInputValue(values.retiredAt);
+  if (!retiredAt) {
+    return { error: "退職日を正しく入力してください。", values };
+  }
+
+  const employee = await prisma.employee.findUnique({
+    where: { id },
+    select: { hiredAt: true, retiredAt: true, notes: true },
+  });
+  if (!employee) {
+    return { error: "対象の従業員が見つかりませんでした。", values };
+  }
+  if (employee.retiredAt) {
+    return { error: "この従業員はすでに退職処理されています。", values };
+  }
+  if (retiredAt < employee.hiredAt) {
+    return { error: "退職日は雇い入れ日以降の日付にしてください。", values };
+  }
+
+  const mergedNotes = [employee.notes, values.notes].filter(Boolean).join("\n").trim() || null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.employee.update({
+      where: { id },
+      data: {
+        retiredAt,
+        notes: mergedNotes,
+      },
+    });
+    // ログインアカウントの停止（PII 漏洩防止 + 退職者アクセス遮断）
+    await tx.user.updateMany({
+      where: { employeeId: id },
+      data: { isActive: false },
+    });
+  });
+
+  revalidatePath("/admin/employees");
+  revalidatePath(`/admin/employees/${id}`);
+  redirect(`/admin/employees/${id}`);
+}
+
+/**
+ * 退職を取り消す。誤操作の救済用。
+ *
+ * `retiredAt = null` に戻し、ログインアカウントも再有効化する。
+ * 退職時に上書きした notes は戻さない（業務記録として残す）。
+ */
+export async function unretireEmployee(id: string): Promise<void> {
+  await requireAdmin();
+  const employee = await prisma.employee.findUnique({
+    where: { id },
+    select: { retiredAt: true },
+  });
+  if (!employee) {
+    redirect(`/admin/employees`);
+  }
+  if (!employee.retiredAt) {
+    redirect(`/admin/employees/${id}`);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.employee.update({ where: { id }, data: { retiredAt: null } });
+    await tx.user.updateMany({
+      where: { employeeId: id },
+      data: { isActive: true },
+    });
+  });
+
+  revalidatePath("/admin/employees");
+  revalidatePath(`/admin/employees/${id}`);
+  redirect(`/admin/employees/${id}`);
+}

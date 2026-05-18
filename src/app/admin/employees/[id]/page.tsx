@@ -11,6 +11,7 @@ import {
 } from "@/lib/employee-labels";
 import { formatDate, formatYen } from "@/lib/format";
 
+import { unretireEmployee } from "../actions";
 import { DEFAULT_INITIAL_PASSWORD } from "../constants";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
   const isRetired = employee.retiredAt !== null;
   const weeklyTotal =
     Math.round(Number(employee.weeklyWorkDays) * Number(employee.dailyWorkHours) * 10) / 10;
+  const unretireAction = unretireEmployee.bind(null, employee.id);
 
   return (
     <div className="flex flex-col gap-6">
@@ -72,12 +74,32 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
             <span className="ml-3 font-mono text-xs text-slate-400">{employee.employeeCode}</span>
           </p>
         </div>
-        <Link
-          href={`/admin/employees/${employee.id}/edit`}
-          className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-        >
-          編集
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {!isRetired && (
+            <Link
+              href={`/admin/employees/${employee.id}/retire`}
+              className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"
+            >
+              退職処理
+            </Link>
+          )}
+          {isRetired && (
+            <form action={unretireAction}>
+              <button
+                type="submit"
+                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+              >
+                復職する
+              </button>
+            </form>
+          )}
+          <Link
+            href={`/admin/employees/${employee.id}/edit`}
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+          >
+            編集
+          </Link>
+        </div>
       </header>
 
       <div className="grid gap-4 lg:grid-cols-2">
