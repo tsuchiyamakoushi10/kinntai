@@ -17,7 +17,7 @@ const ITEMS: Item[] = [
   { label: "シフトパターン", href: "/admin/shift-patterns" },
   { label: "勤務表", href: "/admin/shifts" },
   { label: "勤怠", href: "/admin/attendance" },
-  { label: "有給管理", disabled: true },
+  { label: "有給管理", href: "/admin/leave" },
 ];
 
 function isActive(pathname: string, href: string): boolean {
