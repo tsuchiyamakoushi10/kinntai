@@ -111,10 +111,19 @@ export default async function MyHomePage({ searchParams }: PageProps) {
             →
           </span>
         </Link>
+        <Link
+          href="/me/shifts"
+          className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
+        >
+          <span>今月のシフトを見る</span>
+          <span aria-hidden className="text-slate-400">
+            →
+          </span>
+        </Link>
       </nav>
 
       <p className="mt-auto text-center text-xs text-slate-400">
-        ※ 月別シフト・有給残数は次のスライスで追加します。
+        ※ 有給残数は次のスライスで追加します。
       </p>
     </main>
   );
