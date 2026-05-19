@@ -114,7 +114,15 @@ export default async function AdminLeavePage({ searchParams }: Props) {
             {rows.length} 名表示中・本日 {asOf} 時点の残数
           </p>
         </div>
-        <RunStatutoryGrantButton pendingTotal={pendingTotal} />
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/leave/alerts"
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            年5日取得アラート →
+          </Link>
+          <RunStatutoryGrantButton pendingTotal={pendingTotal} />
+        </div>
       </header>
 
       <form
