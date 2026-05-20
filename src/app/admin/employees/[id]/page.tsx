@@ -11,8 +11,9 @@ import {
 } from "@/lib/employee-labels";
 import { formatDate, formatYen } from "@/lib/format";
 
-import { unretireEmployee } from "../actions";
+import { clearEmployeeTabletPin, setEmployeeTabletPin, unretireEmployee } from "../actions";
 import { DEFAULT_INITIAL_PASSWORD } from "../constants";
+import { TabletPinForm } from "./tablet-pin-form";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
     where: { id },
     include: {
       office: { select: { id: true, code: true, name: true } },
-      user: { select: { email: true } },
+      user: { select: { email: true, pinCodeHash: true } },
       qualifications: { orderBy: { acquiredOn: "asc" } },
     },
   });
@@ -42,6 +43,9 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
   const weeklyTotal =
     Math.round(Number(employee.weeklyWorkDays) * Number(employee.dailyWorkHours) * 10) / 10;
   const unretireAction = unretireEmployee.bind(null, employee.id);
+  const setPinAction = setEmployeeTabletPin.bind(null, employee.id);
+  const clearPinAction = clearEmployeeTabletPin.bind(null, employee.id);
+  const hasTabletPin = !!employee.user?.pinCodeHash;
 
   return (
     <div className="flex flex-col gap-6">
@@ -161,6 +165,17 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
             </ul>
           )}
         </Card>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-semibold text-slate-800">共有タブレット打刻</h2>
+          <div className="mt-3">
+            <TabletPinForm
+              hasPin={hasTabletPin}
+              setAction={setPinAction}
+              clearAction={clearPinAction}
+            />
+          </div>
+        </section>
       </div>
 
       <section className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">

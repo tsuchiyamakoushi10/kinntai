@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
+import { hashPin, isValidPinFormat } from "@/lib/pin";
 import { parseDateInputValue } from "@/lib/format";
 
 import { DEFAULT_INITIAL_PASSWORD } from "./constants";
@@ -393,6 +394,59 @@ export async function retireEmployee(
   revalidatePath("/admin/employees");
   revalidatePath(`/admin/employees/${id}`);
   redirect(`/admin/employees/${id}`);
+}
+
+// =============================================================================
+// 共有タブレット用 暗証番号 (PIN)
+// =============================================================================
+
+export type TabletPinFormState = {
+  error?: string;
+  message?: string;
+};
+
+/**
+ * 共有タブレット打刻用の 4 桁暗証番号を設定する。
+ *
+ * 既存ハッシュがあれば上書きする。空欄なら無効化（NULL）。
+ */
+export async function setEmployeeTabletPin(
+  employeeId: string,
+  _prev: TabletPinFormState,
+  formData: FormData,
+): Promise<TabletPinFormState> {
+  await requireAdmin();
+  const pin = String(formData.get("pin") ?? "").trim();
+  if (!isValidPinFormat(pin)) {
+    return { error: "暗証番号は 4 桁の数字で入力してください。" };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { employeeId },
+    select: { id: true },
+  });
+  if (!user) {
+    return { error: "ログインアカウントが見つかりませんでした。" };
+  }
+
+  const pinCodeHash = await hashPin(pin);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { pinCodeHash },
+  });
+
+  revalidatePath(`/admin/employees/${employeeId}`);
+  return { message: "暗証番号を更新しました。" };
+}
+
+/** 暗証番号を無効化する（NULL にする）。タブレット打刻不可になる。 */
+export async function clearEmployeeTabletPin(employeeId: string): Promise<void> {
+  await requireAdmin();
+  await prisma.user.updateMany({
+    where: { employeeId },
+    data: { pinCodeHash: null },
+  });
+  revalidatePath(`/admin/employees/${employeeId}`);
 }
 
 /**

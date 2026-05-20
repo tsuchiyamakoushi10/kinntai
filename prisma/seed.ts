@@ -512,6 +512,7 @@ async function main(): Promise<void> {
   console.log("  ── dev login (開発専用 / 本番投入禁止) ──");
   console.log(`  admin   : ${DEV_CREDENTIALS.admin.email} / ${DEV_CREDENTIALS.admin.password}`);
   console.log(`  employee: e0001..e0055@kinntai.local / ${DEV_CREDENTIALS.employeePassword}`);
+  console.log(`  tablet PIN: ${DEV_CREDENTIALS.employeePinHint}`);
 }
 
 main()
