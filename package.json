@@ -46,6 +46,7 @@
     "bcryptjs": "^3.0.3",
     "next": "^15.5.18",
     "next-auth": "5.0.0-beta.31",
+    "nodemailer": "^8.0.7",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
@@ -54,6 +55,7 @@
     "@tailwindcss/postcss": "^4.3.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/node": "^25.8.0",
+    "@types/nodemailer": "^8.0.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitest/coverage-v8": "^4.1.6",

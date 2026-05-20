@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
@@ -28,6 +29,14 @@ export default async function LoginPage({ searchParams }: Props) {
         </p>
         <div className="mt-6">
           <LoginForm from={from ?? ""} />
+        </div>
+        <div className="mt-4 text-center text-sm">
+          <Link
+            href="/password-reset"
+            className="text-slate-600 underline-offset-2 hover:underline"
+          >
+            パスワードをお忘れの方はこちら
+          </Link>
         </div>
       </div>
     </main>

@@ -143,12 +143,33 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  employee           Employee?          @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  createdShifts      Shift[]            @relation("ShiftCreatedBy")
-  updatedShifts      Shift[]            @relation("ShiftUpdatedBy")
-  approvedAttendance AttendanceRecord[] @relation("AttendanceApprovedBy")
+  employee            Employee?            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdShifts       Shift[]              @relation("ShiftCreatedBy")
+  updatedShifts       Shift[]              @relation("ShiftUpdatedBy")
+  approvedAttendance  AttendanceRecord[]   @relation("AttendanceApprovedBy")
+  passwordResetTokens PasswordResetToken[]
 
   @@map("users")
+}
+
+// パスワード再設定リクエストごとの 1 回限り使用トークン (S-C-02 / S-C-03)。
+//
+// - 生トークンは URL に載るので、DB には sha256 ハッシュのみ保存する。
+// - 使用済みは used_at で表現。30 分の有効期限と合わせ、リプレイ攻撃を防ぐ。
+// - 同一ユーザーが複数回リクエストしても、それぞれ別レコードとして発行する。
+//   古いトークンは未使用のまま expires_at で自然に無効になる。
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("password_reset_tokens")
 }
 
 // 従業員。退職後も勤怠データを保持するため、退職は retired_at で表現（物理削除しない）。
