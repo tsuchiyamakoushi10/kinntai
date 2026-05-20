@@ -1,7 +1,11 @@
-import { EmploymentStatus } from "@prisma/client";
+import { EmploymentStatus, Prisma } from "@prisma/client";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import {
+  judgeRetirementAllowance,
+  type RetirementAllowanceJudgment,
+} from "@/lib/contract/retirement-allowance";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import {
@@ -13,21 +17,33 @@ import {
 } from "@/lib/employee-labels";
 import { formatDate, formatYen } from "@/lib/format";
 
-import { clearEmployeeTabletPin, setEmployeeTabletPin, unretireEmployee } from "../actions";
+import {
+  clearEmployeeTabletPin,
+  setEmployeeTabletPin,
+  unretireEmployee,
+  type TabletPinFormState,
+} from "../actions";
 import { DEFAULT_INITIAL_PASSWORD } from "../constants";
 import { TabletPinForm } from "./tablet-pin-form";
 
 export const dynamic = "force-dynamic";
 
+type Tab = "basic" | "contracts";
+const TABS: { value: Tab; label: string }[] = [
+  { value: "basic", label: "基本情報" },
+  { value: "contracts", label: "雇用契約" },
+];
+
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<{ created?: string; tab?: string }>;
 };
 
 export default async function EmployeeDetailPage({ params, searchParams }: Props) {
   await requireAdmin();
   const { id } = await params;
-  const { created } = await searchParams;
+  const { created, tab: tabRaw } = await searchParams;
+  const tab: Tab = tabRaw === "contracts" ? "contracts" : "basic";
 
   const employee = await prisma.employee.findUnique({
     where: { id },
@@ -35,6 +51,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
       office: { select: { id: true, code: true, name: true } },
       user: { select: { email: true, pinCodeHash: true } },
       qualifications: { orderBy: { acquiredOn: "asc" } },
+      employmentContracts: { orderBy: { contractStartOn: "desc" } },
     },
   });
   if (!employee) notFound();
@@ -42,12 +59,16 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
   const fullName = `${employee.lastName} ${employee.firstName}`;
   const fullKana = `${employee.lastNameKana} ${employee.firstNameKana}`;
   const isRetired = employee.employmentStatus === EmploymentStatus.RETIRED;
-  const weeklyTotal =
-    Math.round(Number(employee.weeklyWorkDays) * Number(employee.dailyWorkHours) * 10) / 10;
   const unretireAction = unretireEmployee.bind(null, employee.id);
-  const setPinAction = setEmployeeTabletPin.bind(null, employee.id);
-  const clearPinAction = clearEmployeeTabletPin.bind(null, employee.id);
-  const hasTabletPin = !!employee.user?.pinCodeHash;
+
+  const retirementJudgment = judgeRetirementAllowance(
+    employee.employmentContracts.map((c) => ({
+      employmentType: c.employmentType,
+      contractStartOn: c.contractStartOn,
+      contractEndOn: c.contractEndOn,
+      retirementAllowanceEligible: c.retirementAllowanceEligible,
+    })),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -108,92 +129,328 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
         </div>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="基本情報">
-          <InfoRow label="氏名" value={fullName} />
-          <InfoRow label="フリガナ" value={fullKana} />
-          <InfoRow label="生年月日" value={formatDate(employee.birthDate)} />
-        </Card>
-
-        <Card title="連絡先">
-          <InfoRow label="メール" value={employee.user?.email ?? "—"} />
-          <InfoRow label="電話" value={employee.phone ?? "—"} />
-        </Card>
-
-        <Card title="所属">
-          <InfoRow
-            label="拠点"
-            value={
-              <span>
-                {employee.office.name}
-                <span className="ml-2 font-mono text-xs text-slate-500">
-                  {employee.office.code}
-                </span>
-              </span>
-            }
-          />
-          <InfoRow label="職種" value={JOB_CATEGORY_LABELS[employee.jobCategory]} />
-          <InfoRow label="雇用形態" value={EMPLOYMENT_TYPE_LABELS[employee.employmentType]} />
-        </Card>
-
-        <Card title="雇用契約">
-          <InfoRow label="入社日" value={formatDate(employee.joinedAt)} />
-          <InfoRow label="雇い入れ日" value={formatDate(employee.hiredAt)} />
-          {isRetired && (
-            <>
-              <InfoRow label="退職日" value={formatDate(employee.retiredAt)} />
-              <InfoRow label="退職理由" value={employee.retirementReason ?? "—"} />
-            </>
-          )}
-          <InfoRow
-            label="勤務条件"
-            value={`週 ${Number(employee.weeklyWorkDays)} 日 × 1 日 ${Number(
-              employee.dailyWorkHours,
-            )} 時間（週合計 約 ${weeklyTotal} 時間）`}
-          />
-        </Card>
-
-        <Card title="給与">
-          <InfoRow label="給与形態" value={WAGE_TYPE_LABELS[employee.baseWageType]} />
-          <InfoRow label="基本給" value={formatYen(employee.baseWageAmount)} />
-        </Card>
-
-        <Card title="保有資格">
-          {employee.qualifications.length === 0 ? (
-            <p className="text-sm text-slate-500">登録された資格はありません。</p>
-          ) : (
-            <ul className="flex flex-col gap-2 text-sm">
-              {employee.qualifications.map((q) => (
-                <li key={q.id} className="flex items-center justify-between">
-                  <span>{QUALIFICATION_TYPE_LABELS[q.qualificationType]}</span>
-                  <span className="text-xs text-slate-500">取得 {formatDate(q.acquiredOn)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="text-sm font-semibold text-slate-800">共有タブレット打刻</h2>
-          <div className="mt-3">
-            <TabletPinForm
-              hasPin={hasTabletPin}
-              setAction={setPinAction}
-              clearAction={clearPinAction}
-            />
-          </div>
-        </section>
-      </div>
-
-      <section className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-        <p className="font-semibold text-slate-700">今後ここに追加予定</p>
-        <ul className="mt-2 list-disc pl-5">
-          <li>有給残数・付与履歴（S-A-11）</li>
-          <li>月別勤怠サマリ（S-A-10）</li>
-          <li>今月の勤務表（S-A-08）</li>
+      <nav aria-label="詳細タブ" className="border-b border-slate-200">
+        <ul className="-mb-px flex gap-1">
+          {TABS.map((t) => {
+            const active = t.value === tab;
+            return (
+              <li key={t.value}>
+                <Link
+                  href={`/admin/employees/${employee.id}?tab=${t.value}`}
+                  className={
+                    active
+                      ? "inline-block border-b-2 border-slate-900 px-4 py-2 text-sm font-semibold text-slate-900"
+                      : "inline-block border-b-2 border-transparent px-4 py-2 text-sm text-slate-500 hover:text-slate-700"
+                  }
+                >
+                  {t.label}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
+      </nav>
+
+      {tab === "basic" && (
+        <BasicTab
+          employee={employee}
+          isRetired={isRetired}
+          setPinAction={setEmployeeTabletPin.bind(null, employee.id)}
+          clearPinAction={clearEmployeeTabletPin.bind(null, employee.id)}
+        />
+      )}
+
+      {tab === "contracts" && (
+        <ContractsTab
+          employeeId={employee.id}
+          contracts={employee.employmentContracts}
+          judgment={retirementJudgment}
+        />
+      )}
+    </div>
+  );
+}
+
+type EmployeeWithRelations = Prisma.EmployeeGetPayload<{
+  include: {
+    office: { select: { id: true; code: true; name: true } };
+    user: { select: { email: true; pinCodeHash: true } };
+    qualifications: true;
+    employmentContracts: true;
+  };
+}>;
+
+function BasicTab({
+  employee,
+  isRetired,
+  setPinAction,
+  clearPinAction,
+}: {
+  employee: EmployeeWithRelations;
+  isRetired: boolean;
+  setPinAction: (state: TabletPinFormState, formData: FormData) => Promise<TabletPinFormState>;
+  clearPinAction: () => Promise<void>;
+}) {
+  const fullName = `${employee.lastName} ${employee.firstName}`;
+  const fullKana = `${employee.lastNameKana} ${employee.firstNameKana}`;
+  const weeklyTotal =
+    Math.round(Number(employee.weeklyWorkDays) * Number(employee.dailyWorkHours) * 10) / 10;
+  const hasTabletPin = !!employee.user?.pinCodeHash;
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Card title="基本情報">
+        <InfoRow label="氏名" value={fullName} />
+        <InfoRow label="フリガナ" value={fullKana} />
+        <InfoRow label="生年月日" value={formatDate(employee.birthDate)} />
+      </Card>
+
+      <Card title="連絡先">
+        <InfoRow label="メール" value={employee.user?.email ?? "—"} />
+        <InfoRow label="電話" value={employee.phone ?? "—"} />
+      </Card>
+
+      <Card title="所属">
+        <InfoRow
+          label="拠点"
+          value={
+            <span>
+              {employee.office.name}
+              <span className="ml-2 font-mono text-xs text-slate-500">{employee.office.code}</span>
+            </span>
+          }
+        />
+        <InfoRow label="職種" value={JOB_CATEGORY_LABELS[employee.jobCategory]} />
+        <InfoRow label="雇用形態" value={EMPLOYMENT_TYPE_LABELS[employee.employmentType]} />
+      </Card>
+
+      <Card title="現在の雇用条件">
+        <InfoRow label="入社日" value={formatDate(employee.joinedAt)} />
+        <InfoRow label="雇い入れ日" value={formatDate(employee.hiredAt)} />
+        {isRetired && (
+          <>
+            <InfoRow label="退職日" value={formatDate(employee.retiredAt)} />
+            <InfoRow label="退職理由" value={employee.retirementReason ?? "—"} />
+          </>
+        )}
+        <InfoRow
+          label="勤務条件"
+          value={`週 ${Number(employee.weeklyWorkDays)} 日 × 1 日 ${Number(
+            employee.dailyWorkHours,
+          )} 時間（週合計 約 ${weeklyTotal} 時間）`}
+        />
+      </Card>
+
+      <Card title="給与">
+        <InfoRow label="給与形態" value={WAGE_TYPE_LABELS[employee.baseWageType]} />
+        <InfoRow label="基本給" value={formatYen(employee.baseWageAmount)} />
+      </Card>
+
+      <Card title="保有資格">
+        {employee.qualifications.length === 0 ? (
+          <p className="text-sm text-slate-500">登録された資格はありません。</p>
+        ) : (
+          <ul className="flex flex-col gap-2 text-sm">
+            {employee.qualifications.map((q) => (
+              <li key={q.id} className="flex items-center justify-between">
+                <span>{QUALIFICATION_TYPE_LABELS[q.qualificationType]}</span>
+                <span className="text-xs text-slate-500">取得 {formatDate(q.acquiredOn)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-slate-800">共有タブレット打刻</h2>
+        <div className="mt-3">
+          <TabletPinForm
+            hasPin={hasTabletPin}
+            setAction={setPinAction}
+            clearAction={clearPinAction}
+          />
+        </div>
       </section>
     </div>
+  );
+}
+
+function ContractsTab({
+  employeeId,
+  contracts,
+  judgment,
+}: {
+  employeeId: string;
+  contracts: ContractRow[];
+  judgment: RetirementAllowanceJudgment;
+}) {
+  const today = new Date();
+  const current = contracts.find(
+    (c) =>
+      c.contractStartOn.getTime() <= today.getTime() &&
+      (c.contractEndOn === null || c.contractEndOn.getTime() >= today.getTime()),
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-slate-900">雇用契約履歴</h2>
+        <Link
+          href={`/admin/employees/${employeeId}/contracts/new`}
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+        >
+          ＋ 新規契約
+        </Link>
+      </header>
+
+      {current && (
+        <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+          <h3 className="text-sm font-semibold text-emerald-900">現在有効な契約</h3>
+          <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <InfoRow
+              label="契約期間"
+              value={`${formatDate(current.contractStartOn)} 〜 ${
+                current.contractEndOn ? formatDate(current.contractEndOn) : "無期"
+              }`}
+            />
+            <InfoRow label="雇用形態" value={EMPLOYMENT_TYPE_LABELS[current.employmentType]} />
+            <InfoRow
+              label="勤務条件"
+              value={`週 ${Number(current.workingDaysPerWeek)} 日 × ${Number(
+                current.workingHoursPerDay,
+              )} 時間`}
+            />
+            <InfoRow
+              label="賃金"
+              value={`${WAGE_TYPE_LABELS[current.wageType]} ${formatYen(current.wageAmount)}`}
+            />
+            <InfoRow
+              label="保険"
+              value={
+                [
+                  current.hasEmploymentInsurance ? "雇用保険" : null,
+                  current.hasSocialInsurance ? "社会保険" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" / ") || "—"
+              }
+            />
+            <InfoRow
+              label="更新"
+              value={
+                current.isRenewable
+                  ? `更新あり (既往 ${current.renewalCount} 回${
+                      current.hasRenewalLimit ? ` / 上限 ${current.renewalLimitCount} 回` : ""
+                    })`
+                  : "更新なし"
+              }
+            />
+          </dl>
+        </section>
+      )}
+
+      <RetirementAllowanceCard judgment={judgment} />
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-50 text-left text-slate-600">
+            <tr>
+              <th className="px-4 py-3 font-medium">契約期間</th>
+              <th className="px-4 py-3 font-medium">雇用形態</th>
+              <th className="px-4 py-3 font-medium">勤務条件</th>
+              <th className="px-4 py-3 font-medium">賃金</th>
+              <th className="px-4 py-3 font-medium">退職金</th>
+              <th className="px-4 py-3 font-medium">助成金</th>
+              <th className="px-4 py-3 font-medium" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {contracts.map((c) => (
+              <tr key={c.id} className="text-slate-700">
+                <td className="px-4 py-3">
+                  <div>{formatDate(c.contractStartOn)} 〜</div>
+                  <div className="text-xs text-slate-500">
+                    {c.contractEndOn ? formatDate(c.contractEndOn) : "無期"}
+                  </div>
+                </td>
+                <td className="px-4 py-3">{EMPLOYMENT_TYPE_LABELS[c.employmentType]}</td>
+                <td className="px-4 py-3 text-xs">
+                  週 {Number(c.workingDaysPerWeek)} 日 × {Number(c.workingHoursPerDay)} 時間
+                </td>
+                <td className="px-4 py-3 text-xs">
+                  {WAGE_TYPE_LABELS[c.wageType]} {formatYen(c.wageAmount)}
+                </td>
+                <td className="px-4 py-3 text-xs">
+                  {c.retirementAllowanceEligible === null
+                    ? "自動判定"
+                    : c.retirementAllowanceEligible
+                      ? "対象"
+                      : "対象外"}
+                </td>
+                <td className="px-4 py-3 text-xs">
+                  {c.careerSubsidyTarget ? "対象として記録" : "—"}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <Link
+                    href={`/admin/employees/${employeeId}/contracts/${c.id}/edit`}
+                    className="text-sm text-slate-700 hover:underline"
+                  >
+                    編集
+                  </Link>
+                </td>
+              </tr>
+            ))}
+            {contracts.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                  まだ雇用契約が登録されていません。
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+    </div>
+  );
+}
+
+function RetirementAllowanceCard({ judgment }: { judgment: RetirementAllowanceJudgment }) {
+  const years = Math.floor(judgment.fullTimeTotalDays / 365);
+  const remainder = judgment.fullTimeTotalDays - years * 365;
+  const finalLabel = judgment.finalEligible ? "対象" : "対象外";
+  const tone = judgment.finalEligible ? "emerald" : "slate";
+
+  return (
+    <section
+      className={
+        tone === "emerald"
+          ? "rounded-xl border border-emerald-200 bg-emerald-50 p-5"
+          : "rounded-xl border border-slate-200 bg-slate-50 p-5"
+      }
+    >
+      <h3 className="text-sm font-semibold text-slate-900">退職金 通算判定</h3>
+      <p className="mt-1 text-xs text-slate-600">
+        正社員として通算 3 年 (1095 日) で対象になります。判定値は最新契約の手動設定が優先されます。
+      </p>
+      <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+        <InfoRow
+          label="正社員通算"
+          value={`${judgment.fullTimeTotalDays} 日（約 ${years} 年 ${remainder} 日）`}
+        />
+        <InfoRow label="自動判定" value={judgment.autoEligible ? "対象" : "対象外"} />
+        <InfoRow
+          label="手動上書き"
+          value={
+            judgment.manualOverride === null
+              ? "なし"
+              : judgment.manualOverride
+                ? "対象に確定"
+                : "対象外に確定"
+          }
+        />
+        <InfoRow label="最終判定" value={finalLabel} />
+      </dl>
+    </section>
   );
 }
 
@@ -235,3 +492,5 @@ function StatusChip({ status }: { status: EmploymentStatus }) {
     <span className={`${cls} bg-slate-100 text-slate-600`}>{EMPLOYMENT_STATUS_LABELS[status]}</span>
   );
 }
+
+type ContractRow = EmployeeWithRelations["employmentContracts"][number];

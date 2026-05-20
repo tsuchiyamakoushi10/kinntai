@@ -218,6 +218,7 @@ model Employee {
   office                Office                 @relation(fields: [officeId], references: [id], onDelete: Restrict)
   user                  User?
   qualifications        Qualification[]
+  employmentContracts   EmploymentContract[]
   shifts                Shift[]
   attendanceRecords     AttendanceRecord[]
   paidLeaveGrants       PaidLeaveGrant[]
@@ -225,6 +226,40 @@ model Employee {
 
   @@index([officeId, employmentStatus])
   @@map("employees")
+}
+
+// 雇用契約履歴。employees に持つスナップショット (employment_type / weekly_work_days
+// / daily_work_hours / base_wage_*) の履歴元。1 従業員に複数契約を時系列で積む。
+// docs/database-design.md §2.5 参照。
+model EmploymentContract {
+  id                          String         @id @default(uuid()) @db.Uuid
+  employeeId                  String         @map("employee_id") @db.Uuid
+  contractStartOn             DateTime       @map("contract_start_on") @db.Date
+  contractEndOn               DateTime?      @map("contract_end_on") @db.Date
+  employmentType              EmploymentType @map("employment_type")
+  workingHoursPerDay          Decimal        @map("working_hours_per_day") @db.Decimal(4, 2)
+  workingDaysPerWeek          Decimal        @map("working_days_per_week") @db.Decimal(3, 1)
+  wageType                    WageType       @map("wage_type")
+  wageAmount                  Int            @map("wage_amount")
+  isRenewable                 Boolean        @map("is_renewable")
+  renewalCount                Int            @default(0) @map("renewal_count")
+  hasRenewalLimit             Boolean        @default(false) @map("has_renewal_limit")
+  renewalLimitCount           Int?           @map("renewal_limit_count")
+  renewalCriteria             String?        @map("renewal_criteria")
+  hasEmploymentInsurance      Boolean        @map("has_employment_insurance")
+  hasSocialInsurance          Boolean        @map("has_social_insurance")
+  // NULL = 自動判定値を採用、true/false = 管理者による手動上書き
+  retirementAllowanceEligible Boolean?       @map("retirement_allowance_eligible")
+  careerSubsidyTarget         Boolean        @default(false) @map("career_subsidy_target")
+  careerSubsidyNotes          String?        @map("career_subsidy_notes")
+  notes                       String?
+  createdAt                   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, contractStartOn(sort: Desc)])
+  @@map("employment_contracts")
 }
 
 // 保有資格（介護福祉士 / 初任者研修 など）。キャリアアップ助成金や加算で参照する。
