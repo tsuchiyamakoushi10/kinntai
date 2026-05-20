@@ -52,3 +52,10 @@ Thumbs.db
 
 # prisma generated
 prisma/migrations/dev.db*
+
+# playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+.claude/settings.local.json
