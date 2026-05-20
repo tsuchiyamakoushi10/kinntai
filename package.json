@@ -23,6 +23,7 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
     "db:seed": "prisma db seed",
+    "db:seed:demo": "tsx prisma/seed-demo.ts",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:nuke": "docker compose down -v"
