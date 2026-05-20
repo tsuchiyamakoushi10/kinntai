@@ -59,6 +59,16 @@ enum EmploymentType {
   @@map("employment_type")
 }
 
+// 在籍状況。retired_at だけだと休職を表現できないため別軸で持つ。
+// docs/database-design.md §2.3 を参照。
+enum EmploymentStatus {
+  ACTIVE   @map("active")
+  ON_LEAVE @map("on_leave")
+  RETIRED  @map("retired")
+
+  @@map("employment_status")
+}
+
 enum WageType {
   HOURLY  @map("hourly")
   MONTHLY @map("monthly")
@@ -172,35 +182,38 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
-// 従業員。退職後も勤怠データを保持するため、退職は retired_at で表現（物理削除しない）。
+// 従業員。退職後も勤怠データを保持するため、退職は employment_status で表現（物理削除しない）。
+// retired_at だけだと休職 (on_leave) を表現できないため、employment_status と併用する。
 // TODO(multi-tenant): tenant_id を追加する際は employee_code の一意性を tenant 内に絞る
 model Employee {
-  id                       String         @id @default(uuid()) @db.Uuid
-  employeeCode             String         @unique @map("employee_code")
-  lastName                 String         @map("last_name")
-  firstName                String         @map("first_name")
-  lastNameKana             String         @map("last_name_kana")
-  firstNameKana            String         @map("first_name_kana")
-  birthDate                DateTime       @map("birth_date") @db.Date
+  id                       String           @id @default(uuid()) @db.Uuid
+  employeeCode             String           @unique @map("employee_code")
+  lastName                 String           @map("last_name")
+  firstName                String           @map("first_name")
+  lastNameKana             String           @map("last_name_kana")
+  firstNameKana            String           @map("first_name_kana")
+  birthDate                DateTime         @map("birth_date") @db.Date
   gender                   Gender?
   phone                    String?
   address                  String?
-  officeId                 String         @map("office_id") @db.Uuid
-  jobCategory              JobCategory    @map("job_category")
-  employmentType           EmploymentType @map("employment_type")
-  joinedAt                 DateTime       @map("joined_at") @db.Date
-  hiredAt                  DateTime       @map("hired_at") @db.Date
-  retiredAt                DateTime?      @map("retired_at") @db.Date
-  emergencyContactName     String?        @map("emergency_contact_name")
-  emergencyContactRelation String?        @map("emergency_contact_relation")
-  emergencyContactPhone    String?        @map("emergency_contact_phone")
-  weeklyWorkDays           Decimal        @map("weekly_work_days") @db.Decimal(3, 1)
-  dailyWorkHours           Decimal        @map("daily_work_hours") @db.Decimal(4, 2)
-  baseWageType             WageType       @map("base_wage_type")
-  baseWageAmount           Int            @map("base_wage_amount")
+  officeId                 String           @map("office_id") @db.Uuid
+  jobCategory              JobCategory      @map("job_category")
+  employmentType           EmploymentType   @map("employment_type")
+  joinedAt                 DateTime         @map("joined_at") @db.Date
+  hiredAt                  DateTime         @map("hired_at") @db.Date
+  employmentStatus         EmploymentStatus @default(ACTIVE) @map("employment_status")
+  retiredAt                DateTime?        @map("retired_at") @db.Date
+  retirementReason         String?          @map("retirement_reason")
+  emergencyContactName     String?          @map("emergency_contact_name")
+  emergencyContactRelation String?          @map("emergency_contact_relation")
+  emergencyContactPhone    String?          @map("emergency_contact_phone")
+  weeklyWorkDays           Decimal          @map("weekly_work_days") @db.Decimal(3, 1)
+  dailyWorkHours           Decimal          @map("daily_work_hours") @db.Decimal(4, 2)
+  baseWageType             WageType         @map("base_wage_type")
+  baseWageAmount           Int              @map("base_wage_amount")
   notes                    String?
-  createdAt                DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt                DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   office                Office                 @relation(fields: [officeId], references: [id], onDelete: Restrict)
   user                  User?
@@ -210,7 +223,7 @@ model Employee {
   paidLeaveGrants       PaidLeaveGrant[]
   paidLeaveConsumptions PaidLeaveConsumption[]
 
-  @@index([officeId, retiredAt])
+  @@index([officeId, employmentStatus])
   @@map("employees")
 }
 

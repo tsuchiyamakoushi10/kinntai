@@ -1,3 +1,4 @@
+import { EmploymentStatus } from "@prisma/client";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -27,11 +28,11 @@ export default async function RetireEmployeePage({ params }: Props) {
       firstName: true,
       hiredAt: true,
       joinedAt: true,
-      retiredAt: true,
+      employmentStatus: true,
     },
   });
   if (!employee) notFound();
-  if (employee.retiredAt) {
+  if (employee.employmentStatus === EmploymentStatus.RETIRED) {
     // 既に退職済の場合は詳細画面に戻す
     redirect(`/admin/employees/${id}`);
   }
@@ -42,6 +43,7 @@ export default async function RetireEmployeePage({ params }: Props) {
   const today = new Date();
   const initial = {
     retiredAt: toDateInputValue(today),
+    retirementReason: "",
     notes: "",
   };
 

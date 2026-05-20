@@ -5,7 +5,13 @@
  * UI には専門用語を出さない方針（CLAUDE.md §3.1）に従って、必要に応じ
  * ここで微調整する。
  */
-import type { EmploymentType, JobCategory, QualificationType, WageType } from "@prisma/client";
+import type {
+  EmploymentStatus,
+  EmploymentType,
+  JobCategory,
+  QualificationType,
+  WageType,
+} from "@prisma/client";
 
 export const JOB_CATEGORY_LABELS: Record<JobCategory, string> = {
   CARE_WORKER: "介護職員",
@@ -20,6 +26,12 @@ export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
   FULL_TIME: "正社員",
   CONTRACT: "契約社員",
   PART_TIME: "パート",
+};
+
+export const EMPLOYMENT_STATUS_LABELS: Record<EmploymentStatus, string> = {
+  ACTIVE: "在籍中",
+  ON_LEAVE: "休職中",
+  RETIRED: "退職済",
 };
 
 export const WAGE_TYPE_LABELS: Record<WageType, string> = {

@@ -1,9 +1,11 @@
+import { EmploymentStatus } from "@prisma/client";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import {
+  EMPLOYMENT_STATUS_LABELS,
   EMPLOYMENT_TYPE_LABELS,
   JOB_CATEGORY_LABELS,
   QUALIFICATION_TYPE_LABELS,
@@ -39,7 +41,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
 
   const fullName = `${employee.lastName} ${employee.firstName}`;
   const fullKana = `${employee.lastNameKana} ${employee.firstNameKana}`;
-  const isRetired = employee.retiredAt !== null;
+  const isRetired = employee.employmentStatus === EmploymentStatus.RETIRED;
   const weeklyTotal =
     Math.round(Number(employee.weeklyWorkDays) * Number(employee.dailyWorkHours) * 10) / 10;
   const unretireAction = unretireEmployee.bind(null, employee.id);
@@ -71,7 +73,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-slate-900">{fullName}</h1>
-            <StatusChip retired={isRetired} />
+            <StatusChip status={employee.employmentStatus} />
           </div>
           <p className="text-sm text-slate-500">
             {fullKana}
@@ -137,7 +139,12 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
         <Card title="雇用契約">
           <InfoRow label="入社日" value={formatDate(employee.joinedAt)} />
           <InfoRow label="雇い入れ日" value={formatDate(employee.hiredAt)} />
-          {isRetired && <InfoRow label="退職日" value={formatDate(employee.retiredAt)} />}
+          {isRetired && (
+            <>
+              <InfoRow label="退職日" value={formatDate(employee.retiredAt)} />
+              <InfoRow label="退職理由" value={employee.retirementReason ?? "—"} />
+            </>
+          )}
           <InfoRow
             label="勤務条件"
             value={`週 ${Number(employee.weeklyWorkDays)} 日 × 1 日 ${Number(
@@ -208,10 +215,23 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function StatusChip({ retired }: { retired: boolean }) {
-  return retired ? (
-    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">退職済</span>
-  ) : (
-    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">在籍中</span>
+function StatusChip({ status }: { status: EmploymentStatus }) {
+  const cls = "rounded-full px-2 py-0.5 text-xs";
+  if (status === EmploymentStatus.ACTIVE) {
+    return (
+      <span className={`${cls} bg-emerald-50 text-emerald-700`}>
+        {EMPLOYMENT_STATUS_LABELS[status]}
+      </span>
+    );
+  }
+  if (status === EmploymentStatus.ON_LEAVE) {
+    return (
+      <span className={`${cls} bg-amber-50 text-amber-700`}>
+        {EMPLOYMENT_STATUS_LABELS[status]}
+      </span>
+    );
+  }
+  return (
+    <span className={`${cls} bg-slate-100 text-slate-600`}>{EMPLOYMENT_STATUS_LABELS[status]}</span>
   );
 }

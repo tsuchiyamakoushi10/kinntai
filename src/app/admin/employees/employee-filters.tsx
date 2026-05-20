@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export type EmployeeFilterValues = {
   officeId: string;
-  status: "active" | "retired" | "all";
+  status: "active" | "on_leave" | "retired" | "all";
   q: string;
 };
 
@@ -47,6 +47,7 @@ export function EmployeeFilters({ offices, values }: Props) {
           className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
         >
           <option value="active">在籍中</option>
+          <option value="on_leave">休職中</option>
           <option value="retired">退職済</option>
           <option value="all">すべて</option>
         </select>

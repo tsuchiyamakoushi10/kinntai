@@ -1,9 +1,13 @@
-import { Prisma } from "@prisma/client";
+import { EmploymentStatus, Prisma } from "@prisma/client";
 import Link from "next/link";
 
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
-import { EMPLOYMENT_TYPE_LABELS, JOB_CATEGORY_LABELS } from "@/lib/employee-labels";
+import {
+  EMPLOYMENT_STATUS_LABELS,
+  EMPLOYMENT_TYPE_LABELS,
+  JOB_CATEGORY_LABELS,
+} from "@/lib/employee-labels";
 import { formatDate } from "@/lib/format";
 
 import { EmployeeFilters, type EmployeeFilterValues } from "./employee-filters";
@@ -21,7 +25,8 @@ type Props = {
 };
 
 function normalizeStatus(raw: string | undefined): EmployeeFilterValues["status"] {
-  return raw === "retired" || raw === "all" ? raw : "active";
+  if (raw === "retired" || raw === "all" || raw === "on_leave") return raw;
+  return "active";
 }
 
 export default async function EmployeeListPage({ searchParams }: Props) {
@@ -36,8 +41,9 @@ export default async function EmployeeListPage({ searchParams }: Props) {
 
   const where: Prisma.EmployeeWhereInput = {};
   if (filters.officeId) where.officeId = filters.officeId;
-  if (filters.status === "active") where.retiredAt = null;
-  else if (filters.status === "retired") where.retiredAt = { not: null };
+  if (filters.status === "active") where.employmentStatus = EmploymentStatus.ACTIVE;
+  else if (filters.status === "on_leave") where.employmentStatus = EmploymentStatus.ON_LEAVE;
+  else if (filters.status === "retired") where.employmentStatus = EmploymentStatus.RETIRED;
   if (filters.q) {
     where.OR = [
       { lastName: { contains: filters.q, mode: "insensitive" } },
@@ -51,7 +57,7 @@ export default async function EmployeeListPage({ searchParams }: Props) {
     prisma.employee.findMany({
       where,
       include: { office: { select: { code: true, name: true } } },
-      orderBy: [{ retiredAt: { sort: "asc", nulls: "first" } }, { employeeCode: "asc" }],
+      orderBy: [{ employmentStatus: "asc" }, { employeeCode: "asc" }],
     }),
     prisma.office.findMany({
       where: { isActive: true },
@@ -67,12 +73,20 @@ export default async function EmployeeListPage({ searchParams }: Props) {
           <h1 className="text-2xl font-bold text-slate-900">従業員</h1>
           <p className="mt-1 text-sm text-slate-500">{employees.length} 名表示中</p>
         </div>
-        <Link
-          href="/admin/employees/new"
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-        >
-          ＋ 新規登録
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/employees/retired"
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            退職者一覧
+          </Link>
+          <Link
+            href="/admin/employees/new"
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            ＋ 新規登録
+          </Link>
+        </div>
       </header>
 
       <EmployeeFilters offices={offices} values={filters} />
@@ -92,7 +106,7 @@ export default async function EmployeeListPage({ searchParams }: Props) {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {employees.map((e) => {
-              const isRetired = e.retiredAt !== null;
+              const isRetired = e.employmentStatus === EmploymentStatus.RETIRED;
               return (
                 <tr key={e.id} className={isRetired ? "bg-slate-50/60 text-slate-500" : ""}>
                   <td className="px-4 py-3">
@@ -113,15 +127,9 @@ export default async function EmployeeListPage({ searchParams }: Props) {
                     {EMPLOYMENT_TYPE_LABELS[e.employmentType]}
                   </td>
                   <td className="px-4 py-3">
-                    {isRetired ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                        退職済
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
-                        在籍中
-                      </span>
-                    )}
+                    <span className={statusChipClass(e.employmentStatus)}>
+                      {EMPLOYMENT_STATUS_LABELS[e.employmentStatus]}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{formatDate(e.joinedAt)}</td>
                   <td className="px-4 py-3 text-right">
@@ -147,4 +155,11 @@ export default async function EmployeeListPage({ searchParams }: Props) {
       </div>
     </div>
   );
+}
+
+function statusChipClass(status: EmploymentStatus): string {
+  const base = "rounded-full px-2 py-0.5 text-xs";
+  if (status === EmploymentStatus.ACTIVE) return `${base} bg-emerald-50 text-emerald-700`;
+  if (status === EmploymentStatus.ON_LEAVE) return `${base} bg-amber-50 text-amber-700`;
+  return `${base} bg-slate-100 text-slate-600`;
 }

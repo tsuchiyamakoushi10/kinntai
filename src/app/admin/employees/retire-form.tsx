@@ -34,12 +34,27 @@ export function RetireForm({ action, initial, employeeId }: Props) {
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-slate-700">退職理由</span>
+        <textarea
+          name="retirementReason"
+          rows={3}
+          defaultValue={v.retirementReason}
+          required
+          placeholder="例: 一身上の都合 / 契約期間満了 / 定年退職"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+        />
+        <span className="text-xs text-slate-500">
+          退職者一覧 (S-A-20) に表示されます。社労士確認用に分かるよう簡潔に記載してください。
+        </span>
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium text-slate-700">備考（任意）</span>
         <textarea
           name="notes"
           rows={3}
           defaultValue={v.notes}
-          placeholder="例: 一身上の都合"
+          placeholder="社内向けメモなど"
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
         />
         <span className="text-xs text-slate-500">既存の備考に追記されます。</span>

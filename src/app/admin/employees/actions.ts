@@ -1,6 +1,13 @@
 "use server";
 
-import { EmploymentType, JobCategory, Prisma, WageType, type PrismaClient } from "@prisma/client";
+import {
+  EmploymentStatus,
+  EmploymentType,
+  JobCategory,
+  Prisma,
+  WageType,
+  type PrismaClient,
+} from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -334,6 +341,7 @@ export type RetireFormState = {
   error?: string;
   values?: {
     retiredAt: string;
+    retirementReason: string;
     notes: string;
   };
 };
@@ -341,8 +349,8 @@ export type RetireFormState = {
 /**
  * 退職日を確定し、紐づくログインアカウントを無効化する。
  *
- * 有給失効処理はここでは触らない。Phase 1-F で src/lib/leave/ に
- * 集約予定のため、ここでは退職日と備考の記録 + ログイン停止に留める。
+ * employment_status を RETIRED に遷移し、retired_at と retirement_reason を埋める。
+ * 有給失効処理は Phase 3 (src/lib/leave/) に集約予定のため、ここでは触らない。
  */
 export async function retireEmployee(
   id: string,
@@ -352,6 +360,7 @@ export async function retireEmployee(
   await requireAdmin();
   const values: NonNullable<RetireFormState["values"]> = {
     retiredAt: String(formData.get("retiredAt") ?? "").trim(),
+    retirementReason: String(formData.get("retirementReason") ?? "").trim(),
     notes: String(formData.get("notes") ?? "").trim(),
   };
 
@@ -359,15 +368,21 @@ export async function retireEmployee(
   if (!retiredAt) {
     return { error: "退職日を正しく入力してください。", values };
   }
+  if (!values.retirementReason) {
+    return { error: "退職理由を入力してください。", values };
+  }
+  if (values.retirementReason.length > 200) {
+    return { error: "退職理由は 200 文字以内で入力してください。", values };
+  }
 
   const employee = await prisma.employee.findUnique({
     where: { id },
-    select: { hiredAt: true, retiredAt: true, notes: true },
+    select: { hiredAt: true, employmentStatus: true, notes: true },
   });
   if (!employee) {
     return { error: "対象の従業員が見つかりませんでした。", values };
   }
-  if (employee.retiredAt) {
+  if (employee.employmentStatus === EmploymentStatus.RETIRED) {
     return { error: "この従業員はすでに退職処理されています。", values };
   }
   if (retiredAt < employee.hiredAt) {
@@ -380,7 +395,9 @@ export async function retireEmployee(
     await tx.employee.update({
       where: { id },
       data: {
+        employmentStatus: EmploymentStatus.RETIRED,
         retiredAt,
+        retirementReason: values.retirementReason,
         notes: mergedNotes,
       },
     });
@@ -392,6 +409,7 @@ export async function retireEmployee(
   });
 
   revalidatePath("/admin/employees");
+  revalidatePath("/admin/employees/retired");
   revalidatePath(`/admin/employees/${id}`);
   redirect(`/admin/employees/${id}`);
 }
@@ -452,24 +470,31 @@ export async function clearEmployeeTabletPin(employeeId: string): Promise<void> 
 /**
  * 退職を取り消す。誤操作の救済用。
  *
- * `retiredAt = null` に戻し、ログインアカウントも再有効化する。
- * 退職時に上書きした notes は戻さない（業務記録として残す）。
+ * employment_status を ACTIVE に戻し、retired_at / retirement_reason をクリアし、
+ * ログインアカウントを再有効化する。退職時に上書きした notes は戻さない（業務記録として残す）。
  */
 export async function unretireEmployee(id: string): Promise<void> {
   await requireAdmin();
   const employee = await prisma.employee.findUnique({
     where: { id },
-    select: { retiredAt: true },
+    select: { employmentStatus: true },
   });
   if (!employee) {
     redirect(`/admin/employees`);
   }
-  if (!employee.retiredAt) {
+  if (employee.employmentStatus !== EmploymentStatus.RETIRED) {
     redirect(`/admin/employees/${id}`);
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.employee.update({ where: { id }, data: { retiredAt: null } });
+    await tx.employee.update({
+      where: { id },
+      data: {
+        employmentStatus: EmploymentStatus.ACTIVE,
+        retiredAt: null,
+        retirementReason: null,
+      },
+    });
     await tx.user.updateMany({
       where: { employeeId: id },
       data: { isActive: true },
@@ -477,6 +502,7 @@ export async function unretireEmployee(id: string): Promise<void> {
   });
 
   revalidatePath("/admin/employees");
+  revalidatePath("/admin/employees/retired");
   revalidatePath(`/admin/employees/${id}`);
   redirect(`/admin/employees/${id}`);
 }

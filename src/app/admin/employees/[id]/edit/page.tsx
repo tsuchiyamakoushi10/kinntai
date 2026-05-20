@@ -1,8 +1,10 @@
+import { EmploymentStatus } from "@prisma/client";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
+import { EMPLOYMENT_STATUS_LABELS } from "@/lib/employee-labels";
 import { toDateInputValue } from "@/lib/format";
 
 import { updateEmployee, type EmployeeFormValues } from "../../actions";
@@ -52,7 +54,7 @@ export default async function EditEmployeePage({ params }: Props) {
 
   const fullName = `${employee.lastName} ${employee.firstName}`;
   const action = updateEmployee.bind(null, id);
-  const isRetired = employee.retiredAt !== null;
+  const isRetired = employee.employmentStatus === EmploymentStatus.RETIRED;
 
   return (
     <div className="flex flex-col gap-6">
@@ -75,7 +77,7 @@ export default async function EditEmployeePage({ params }: Props) {
         submitLabel="保存する"
         meta={{
           employeeCode: employee.employeeCode,
-          statusLabel: isRetired ? "退職済" : "在籍中",
+          statusLabel: EMPLOYMENT_STATUS_LABELS[employee.employmentStatus],
           statusTone: isRetired ? "retired" : "active",
         }}
       />
