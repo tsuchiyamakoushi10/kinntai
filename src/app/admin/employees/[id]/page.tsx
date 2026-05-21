@@ -510,12 +510,22 @@ function ContractsTab({
                   {c.careerSubsidyTarget ? "対象として記録" : "—"}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <Link
-                    href={`/admin/employees/${employeeId}/contracts/${c.id}/edit`}
-                    className="text-sm text-slate-700 hover:underline"
-                  >
-                    編集
-                  </Link>
+                  <div className="flex justify-end gap-3">
+                    <a
+                      href={`/admin/employees/${employeeId}/contracts/${c.id}/pdf?type=notice`}
+                      target="_blank"
+                      rel="noopener"
+                      className="text-sm text-slate-700 hover:underline"
+                    >
+                      通知書 PDF
+                    </a>
+                    <Link
+                      href={`/admin/employees/${employeeId}/contracts/${c.id}/edit`}
+                      className="text-sm text-slate-700 hover:underline"
+                    >
+                      編集
+                    </Link>
+                  </div>
                 </td>
               </tr>
             ))}
