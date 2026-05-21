@@ -102,13 +102,13 @@
 - S-A-23 研修タブ: 一覧 / 追加 / 編集 / 削除 + 費用合計 / 本人負担合計の表示
 - 修了証ファイルは書類アップロード時に `training_record_id` で紐付け可能（他従業員の研修記録は弾く）
 
-#### 1-G. シフト制約 + シフト希望（1〜2 週）
+#### 1-G. シフト制約 + シフト希望 — 完了
 
-- `shift_constraints` / `shift_preferences` 追加
-- S-A-24 個人別シフト制約 編集
-- S-A-25 シフト希望管理（管理者）
-- S-E-10 シフト希望入力（従業員）
-- 年収 130 万円見込み計算ロジック（`src/lib/shift/income-projection.ts`）+ テスト
+- `shift_constraints` / `shift_preferences` 追加（migration + Prisma リレーション）
+- S-A-24 個人別シフト制約 編集（従業員詳細「制約・希望」タブ）
+- S-A-25 シフト希望管理（月別/拠点/状態フィルタ + accept/reject/戻す）
+- S-E-10 シフト希望入力（従業員側スマホ画面）
+- 年収 130 万円見込み計算ロジック (`src/lib/shift/income-projection.ts`) + 25 件のユニットテスト
 
 #### 1-H. 月次シフト自動作成（2〜3 週）
 

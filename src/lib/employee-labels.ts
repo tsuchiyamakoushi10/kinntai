@@ -11,6 +11,8 @@ import type {
   EmploymentType,
   JobCategory,
   QualificationType,
+  ShiftPreferenceStatus,
+  ShiftPreferenceType,
   TrainingType,
   WageType,
 } from "@prisma/client";
@@ -84,3 +86,23 @@ export const TRAINING_TYPE_LABELS: Record<TrainingType, string> = {
 export const TRAINING_TYPE_OPTIONS: ReadonlyArray<{ value: TrainingType; label: string }> = (
   Object.keys(TRAINING_TYPE_LABELS) as TrainingType[]
 ).map((v) => ({ value: v, label: TRAINING_TYPE_LABELS[v] }));
+
+export const SHIFT_PREFERENCE_TYPE_LABELS: Record<ShiftPreferenceType, string> = {
+  REQUESTED_OFF: "希望休",
+  PREFERRED_NIGHT: "希望夜勤",
+  UNAVAILABLE: "勤務不可",
+};
+
+export const SHIFT_PREFERENCE_TYPE_OPTIONS: ReadonlyArray<{
+  value: ShiftPreferenceType;
+  label: string;
+}> = (Object.keys(SHIFT_PREFERENCE_TYPE_LABELS) as ShiftPreferenceType[]).map((v) => ({
+  value: v,
+  label: SHIFT_PREFERENCE_TYPE_LABELS[v],
+}));
+
+export const SHIFT_PREFERENCE_STATUS_LABELS: Record<ShiftPreferenceStatus, string> = {
+  PENDING: "承認待ち",
+  ACCEPTED: "承認済",
+  REJECTED: "却下",
+};

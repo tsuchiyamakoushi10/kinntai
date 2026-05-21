@@ -130,6 +130,15 @@ export default async function MyHomePage({ searchParams }: PageProps) {
           </span>
         </Link>
         <Link
+          href="/me/shift-preferences"
+          className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
+        >
+          <span>シフト希望を出す</span>
+          <span aria-hidden className="text-slate-400">
+            →
+          </span>
+        </Link>
+        <Link
           href="/me/profile"
           className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
         >

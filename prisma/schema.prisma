@@ -146,6 +146,24 @@ enum TrainingType {
   @@map("training_type")
 }
 
+// シフト希望の種別。docs/database-design.md §2.10 参照。
+enum ShiftPreferenceType {
+  REQUESTED_OFF   @map("requested_off")
+  PREFERRED_NIGHT @map("preferred_night")
+  UNAVAILABLE     @map("unavailable")
+
+  @@map("shift_preference_type")
+}
+
+// シフト希望の承認ステータス。docs/database-design.md §2.10 参照。
+enum ShiftPreferenceStatus {
+  PENDING  @map("pending")
+  ACCEPTED @map("accepted")
+  REJECTED @map("rejected")
+
+  @@map("shift_preference_status")
+}
+
 // =============================================================================
 // Models
 // =============================================================================
@@ -190,6 +208,8 @@ model User {
   passwordResetTokens PasswordResetToken[]
   uploadedDocuments   EmployeeDocument[]   @relation("DocumentUploadedBy")
   documentAccessLogs  DocumentAccessLog[]
+  createdShiftPrefs   ShiftPreference[]    @relation("ShiftPreferenceCreatedBy")
+  reviewedShiftPrefs  ShiftPreference[]    @relation("ShiftPreferenceReviewedBy")
 
   @@map("users")
 }
@@ -257,6 +277,8 @@ model Employee {
   paidLeaveConsumptions PaidLeaveConsumption[]
   documents             EmployeeDocument[]
   trainingRecords       TrainingRecord[]
+  shiftConstraint       ShiftConstraint?
+  shiftPreferences      ShiftPreference[]
 
   @@index([officeId, employmentStatus])
   @@map("employees")
@@ -521,4 +543,53 @@ model TrainingRecord {
 
   @@index([employeeId, trainedOn(sort: Desc)])
   @@map("training_records")
+}
+
+// 個人別シフト制約。1 従業員 1 行 (employee_id unique)。
+// docs/database-design.md §2.9 参照。
+// - max_*_minutes は分単位で持つ (UI は時間単位に変換)
+// - unavailable_days_of_week は 0=日 .. 6=土 の int 配列
+model ShiftConstraint {
+  id                      String   @id @default(uuid()) @db.Uuid
+  employeeId              String   @unique @map("employee_id") @db.Uuid
+  maxMonthlyWorkMinutes   Int?     @map("max_monthly_work_minutes")
+  maxDailyWorkMinutes     Int?     @map("max_daily_work_minutes")
+  maxNightShiftsPerMonth  Int?     @map("max_night_shifts_per_month")
+  allowNightShiftOverride Boolean  @default(true) @map("allow_night_shift_override")
+  targetMonthlyWorkDays   Int?     @map("target_monthly_work_days")
+  annualIncomeCapYen      Int?     @map("annual_income_cap_yen")
+  unavailableDaysOfWeek   Int[]    @map("unavailable_days_of_week")
+  notes                   String?
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("shift_constraints")
+}
+
+// シフト希望 (希望休 / 希望夜勤 / 勤務不可)。
+// docs/database-design.md §2.10 参照。
+// - 1 従業員 × 1 日 × 1 種別 で一意
+// - 本人が作成し、管理者が accepted/rejected で承認する想定 (MVP では accepted 既定運用も可)
+model ShiftPreference {
+  id             String                @id @default(uuid()) @db.Uuid
+  employeeId     String                @map("employee_id") @db.Uuid
+  targetDate     DateTime              @map("target_date") @db.Date
+  preferenceType ShiftPreferenceType   @map("preference_type")
+  status         ShiftPreferenceStatus @default(PENDING)
+  note           String?
+  createdById    String                @map("created_by") @db.Uuid
+  reviewedById   String?               @map("reviewed_by") @db.Uuid
+  reviewedAt     DateTime?             @map("reviewed_at") @db.Timestamptz(6)
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy  User     @relation("ShiftPreferenceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedBy User?    @relation("ShiftPreferenceReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, targetDate, preferenceType])
+  @@index([targetDate])
+  @@map("shift_preferences")
 }

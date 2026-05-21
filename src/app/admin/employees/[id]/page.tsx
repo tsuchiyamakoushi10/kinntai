@@ -2,6 +2,7 @@ import { EmploymentStatus, Prisma } from "@prisma/client";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { toJstYmd } from "@/lib/attendance/business-date";
 import {
   judgeRetirementAllowance,
   type RetirementAllowanceJudgment,
@@ -18,6 +19,7 @@ import {
   WAGE_TYPE_LABELS,
 } from "@/lib/employee-labels";
 import { formatDate, formatYen } from "@/lib/format";
+import { projectAnnualIncome, type IncomeProjectionResult } from "@/lib/shift/income-projection";
 import { createSignedToken } from "@/lib/storage";
 
 import {
@@ -27,6 +29,8 @@ import {
   type TabletPinFormState,
 } from "../actions";
 import { DEFAULT_INITIAL_PASSWORD } from "../constants";
+import { upsertShiftConstraint } from "./constraints/actions";
+import { ConstraintForm } from "./constraints/constraint-form";
 import { deleteEmployeeDocument, uploadEmployeeDocument } from "./documents/actions";
 import { DocumentUploadForm } from "./documents/upload-form";
 import { TabletPinForm } from "./tablet-pin-form";
@@ -35,12 +39,13 @@ import { TrainingForm } from "./trainings/training-form";
 
 export const dynamic = "force-dynamic";
 
-type Tab = "basic" | "contracts" | "documents" | "trainings";
+type Tab = "basic" | "contracts" | "documents" | "trainings" | "constraints";
 const TABS: { value: Tab; label: string }[] = [
   { value: "basic", label: "基本情報" },
   { value: "contracts", label: "雇用契約" },
   { value: "documents", label: "書類" },
   { value: "trainings", label: "研修" },
+  { value: "constraints", label: "制約・希望" },
 ];
 
 type Props = {
@@ -59,7 +64,9 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
         ? "documents"
         : tabRaw === "trainings"
           ? "trainings"
-          : "basic";
+          : tabRaw === "constraints"
+            ? "constraints"
+            : "basic";
 
   const employee = await prisma.employee.findUnique({
     where: { id },
@@ -81,9 +88,58 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
           },
         },
       },
+      shiftConstraint: true,
     },
   });
   if (!employee) notFound();
+
+  // 制約タブで使う見込み年収算出用に、今年分のシフト + 現在の時給契約を取得する。
+  const currentYear = new Date().getFullYear();
+  const yearStart = new Date(Date.UTC(currentYear, 0, 1));
+  const yearEnd = new Date(Date.UTC(currentYear + 1, 0, 1));
+  const [yearShifts, currentContract] = await Promise.all([
+    prisma.shift.findMany({
+      where: {
+        employeeId: id,
+        workDate: { gte: yearStart, lt: yearEnd },
+      },
+      select: {
+        workDate: true,
+        shiftPattern: {
+          select: {
+            startTime: true,
+            endTime: true,
+            crossesMidnight: true,
+            breakMinutes: true,
+          },
+        },
+      },
+    }),
+    prisma.employmentContract.findFirst({
+      where: {
+        employeeId: id,
+        contractStartOn: { lte: new Date() },
+        OR: [{ contractEndOn: null }, { contractEndOn: { gte: new Date() } }],
+      },
+      orderBy: { contractStartOn: "desc" },
+      select: { id: true, wageType: true, wageAmount: true },
+    }),
+  ]);
+
+  const projection = projectAnnualIncome({
+    year: currentYear,
+    hourlyWageYen: currentContract?.wageType === "HOURLY" ? currentContract.wageAmount : null,
+    capYen: employee.shiftConstraint?.annualIncomeCapYen ?? null,
+    shifts: yearShifts.map((s) => ({
+      workDate: toJstYmd(s.workDate),
+      pattern: {
+        startTime: dateToHm(s.shiftPattern.startTime),
+        endTime: dateToHm(s.shiftPattern.endTime),
+        crossesMidnight: s.shiftPattern.crossesMidnight,
+        breakMinutes: s.shiftPattern.breakMinutes,
+      },
+    })),
+  });
 
   const fullName = `${employee.lastName} ${employee.firstName}`;
   const fullKana = `${employee.lastNameKana} ${employee.firstNameKana}`;
@@ -211,6 +267,15 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
       {tab === "trainings" && (
         <TrainingsTab employeeId={employee.id} trainings={employee.trainingRecords} />
       )}
+
+      {tab === "constraints" && (
+        <ConstraintsTab
+          employeeId={employee.id}
+          constraint={employee.shiftConstraint}
+          projection={projection}
+          hasHourlyContract={currentContract?.wageType === "HOURLY"}
+        />
+      )}
     </div>
   );
 }
@@ -227,6 +292,7 @@ type EmployeeWithRelations = Prisma.EmployeeGetPayload<{
         documents: { select: { id: true; title: true; fileName: true; mimeType: true } };
       };
     };
+    shiftConstraint: true;
   };
 }>;
 
@@ -507,6 +573,17 @@ function RetirementAllowanceCard({ judgment }: { judgment: RetirementAllowanceJu
   );
 }
 
+/**
+ * Prisma の `@db.Time(0)` カラムは JS では 1970-01-01 を起点とした Date になる。
+ * 130 万見込み計算は "HH:MM" 文字列を期待するため、UTC ベースで取り出して整形する。
+ */
+function dateToHm(d: Date | null): string | null {
+  if (!d) return null;
+  const hh = d.getUTCHours().toString().padStart(2, "0");
+  const mm = d.getUTCMinutes().toString().padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5">
@@ -779,5 +856,105 @@ function TrainingsTab({ employeeId, trainings }: { employeeId: string; trainings
         (連携機能は今後拡張)。
       </p>
     </div>
+  );
+}
+
+type ShiftConstraintRow = NonNullable<EmployeeWithRelations["shiftConstraint"]>;
+
+function ConstraintsTab({
+  employeeId,
+  constraint,
+  projection,
+  hasHourlyContract,
+}: {
+  employeeId: string;
+  constraint: ShiftConstraintRow | null;
+  projection: IncomeProjectionResult;
+  hasHourlyContract: boolean;
+}) {
+  const action = upsertShiftConstraint.bind(null, employeeId);
+  const initial = {
+    maxMonthlyWorkHours: minutesToHours(constraint?.maxMonthlyWorkMinutes ?? null),
+    maxDailyWorkHours: minutesToHours(constraint?.maxDailyWorkMinutes ?? null),
+    maxNightShiftsPerMonth: constraint?.maxNightShiftsPerMonth?.toString() ?? "",
+    allowNightShiftOverride: constraint ? (constraint.allowNightShiftOverride ? "on" : "") : "on",
+    targetMonthlyWorkDays: constraint?.targetMonthlyWorkDays?.toString() ?? "",
+    annualIncomeCapYen: constraint?.annualIncomeCapYen?.toString() ?? "",
+    unavailableDaysOfWeek: (constraint?.unavailableDaysOfWeek ?? []).join(","),
+    notes: constraint?.notes ?? "",
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <IncomeProjectionCard projection={projection} hasHourlyContract={hasHourlyContract} />
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-slate-800">個人別シフト制約</h2>
+        <ConstraintForm action={action} initial={initial} />
+      </section>
+    </div>
+  );
+}
+
+function minutesToHours(minutes: number | null): string {
+  if (minutes === null) return "";
+  return String(Math.round((minutes / 60) * 10) / 10);
+}
+
+function IncomeProjectionCard({
+  projection,
+  hasHourlyContract,
+}: {
+  projection: IncomeProjectionResult;
+  hasHourlyContract: boolean;
+}) {
+  if (!hasHourlyContract || projection.projectedIncomeYen === null) {
+    return (
+      <section className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+        <h3 className="text-sm font-semibold text-slate-900">年収見込み ({projection.year} 年)</h3>
+        <p className="mt-1 text-xs text-slate-600">
+          時給契約ではないため見込み計算をスキップしています。
+        </p>
+      </section>
+    );
+  }
+  const ratioPct = Math.round((projection.ratio ?? 0) * 100);
+  const tone =
+    projection.severity === "exceeded"
+      ? "rose"
+      : projection.severity === "warn"
+        ? "amber"
+        : "emerald";
+  const palette: Record<typeof tone, string> = {
+    rose: "border-rose-200 bg-rose-50 text-rose-900",
+    amber: "border-amber-200 bg-amber-50 text-amber-900",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  };
+  const label =
+    projection.severity === "exceeded"
+      ? "上限超過"
+      : projection.severity === "warn"
+        ? "上限の 80% 超過"
+        : "余裕あり";
+
+  return (
+    <section className={`rounded-xl border p-5 ${palette[tone]}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h3 className="text-sm font-semibold">年収見込み ({projection.year} 年)</h3>
+        <span className="rounded-full bg-white/60 px-2 py-0.5 text-xs">{label}</span>
+      </div>
+      <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+        <InfoRow label="見込み年収" value={formatYen(projection.projectedIncomeYen)} />
+        <InfoRow label="年収上限" value={formatYen(projection.effectiveCapYen)} />
+        <InfoRow
+          label="想定労働時間"
+          value={`${Math.round(projection.totalWorkMinutes / 60)} 時間`}
+        />
+        <InfoRow label="達成率" value={`${ratioPct} %`} />
+      </dl>
+      <p className="mt-3 text-xs text-slate-700">
+        ※ 今年に割当てられたシフト × シフトパターンの労働時間 × 時給で算出。
+        未来分のシフトも含まれます。実労働ベースの再計算は Phase 2 で対応します。
+      </p>
+    </section>
   );
 }
