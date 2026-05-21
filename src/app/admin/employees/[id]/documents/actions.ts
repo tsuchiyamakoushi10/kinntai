@@ -17,6 +17,8 @@ export type DocumentUploadFormValues = {
   documentType: string;
   expiresOn: string;
   notes: string;
+  /** 修了証として研修記録に紐付ける場合の training_records.id。空文字 = 未紐付け。 */
+  trainingRecordId: string;
 };
 
 export type DocumentUploadFormState = {
@@ -30,6 +32,7 @@ function readForm(formData: FormData): DocumentUploadFormValues {
     documentType: String(formData.get("documentType") ?? ""),
     expiresOn: String(formData.get("expiresOn") ?? "").trim(),
     notes: String(formData.get("notes") ?? "").trim(),
+    trainingRecordId: String(formData.get("trainingRecordId") ?? "").trim(),
   };
 }
 
@@ -68,6 +71,19 @@ export async function uploadEmployeeDocument(
     }
   }
 
+  // 修了証として研修記録に紐付ける場合、当該研修記録が同じ従業員のものであることを検証する
+  let trainingRecordId: string | null = null;
+  if (values.trainingRecordId) {
+    const training = await prisma.trainingRecord.findUnique({
+      where: { id: values.trainingRecordId },
+      select: { id: true, employeeId: true },
+    });
+    if (!training || training.employeeId !== employeeId) {
+      return { error: "選択された研修記録が見つかりませんでした。", values };
+    }
+    trainingRecordId = training.id;
+  }
+
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
     return { error: "ファイルを選択してください。", values };
@@ -101,6 +117,7 @@ export async function uploadEmployeeDocument(
       mimeType: file.type,
       fileSize: size,
       expiresOn,
+      trainingRecordId,
       uploadedById: userId,
       notes: values.notes || null,
     },

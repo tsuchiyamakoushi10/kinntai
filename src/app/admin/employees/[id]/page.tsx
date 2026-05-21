@@ -14,6 +14,7 @@ import {
   EMPLOYMENT_TYPE_LABELS,
   JOB_CATEGORY_LABELS,
   QUALIFICATION_TYPE_LABELS,
+  TRAINING_TYPE_LABELS,
   WAGE_TYPE_LABELS,
 } from "@/lib/employee-labels";
 import { formatDate, formatYen } from "@/lib/format";
@@ -29,14 +30,17 @@ import { DEFAULT_INITIAL_PASSWORD } from "../constants";
 import { deleteEmployeeDocument, uploadEmployeeDocument } from "./documents/actions";
 import { DocumentUploadForm } from "./documents/upload-form";
 import { TabletPinForm } from "./tablet-pin-form";
+import { createTrainingRecord, deleteTrainingRecord } from "./trainings/actions";
+import { TrainingForm } from "./trainings/training-form";
 
 export const dynamic = "force-dynamic";
 
-type Tab = "basic" | "contracts" | "documents";
+type Tab = "basic" | "contracts" | "documents" | "trainings";
 const TABS: { value: Tab; label: string }[] = [
   { value: "basic", label: "基本情報" },
   { value: "contracts", label: "雇用契約" },
   { value: "documents", label: "書類" },
+  { value: "trainings", label: "研修" },
 ];
 
 type Props = {
@@ -49,7 +53,13 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
   const { id } = await params;
   const { created, tab: tabRaw } = await searchParams;
   const tab: Tab =
-    tabRaw === "contracts" ? "contracts" : tabRaw === "documents" ? "documents" : "basic";
+    tabRaw === "contracts"
+      ? "contracts"
+      : tabRaw === "documents"
+        ? "documents"
+        : tabRaw === "trainings"
+          ? "trainings"
+          : "basic";
 
   const employee = await prisma.employee.findUnique({
     where: { id },
@@ -61,6 +71,15 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
       documents: {
         where: { deletedAt: null },
         orderBy: { uploadedAt: "desc" },
+      },
+      trainingRecords: {
+        orderBy: { trainedOn: "desc" },
+        include: {
+          documents: {
+            where: { deletedAt: null },
+            select: { id: true, title: true, fileName: true, mimeType: true },
+          },
+        },
       },
     },
   });
@@ -179,7 +198,18 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
       )}
 
       {tab === "documents" && (
-        <DocumentsTab employeeId={employee.id} documents={employee.documents} />
+        <DocumentsTab
+          employeeId={employee.id}
+          documents={employee.documents}
+          trainingOptions={employee.trainingRecords.map((t) => ({
+            id: t.id,
+            label: `${formatDate(t.trainedOn)} ${t.trainingName}`,
+          }))}
+        />
+      )}
+
+      {tab === "trainings" && (
+        <TrainingsTab employeeId={employee.id} trainings={employee.trainingRecords} />
       )}
     </div>
   );
@@ -192,10 +222,16 @@ type EmployeeWithRelations = Prisma.EmployeeGetPayload<{
     qualifications: true;
     employmentContracts: true;
     documents: true;
+    trainingRecords: {
+      include: {
+        documents: { select: { id: true; title: true; fileName: true; mimeType: true } };
+      };
+    };
   };
 }>;
 
 type DocumentRow = EmployeeWithRelations["documents"][number];
+type TrainingRow = EmployeeWithRelations["trainingRecords"][number];
 
 function BasicTab({
   employee,
@@ -514,7 +550,15 @@ type ContractRow = EmployeeWithRelations["employmentContracts"][number];
 
 const DOC_EXPIRY_WARN_DAYS = 30;
 
-function DocumentsTab({ employeeId, documents }: { employeeId: string; documents: DocumentRow[] }) {
+function DocumentsTab({
+  employeeId,
+  documents,
+  trainingOptions,
+}: {
+  employeeId: string;
+  documents: DocumentRow[];
+  trainingOptions: ReadonlyArray<{ id: string; label: string }>;
+}) {
   // Server Action を Client Component に渡すときは `.bind` または直接参照のみ。
   // アロー関数のラッパは Next.js から「ただの関数」と判定されエラーになる。
   const uploadAction = uploadEmployeeDocument.bind(null, employeeId);
@@ -525,7 +569,7 @@ function DocumentsTab({ employeeId, documents }: { employeeId: string; documents
 
   return (
     <div className="flex flex-col gap-6">
-      <DocumentUploadForm action={uploadAction} />
+      <DocumentUploadForm action={uploadAction} trainingOptions={trainingOptions} />
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
@@ -616,6 +660,123 @@ function DocumentsTab({ employeeId, documents }: { employeeId: string; documents
       <p className="text-xs text-slate-500">
         ダウンロード操作は監査ログ (document_access_logs) に記録されます。署名 URL は 5
         分で失効します。
+      </p>
+    </div>
+  );
+}
+
+const EMPTY_TRAINING_VALUES = {
+  trainingName: "",
+  trainingType: "PAID_SELF",
+  costYen: "",
+  trainedOn: "",
+  notes: "",
+} as const;
+
+function TrainingsTab({ employeeId, trainings }: { employeeId: string; trainings: TrainingRow[] }) {
+  const createAction = createTrainingRecord.bind(null, employeeId);
+  const totalCost = trainings.reduce((acc, t) => acc + (t.costYen ?? 0), 0);
+  const selfPaidCost = trainings
+    .filter((t) => t.trainingType === "PAID_SELF")
+    .reduce((acc, t) => acc + (t.costYen ?? 0), 0);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-semibold text-slate-800">研修記録を追加する</h3>
+        <TrainingForm
+          action={createAction}
+          initial={EMPTY_TRAINING_VALUES}
+          submitLabel="登録する"
+          resetOnSuccess
+        />
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+          <h3 className="text-sm font-semibold text-slate-800">研修記録</h3>
+          <div className="flex gap-4 text-xs text-slate-500">
+            <span>
+              合計 <span className="font-mono text-slate-700">{trainings.length}</span> 件
+            </span>
+            <span>
+              費用合計 <span className="font-mono text-slate-700">{formatYen(totalCost)}</span>
+            </span>
+            <span>
+              本人負担 <span className="font-mono text-slate-700">{formatYen(selfPaidCost)}</span>
+            </span>
+          </div>
+        </header>
+
+        {trainings.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-500">
+            まだ研修記録が登録されていません。上のフォームから登録してください。
+          </p>
+        ) : (
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-left text-slate-600">
+              <tr>
+                <th className="px-4 py-3 font-medium">研修日</th>
+                <th className="px-4 py-3 font-medium">研修名</th>
+                <th className="px-4 py-3 font-medium">種別</th>
+                <th className="px-4 py-3 font-medium">費用</th>
+                <th className="px-4 py-3 font-medium">修了証</th>
+                <th className="px-4 py-3 font-medium" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {trainings.map((t) => {
+                const deleteAction = deleteTrainingRecord.bind(null, employeeId, t.id);
+                return (
+                  <tr key={t.id} className="text-slate-700">
+                    <td className="px-4 py-3 text-xs text-slate-500">{formatDate(t.trainedOn)}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{t.trainingName}</div>
+                      {t.notes && <div className="mt-1 text-xs text-slate-500">{t.notes}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-xs">{TRAINING_TYPE_LABELS[t.trainingType]}</td>
+                    <td className="px-4 py-3 text-xs tabular-nums">
+                      {t.costYen === null ? "—" : formatYen(t.costYen)}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {t.documents.length === 0 ? (
+                        <span className="text-slate-400">未登録</span>
+                      ) : (
+                        <ul className="flex flex-col gap-1">
+                          {t.documents.map((d) => (
+                            <li key={d.id} className="text-slate-700">
+                              {d.title}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <Link
+                          href={`/admin/employees/${employeeId}/trainings/${t.id}/edit`}
+                          className="text-sm text-slate-700 hover:underline"
+                        >
+                          編集
+                        </Link>
+                        <form action={deleteAction}>
+                          <button type="submit" className="text-sm text-red-600 hover:underline">
+                            削除
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <p className="text-xs text-slate-500">
+        修了証ファイルは「書類」タブで TRAINING_CERT 種別としてアップロードし、研修記録と連携します
+        (連携機能は今後拡張)。
       </p>
     </div>
   );

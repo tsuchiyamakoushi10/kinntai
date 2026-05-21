@@ -136,6 +136,16 @@ enum DocumentAccessAction {
   @@map("document_access_action")
 }
 
+// 研修費の負担区分。docs/database-design.md §2.8 参照。
+//   - paid_self: 有料 (本人自己負担)
+//   - company_paid: 会社負担 (受講料を会社が支払う)
+enum TrainingType {
+  PAID_SELF    @map("paid_self")
+  COMPANY_PAID @map("company_paid")
+
+  @@map("training_type")
+}
+
 // =============================================================================
 // Models
 // =============================================================================
@@ -246,6 +256,7 @@ model Employee {
   paidLeaveGrants       PaidLeaveGrant[]
   paidLeaveConsumptions PaidLeaveConsumption[]
   documents             EmployeeDocument[]
+  trainingRecords       TrainingRecord[]
 
   @@index([officeId, employmentStatus])
   @@map("employees")
@@ -459,10 +470,11 @@ model EmployeeDocument {
   createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  employee   Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  contract   EmploymentContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
-  uploadedBy User                @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
-  accessLogs DocumentAccessLog[]
+  employee       Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  contract       EmploymentContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  trainingRecord TrainingRecord?     @relation(fields: [trainingRecordId], references: [id], onDelete: SetNull)
+  uploadedBy     User                @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  accessLogs     DocumentAccessLog[]
 
   @@index([employeeId, documentType])
   @@index([expiresOn])
@@ -486,4 +498,27 @@ model DocumentAccessLog {
   @@index([documentId, accessedAt(sort: Desc)])
   @@index([userId, accessedAt(sort: Desc)])
   @@map("document_access_logs")
+}
+
+// 研修記録。キャリアアップ助成金 / 処遇改善加算の前提情報として整備する。
+// docs/database-design.md §2.8 / requirements.md §4.1 参照。
+//   - cost_yen は税込円。会社負担 (COMPANY_PAID) でも実費を記録しておきたいので nullable に留めない方針もあるが、
+//     金額不明の場合に NULL を許容する。
+//   - 修了証ファイルは EmployeeDocument.trainingRecord で逆引きする。
+model TrainingRecord {
+  id           String       @id @default(uuid()) @db.Uuid
+  employeeId   String       @map("employee_id") @db.Uuid
+  trainingName String       @map("training_name")
+  trainingType TrainingType @map("training_type")
+  costYen      Int?         @map("cost_yen")
+  trainedOn    DateTime     @map("trained_on") @db.Date
+  notes        String?
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee  Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  documents EmployeeDocument[]
+
+  @@index([employeeId, trainedOn(sort: Desc)])
+  @@map("training_records")
 }

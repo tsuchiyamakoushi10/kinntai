@@ -11,13 +11,20 @@ const EMPTY_VALUES: DocumentUploadFormValues = {
   documentType: "RESUME",
   expiresOn: "",
   notes: "",
+  trainingRecordId: "",
+};
+
+export type TrainingOption = {
+  id: string;
+  label: string;
 };
 
 type Props = {
   action: (state: DocumentUploadFormState, formData: FormData) => Promise<DocumentUploadFormState>;
+  trainingOptions?: ReadonlyArray<TrainingOption>;
 };
 
-export function DocumentUploadForm({ action }: Props) {
+export function DocumentUploadForm({ action, trainingOptions = [] }: Props) {
   const [state, formAction, pending] = useActionState<DocumentUploadFormState, FormData>(action, {
     values: EMPTY_VALUES,
   });
@@ -86,6 +93,26 @@ export function DocumentUploadForm({ action }: Props) {
           />
           <span className="text-xs text-slate-500">PDF / PNG / JPEG / HEIC, 5 MB まで</span>
         </label>
+        {trainingOptions.length > 0 && (
+          <label className="flex flex-col gap-1 text-sm sm:col-span-2">
+            <span className="text-slate-600">研修記録に紐付ける (任意)</span>
+            <select
+              name="trainingRecordId"
+              defaultValue={v.trainingRecordId}
+              className="rounded-md border border-slate-300 px-3 py-2"
+            >
+              <option value="">未紐付け</option>
+              {trainingOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-slate-500">
+              修了証として研修記録に紐付ける場合に選択してください
+            </span>
+          </label>
+        )}
         <label className="flex flex-col gap-1 text-sm sm:col-span-2">
           <span className="text-slate-600">メモ (任意)</span>
           <textarea

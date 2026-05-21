@@ -11,6 +11,7 @@ import type {
   EmploymentType,
   JobCategory,
   QualificationType,
+  TrainingType,
   WageType,
 } from "@prisma/client";
 
@@ -74,3 +75,12 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
 export const DOCUMENT_TYPE_OPTIONS: ReadonlyArray<{ value: DocumentType; label: string }> = (
   Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]
 ).map((v) => ({ value: v, label: DOCUMENT_TYPE_LABELS[v] }));
+
+export const TRAINING_TYPE_LABELS: Record<TrainingType, string> = {
+  PAID_SELF: "本人負担",
+  COMPANY_PAID: "会社負担",
+};
+
+export const TRAINING_TYPE_OPTIONS: ReadonlyArray<{ value: TrainingType; label: string }> = (
+  Object.keys(TRAINING_TYPE_LABELS) as TrainingType[]
+).map((v) => ({ value: v, label: TRAINING_TYPE_LABELS[v] }));
