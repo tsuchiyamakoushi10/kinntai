@@ -116,6 +116,26 @@ enum LeaveGrantType {
   @@map("leave_grant_type")
 }
 
+enum DocumentType {
+  RESUME                  @map("resume")
+  QUALIFICATION_CERT      @map("qualification_cert")
+  PRIVACY_CONSENT         @map("privacy_consent")
+  EMPLOYMENT_CONTRACT     @map("employment_contract")
+  LABOR_CONDITIONS_NOTICE @map("labor_conditions_notice")
+  TRAINING_CERT           @map("training_cert")
+  OTHER                   @map("other")
+
+  @@map("document_type")
+}
+
+enum DocumentAccessAction {
+  VIEW     @map("view")
+  DOWNLOAD @map("download")
+  DELETE   @map("delete")
+
+  @@map("document_access_action")
+}
+
 // =============================================================================
 // Models
 // =============================================================================
@@ -158,6 +178,8 @@ model User {
   updatedShifts       Shift[]              @relation("ShiftUpdatedBy")
   approvedAttendance  AttendanceRecord[]   @relation("AttendanceApprovedBy")
   passwordResetTokens PasswordResetToken[]
+  uploadedDocuments   EmployeeDocument[]   @relation("DocumentUploadedBy")
+  documentAccessLogs  DocumentAccessLog[]
 
   @@map("users")
 }
@@ -223,6 +245,7 @@ model Employee {
   attendanceRecords     AttendanceRecord[]
   paidLeaveGrants       PaidLeaveGrant[]
   paidLeaveConsumptions PaidLeaveConsumption[]
+  documents             EmployeeDocument[]
 
   @@index([officeId, employmentStatus])
   @@map("employees")
@@ -256,7 +279,8 @@ model EmploymentContract {
   createdAt                   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee  Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  documents EmployeeDocument[]
 
   @@index([employeeId, contractStartOn(sort: Desc)])
   @@map("employment_contracts")
@@ -411,4 +435,55 @@ model PaidLeaveConsumption {
 
   @@index([employeeId, consumedOn])
   @@map("paid_leave_consumptions")
+}
+
+// 従業員に紐付く書類のメタデータ。
+// PII を含むためファイル本体は外部ストレージ (storage_key) に置き、DB はメタのみ。
+// docs/database-design.md §2.6 参照。
+model EmployeeDocument {
+  id               String       @id @default(uuid()) @db.Uuid
+  employeeId       String       @map("employee_id") @db.Uuid
+  documentType     DocumentType @map("document_type")
+  title            String
+  storageKey       String       @map("storage_key")
+  fileName         String       @map("file_name")
+  mimeType         String       @map("mime_type")
+  fileSize         Int          @map("file_size")
+  contractId       String?      @map("contract_id") @db.Uuid
+  trainingRecordId String?      @map("training_record_id") @db.Uuid
+  expiresOn        DateTime?    @map("expires_on") @db.Date
+  uploadedById     String       @map("uploaded_by") @db.Uuid
+  uploadedAt       DateTime     @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz(6)
+  notes            String?
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee   Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  contract   EmploymentContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  uploadedBy User                @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  accessLogs DocumentAccessLog[]
+
+  @@index([employeeId, documentType])
+  @@index([expiresOn])
+  @@map("employee_documents")
+}
+
+// 書類アクセス監査ログ。誰がいつ何を view/download/delete したかを記録する。
+// docs/database-design.md §2.7 参照。
+model DocumentAccessLog {
+  id         String               @id @default(uuid()) @db.Uuid
+  documentId String               @map("document_id") @db.Uuid
+  userId     String               @map("user_id") @db.Uuid
+  action     DocumentAccessAction
+  accessedAt DateTime             @default(now()) @map("accessed_at") @db.Timestamptz(6)
+  ipAddress  String?              @map("ip_address")
+  userAgent  String?              @map("user_agent")
+
+  document EmployeeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([documentId, accessedAt(sort: Desc)])
+  @@index([userId, accessedAt(sort: Desc)])
+  @@map("document_access_logs")
 }

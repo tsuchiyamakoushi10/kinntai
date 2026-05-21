@@ -9,6 +9,8 @@ import {
 } from "@/lib/attendance/business-date";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
+import { DOCUMENT_TYPE_LABELS } from "@/lib/employee-labels";
+import { formatDate } from "@/lib/format";
 import { evaluateFiveDayRule } from "@/lib/leave/five-day-rule";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +34,18 @@ export default async function AdminDashboardPage() {
   const month = monthRange(ym);
   const asOf = todayJstYmd();
 
-  const [offices, todaysAttendance, monthlyPendingCount, employeesForLeave] = await Promise.all([
+  // 書類期限アラート: 期限切れ + 30 日以内に期限切れになるものを件数集計し、上位を一覧で出す。
+  const docWarnUntil = new Date(today);
+  docWarnUntil.setDate(docWarnUntil.getDate() + 30);
+
+  const [
+    offices,
+    todaysAttendance,
+    monthlyPendingCount,
+    employeesForLeave,
+    expiringDocs,
+    expiredDocsCount,
+  ] = await Promise.all([
     prisma.office.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -65,6 +78,29 @@ export default async function AdminDashboardPage() {
           select: { id: true, grantedOn: true, expiresOn: true, grantedDays: true },
         },
         paidLeaveConsumptions: { select: { consumedOn: true, consumedDays: true } },
+      },
+    }),
+    prisma.employeeDocument.findMany({
+      where: {
+        deletedAt: null,
+        expiresOn: { not: null, lte: docWarnUntil },
+        employee: { retiredAt: null },
+      },
+      orderBy: { expiresOn: "asc" },
+      take: 10,
+      select: {
+        id: true,
+        title: true,
+        documentType: true,
+        expiresOn: true,
+        employee: { select: { id: true, lastName: true, firstName: true } },
+      },
+    }),
+    prisma.employeeDocument.count({
+      where: {
+        deletedAt: null,
+        expiresOn: { not: null, lt: today },
+        employee: { retiredAt: null },
       },
     }),
   ]);
@@ -130,6 +166,7 @@ export default async function AdminDashboardPage() {
   const totalFinished = stats.reduce((acc, s) => acc + s.finished, 0);
   const totalActive = stats.reduce((acc, s) => acc + s.activeEmployees, 0);
   const fiveDayActionable = fiveDayWarn + fiveDayViolated;
+  const expiringDocsCount = expiringDocs.length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -140,7 +177,7 @@ export default async function AdminDashboardPage() {
         </p>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <SummaryCard label="勤務中" value={totalOnShift} unit="人" tone="primary" />
         <SummaryCard label="休憩中" value={totalOnBreak} unit="人" tone="muted" />
         <SummaryCard
@@ -158,7 +195,60 @@ export default async function AdminDashboardPage() {
           href="/admin/leave/alerts"
           hint={fiveDayViolated > 0 ? `うち違反 ${fiveDayViolated} 件` : undefined}
         />
+        <SummaryCard
+          label="書類の期限"
+          value={expiringDocsCount}
+          unit="件"
+          tone={expiredDocsCount > 0 ? "danger" : expiringDocsCount > 0 ? "warning" : "muted"}
+          hint={
+            expiredDocsCount > 0
+              ? `うち期限切れ ${expiredDocsCount} 件`
+              : expiringDocsCount > 0
+                ? "30 日以内に期限"
+                : undefined
+          }
+        />
       </section>
+
+      {expiringDocsCount > 0 && (
+        <section className="rounded-xl border border-slate-200 bg-white">
+          <header className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+            <h2 className="text-base font-semibold text-slate-800">期限が近い / 切れている書類</h2>
+            <span className="text-xs text-slate-500">最大 10 件まで表示</span>
+          </header>
+          <ul className="divide-y divide-slate-100">
+            {expiringDocs.map((d) => {
+              if (d.expiresOn === null) return null;
+              const expired = d.expiresOn.getTime() < today.getTime();
+              return (
+                <li key={d.id} className="flex items-center justify-between px-5 py-3 text-sm">
+                  <div className="flex flex-col">
+                    <Link
+                      href={`/admin/employees/${d.employee.id}?tab=documents`}
+                      className="font-medium text-slate-900 hover:underline"
+                    >
+                      {d.employee.lastName} {d.employee.firstName}
+                    </Link>
+                    <span className="text-xs text-slate-500">
+                      {DOCUMENT_TYPE_LABELS[d.documentType]} ／ {d.title}
+                    </span>
+                  </div>
+                  <span
+                    className={
+                      expired
+                        ? "rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-700"
+                        : "rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700"
+                    }
+                  >
+                    {formatDate(d.expiresOn)}
+                    {expired ? " (期限切れ)" : ""}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <section className="rounded-xl border border-slate-200 bg-white">
         <header className="flex items-center justify-between border-b border-slate-100 px-5 py-3">

@@ -73,7 +73,7 @@
 - S-A-02 拠点設定
 - 管理者ロール / 従業員ロールの権限ガード
 
-#### 1-C. 社員情報拡張 + 退職処理改修（1〜2 週）
+#### 1-C. 社員情報拡張 + 退職処理改修 — 完了
 
 - `employees` への `employment_status` enum / `retirement_reason` カラム追加（migration）
 - S-A-04 従業員詳細をタブ構成に再設計（基本 / 契約 / 書類 / 研修 / シフト）
@@ -81,20 +81,20 @@
 - S-A-06 退職処理を「`employment_status=retired` に遷移 + 退職理由」に改修
 - S-A-20 退職者一覧を新規実装
 
-#### 1-D. 雇用契約管理（2 週）
+#### 1-D. 雇用契約管理 — 完了
 
 - `employment_contracts` 追加（migration + Prisma）
 - S-A-21 雇用契約 新規 / 編集（更新有無、更新上限、保険、退職金、助成金フラグ）
 - S-A-04 詳細画面に「契約タブ」(履歴一覧 + 現契約サマリ) を追加
 - 退職金通算判定ロジック（`src/lib/contract/retirement-allowance.ts`）+ テスト
 
-#### 1-E. 書類管理（2 週）
+#### 1-E. 書類管理 — 完了
 
-- `employee_documents` / `document_access_logs` 追加
-- ストレージ抽象化（`src/lib/storage/`）: ローカル FS と Supabase Storage の両対応
-- S-A-22 書類一覧 / アップロード / 署名 URL ダウンロード
-- 期限切迫アラート（S-A-01 ダッシュボードに集約）
-- セキュリティテスト: 他従業員の書類に access できないこと、署名 URL が 5 分で失効すること
+- `employee_documents` / `document_access_logs` 追加（migration）
+- ストレージ抽象化（`src/lib/storage/`）: ローカル FS 実装 + HMAC 署名トークン（Supabase Storage は将来差し替え可能）
+- S-A-22 書類タブ（従業員詳細）: アップロード / 一覧 / 署名 URL ダウンロード / 削除 + 監査ログ
+- 期限切迫アラート（S-A-01 ダッシュボードに 30 日以内 / 期限切れを集約）
+- セキュリティテスト: Playwright E2E で署名検証 / token 改ざん / token 不足 / ダウンロードログを確認
 
 #### 1-F. 研修管理（0.5 週）
 

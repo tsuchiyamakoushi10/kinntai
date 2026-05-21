@@ -6,6 +6,7 @@
  * ここで微調整する。
  */
 import type {
+  DocumentType,
   EmploymentStatus,
   EmploymentType,
   JobCategory,
@@ -59,3 +60,17 @@ export const EMPLOYMENT_TYPE_OPTIONS: ReadonlyArray<{ value: EmploymentType; lab
 export const WAGE_TYPE_OPTIONS: ReadonlyArray<{ value: WageType; label: string }> = (
   Object.keys(WAGE_TYPE_LABELS) as WageType[]
 ).map((v) => ({ value: v, label: WAGE_TYPE_LABELS[v] }));
+
+export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
+  RESUME: "履歴書 / 職務経歴書",
+  QUALIFICATION_CERT: "資格証",
+  PRIVACY_CONSENT: "個人情報同意書",
+  EMPLOYMENT_CONTRACT: "雇用契約書",
+  LABOR_CONDITIONS_NOTICE: "労働条件通知書",
+  TRAINING_CERT: "研修 修了証",
+  OTHER: "その他",
+};
+
+export const DOCUMENT_TYPE_OPTIONS: ReadonlyArray<{ value: DocumentType; label: string }> = (
+  Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]
+).map((v) => ({ value: v, label: DOCUMENT_TYPE_LABELS[v] }));

@@ -9,6 +9,7 @@ import {
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import {
+  DOCUMENT_TYPE_LABELS,
   EMPLOYMENT_STATUS_LABELS,
   EMPLOYMENT_TYPE_LABELS,
   JOB_CATEGORY_LABELS,
@@ -16,6 +17,7 @@ import {
   WAGE_TYPE_LABELS,
 } from "@/lib/employee-labels";
 import { formatDate, formatYen } from "@/lib/format";
+import { createSignedToken } from "@/lib/storage";
 
 import {
   clearEmployeeTabletPin,
@@ -24,14 +26,17 @@ import {
   type TabletPinFormState,
 } from "../actions";
 import { DEFAULT_INITIAL_PASSWORD } from "../constants";
+import { deleteEmployeeDocument, uploadEmployeeDocument } from "./documents/actions";
+import { DocumentUploadForm } from "./documents/upload-form";
 import { TabletPinForm } from "./tablet-pin-form";
 
 export const dynamic = "force-dynamic";
 
-type Tab = "basic" | "contracts";
+type Tab = "basic" | "contracts" | "documents";
 const TABS: { value: Tab; label: string }[] = [
   { value: "basic", label: "基本情報" },
   { value: "contracts", label: "雇用契約" },
+  { value: "documents", label: "書類" },
 ];
 
 type Props = {
@@ -43,7 +48,8 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
   await requireAdmin();
   const { id } = await params;
   const { created, tab: tabRaw } = await searchParams;
-  const tab: Tab = tabRaw === "contracts" ? "contracts" : "basic";
+  const tab: Tab =
+    tabRaw === "contracts" ? "contracts" : tabRaw === "documents" ? "documents" : "basic";
 
   const employee = await prisma.employee.findUnique({
     where: { id },
@@ -52,6 +58,10 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
       user: { select: { email: true, pinCodeHash: true } },
       qualifications: { orderBy: { acquiredOn: "asc" } },
       employmentContracts: { orderBy: { contractStartOn: "desc" } },
+      documents: {
+        where: { deletedAt: null },
+        orderBy: { uploadedAt: "desc" },
+      },
     },
   });
   if (!employee) notFound();
@@ -167,6 +177,10 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
           judgment={retirementJudgment}
         />
       )}
+
+      {tab === "documents" && (
+        <DocumentsTab employeeId={employee.id} documents={employee.documents} />
+      )}
     </div>
   );
 }
@@ -177,8 +191,11 @@ type EmployeeWithRelations = Prisma.EmployeeGetPayload<{
     user: { select: { email: true; pinCodeHash: true } };
     qualifications: true;
     employmentContracts: true;
+    documents: true;
   };
 }>;
+
+type DocumentRow = EmployeeWithRelations["documents"][number];
 
 function BasicTab({
   employee,
@@ -494,3 +511,112 @@ function StatusChip({ status }: { status: EmploymentStatus }) {
 }
 
 type ContractRow = EmployeeWithRelations["employmentContracts"][number];
+
+const DOC_EXPIRY_WARN_DAYS = 30;
+
+function DocumentsTab({ employeeId, documents }: { employeeId: string; documents: DocumentRow[] }) {
+  // Server Action を Client Component に渡すときは `.bind` または直接参照のみ。
+  // アロー関数のラッパは Next.js から「ただの関数」と判定されエラーになる。
+  const uploadAction = uploadEmployeeDocument.bind(null, employeeId);
+
+  const today = new Date();
+  const warnBefore = new Date(today);
+  warnBefore.setDate(warnBefore.getDate() + DOC_EXPIRY_WARN_DAYS);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <DocumentUploadForm action={uploadAction} />
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <h3 className="text-sm font-semibold text-slate-800">登録済み書類</h3>
+          <span className="text-xs text-slate-500">{documents.length} 件</span>
+        </header>
+
+        {documents.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-500">
+            まだ書類が登録されていません。上のフォームからアップロードしてください。
+          </p>
+        ) : (
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-left text-slate-600">
+              <tr>
+                <th className="px-4 py-3 font-medium">種別 / 名称</th>
+                <th className="px-4 py-3 font-medium">ファイル</th>
+                <th className="px-4 py-3 font-medium">有効期限</th>
+                <th className="px-4 py-3 font-medium">登録</th>
+                <th className="px-4 py-3 font-medium" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {documents.map((d) => {
+                // 署名 URL は描画のたびに再発行する (HTML に残っても 5 分で失効)
+                const token = createSignedToken(d.id);
+                const href = `/api/employee-documents/${d.id}/download?token=${encodeURIComponent(token)}`;
+                const expiresSoon =
+                  d.expiresOn !== null && d.expiresOn.getTime() <= warnBefore.getTime();
+                const expired = d.expiresOn !== null && d.expiresOn.getTime() < today.getTime();
+                const deleteAction = deleteEmployeeDocument.bind(null, employeeId, d.id);
+
+                return (
+                  <tr key={d.id} className="text-slate-700">
+                    <td className="px-4 py-3">
+                      <div className="text-xs text-slate-500">
+                        {DOCUMENT_TYPE_LABELS[d.documentType]}
+                      </div>
+                      <div className="font-medium">{d.title}</div>
+                      {d.notes && <div className="mt-1 text-xs text-slate-500">{d.notes}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600">
+                      <div className="break-all">{d.fileName}</div>
+                      <div className="text-slate-400">
+                        {Math.round(d.fileSize / 1024).toLocaleString()} KB
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {d.expiresOn ? (
+                        <span
+                          className={
+                            expired
+                              ? "rounded-full bg-red-50 px-2 py-0.5 text-red-700"
+                              : expiresSoon
+                                ? "rounded-full bg-amber-50 px-2 py-0.5 text-amber-700"
+                                : "text-slate-700"
+                          }
+                        >
+                          {formatDate(d.expiresOn)}
+                          {expired && " (期限切れ)"}
+                          {!expired && expiresSoon && " (まもなく期限)"}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{formatDate(d.uploadedAt)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <a href={href} className="text-sm text-slate-700 hover:underline">
+                          ダウンロード
+                        </a>
+                        <form action={deleteAction}>
+                          <button type="submit" className="text-sm text-red-600 hover:underline">
+                            削除
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <p className="text-xs text-slate-500">
+        ダウンロード操作は監査ログ (document_access_logs) に記録されます。署名 URL は 5
+        分で失効します。
+      </p>
+    </div>
+  );
+}

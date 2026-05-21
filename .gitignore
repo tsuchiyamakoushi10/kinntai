@@ -62,3 +62,6 @@ playwright/.cache/
 
 # generated docs (rebuild with `pnpm docs:pdf`)
 docs/*.pdf
+
+# uploaded employee documents (local FS storage driver only, never check in PII)
+/storage/
