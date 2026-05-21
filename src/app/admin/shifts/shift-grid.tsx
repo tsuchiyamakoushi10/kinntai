@@ -34,6 +34,8 @@ type Props = {
   initialCells: ReadonlyArray<ShiftCell>;
   /** 前月コピー用。officeId が一致する前月分のセル。 */
   prevMonthCells: ReadonlyArray<ShiftCell>;
+  /** 自動作成由来の (employeeId:workDate) 集合。初期表示時の識別マーク用。 */
+  autoCellKeys?: ReadonlySet<string>;
 };
 
 type CellMap = Map<string, ShiftCell>;
@@ -73,6 +75,7 @@ export function ShiftGrid({
   patterns,
   initialCells,
   prevMonthCells,
+  autoCellKeys,
 }: Props) {
   const [cells, setCells] = useState<CellMap>(() => toCellMap(initialCells));
   const initialKey = useMemo(() => JSON.stringify(initialCells), [initialCells]);
@@ -395,11 +398,12 @@ export function ShiftGrid({
                   const isCursor = cursor?.employeeIdx === ei && cursor?.dayIdx === di;
                   const w = weekdayOf(d);
                   const weekend = w === 0 || w === 6;
+                  const isAuto = autoCellKeys?.has(cellKey(emp.id, d)) ?? false;
                   return (
                     <td
                       key={d}
                       className={[
-                        "h-9 cursor-pointer border-r border-slate-100 p-0 text-center align-middle hover:ring-2 hover:ring-slate-400/50",
+                        "relative h-9 cursor-pointer border-r border-slate-100 p-0 text-center align-middle hover:ring-2 hover:ring-slate-400/50",
                         weekend && !pattern ? "bg-slate-50/60" : "",
                         isCursor ? "ring-2 ring-slate-900 ring-inset" : "",
                       ].join(" ")}
@@ -412,7 +416,11 @@ export function ShiftGrid({
                         gridRef.current?.focus();
                         paintCell(ei, di);
                       }}
-                      title={pattern ? `${pattern.name} (${pattern.code})` : ""}
+                      title={
+                        pattern
+                          ? `${pattern.name} (${pattern.code})${isAuto ? " ・自動作成由来" : ""}`
+                          : ""
+                      }
                     >
                       {pattern ? (
                         <span className="block truncate px-0.5 text-[11px] font-medium text-slate-900">
@@ -420,6 +428,15 @@ export function ShiftGrid({
                         </span>
                       ) : (
                         <span className="block text-slate-300">·</span>
+                      )}
+                      {isAuto && pattern && (
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute bottom-0 left-0.5 text-[8px] leading-none text-slate-600"
+                          title="自動作成由来"
+                        >
+                          ▾
+                        </span>
                       )}
                     </td>
                   );
