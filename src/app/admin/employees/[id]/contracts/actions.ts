@@ -1,12 +1,18 @@
 "use server";
 
-import { EmploymentType, WageType } from "@prisma/client";
+import { EmploymentType, SpecialMeasureType, WageType, WeeklyHoursCategory } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { parseDateInputValue } from "@/lib/format";
+
+export type AllowanceInput = {
+  name: string;
+  amountYen: number;
+  calculationMethod: string;
+};
 
 export type EmploymentContractFormValues = {
   contractStartOn: string;
@@ -28,6 +34,24 @@ export type EmploymentContractFormValues = {
   careerSubsidyTarget: string;
   careerSubsidyNotes: string;
   notes: string;
+  // ---- 1-I で追加 (労働条件通知書出力用) ----
+  workplaceInitial: string;
+  workplaceScope: string;
+  jobDescriptionInitial: string;
+  jobDescriptionScope: string;
+  weeklyHoursCategory: string; // "" / WeeklyHoursCategory 値
+  shiftBasedSchedule: string; // "on" / ""
+  hasEarlyEndPossibility: string;
+  hasOvertime: string;
+  hasBonus: string;
+  bonusDescription: string;
+  retirementAllowanceStartText: string;
+  specialMeasureType: string; // SpecialMeasureType 値 (既定 "NONE")
+  specialMeasureBusinessTitle: string;
+  specialMeasureStartOn: string;
+  specialMeasureEndOn: string;
+  /** JSON 文字列で諸手当配列を運ぶ (動的行のため formData では扱いにくい) */
+  allowancesJson: string;
 };
 
 export type EmploymentContractFormState = {
@@ -54,6 +78,23 @@ type Parsed = {
   careerSubsidyTarget: boolean;
   careerSubsidyNotes: string;
   notes: string;
+  // 1-I 追加
+  workplaceInitial: string | null;
+  workplaceScope: string | null;
+  jobDescriptionInitial: string | null;
+  jobDescriptionScope: string | null;
+  weeklyHoursCategory: WeeklyHoursCategory | null;
+  shiftBasedSchedule: boolean;
+  hasEarlyEndPossibility: boolean;
+  hasOvertime: boolean;
+  hasBonus: boolean;
+  bonusDescription: string | null;
+  retirementAllowanceStartText: string | null;
+  specialMeasureType: SpecialMeasureType;
+  specialMeasureBusinessTitle: string | null;
+  specialMeasureStartOn: Date | null;
+  specialMeasureEndOn: Date | null;
+  allowances: AllowanceInput[];
 };
 
 function readForm(formData: FormData): EmploymentContractFormValues {
@@ -76,7 +117,61 @@ function readForm(formData: FormData): EmploymentContractFormValues {
     careerSubsidyTarget: formData.get("careerSubsidyTarget") ? "on" : "",
     careerSubsidyNotes: String(formData.get("careerSubsidyNotes") ?? "").trim(),
     notes: String(formData.get("notes") ?? "").trim(),
+    workplaceInitial: String(formData.get("workplaceInitial") ?? "").trim(),
+    workplaceScope: String(formData.get("workplaceScope") ?? "").trim(),
+    jobDescriptionInitial: String(formData.get("jobDescriptionInitial") ?? "").trim(),
+    jobDescriptionScope: String(formData.get("jobDescriptionScope") ?? "").trim(),
+    weeklyHoursCategory: String(formData.get("weeklyHoursCategory") ?? ""),
+    shiftBasedSchedule: formData.get("shiftBasedSchedule") ? "on" : "",
+    hasEarlyEndPossibility: formData.get("hasEarlyEndPossibility") ? "on" : "",
+    hasOvertime: formData.get("hasOvertime") ? "on" : "",
+    hasBonus: formData.get("hasBonus") ? "on" : "",
+    bonusDescription: String(formData.get("bonusDescription") ?? "").trim(),
+    retirementAllowanceStartText: String(formData.get("retirementAllowanceStartText") ?? "").trim(),
+    specialMeasureType: String(formData.get("specialMeasureType") ?? "NONE"),
+    specialMeasureBusinessTitle: String(formData.get("specialMeasureBusinessTitle") ?? "").trim(),
+    specialMeasureStartOn: String(formData.get("specialMeasureStartOn") ?? "").trim(),
+    specialMeasureEndOn: String(formData.get("specialMeasureEndOn") ?? "").trim(),
+    allowancesJson: String(formData.get("allowancesJson") ?? "[]"),
   };
+}
+
+function parseAllowances(
+  json: string,
+): { ok: true; value: AllowanceInput[] } | { ok: false; error: string } {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return { ok: false, error: "諸手当のデータ形式が不正です。" };
+  }
+  if (!Array.isArray(raw)) return { ok: false, error: "諸手当のデータ形式が不正です。" };
+  const out: AllowanceInput[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) {
+      return { ok: false, error: "諸手当の各行が不正です。" };
+    }
+    const row = item as Record<string, unknown>;
+    const name = typeof row.name === "string" ? row.name.trim() : "";
+    const amountYenRaw = row.amountYen;
+    const calculationMethod =
+      typeof row.calculationMethod === "string" ? row.calculationMethod.trim() : "";
+    // すべて空欄の行は読み飛ばす (UI で空 4 行が出る前提)
+    if (
+      name === "" &&
+      (amountYenRaw === "" || amountYenRaw === 0 || amountYenRaw === undefined) &&
+      calculationMethod === ""
+    ) {
+      continue;
+    }
+    if (name === "") return { ok: false, error: "諸手当の名称を入力してください。" };
+    const amountYen = Number(amountYenRaw);
+    if (!Number.isInteger(amountYen) || amountYen < 0 || amountYen > 10_000_000) {
+      return { ok: false, error: "諸手当の金額は 0 以上 1000 万円以下の整数で入力してください。" };
+    }
+    out.push({ name, amountYen, calculationMethod });
+  }
+  return { ok: true, value: out };
 }
 
 function parseAndValidate(
@@ -162,6 +257,38 @@ function parseAndValidate(
     return { ok: false, error: "備考は 500 文字以内で入力してください。" };
   }
 
+  // 1-I: 拡張カラムの検証
+  let weeklyHoursCategory: WeeklyHoursCategory | null = null;
+  if (values.weeklyHoursCategory) {
+    if (!(values.weeklyHoursCategory in WeeklyHoursCategory)) {
+      return { ok: false, error: "週所定区分が不正です。" };
+    }
+    weeklyHoursCategory = values.weeklyHoursCategory as WeeklyHoursCategory;
+  }
+  const smtValue = values.specialMeasureType || "NONE";
+  if (!(smtValue in SpecialMeasureType)) {
+    return { ok: false, error: "有期雇用特例の区分が不正です。" };
+  }
+  const specialMeasureType = smtValue as SpecialMeasureType;
+
+  let specialMeasureStartOn: Date | null = null;
+  if (values.specialMeasureStartOn) {
+    specialMeasureStartOn = parseDateInputValue(values.specialMeasureStartOn);
+    if (!specialMeasureStartOn) {
+      return { ok: false, error: "特定有期業務の開始日を正しく入力してください。" };
+    }
+  }
+  let specialMeasureEndOn: Date | null = null;
+  if (values.specialMeasureEndOn) {
+    specialMeasureEndOn = parseDateInputValue(values.specialMeasureEndOn);
+    if (!specialMeasureEndOn) {
+      return { ok: false, error: "特定有期業務の完了日を正しく入力してください。" };
+    }
+  }
+
+  const allowancesResult = parseAllowances(values.allowancesJson);
+  if (!allowancesResult.ok) return allowancesResult;
+
   return {
     ok: true,
     data: {
@@ -183,6 +310,22 @@ function parseAndValidate(
       careerSubsidyTarget: values.careerSubsidyTarget === "on",
       careerSubsidyNotes: values.careerSubsidyNotes,
       notes: values.notes,
+      workplaceInitial: values.workplaceInitial || null,
+      workplaceScope: values.workplaceScope || null,
+      jobDescriptionInitial: values.jobDescriptionInitial || null,
+      jobDescriptionScope: values.jobDescriptionScope || null,
+      weeklyHoursCategory,
+      shiftBasedSchedule: values.shiftBasedSchedule === "on",
+      hasEarlyEndPossibility: values.hasEarlyEndPossibility === "on",
+      hasOvertime: values.hasOvertime === "on",
+      hasBonus: values.hasBonus === "on",
+      bonusDescription: values.bonusDescription || null,
+      retirementAllowanceStartText: values.retirementAllowanceStartText || null,
+      specialMeasureType,
+      specialMeasureBusinessTitle: values.specialMeasureBusinessTitle || null,
+      specialMeasureStartOn,
+      specialMeasureEndOn,
+      allowances: allowancesResult.value,
     },
   };
 }
@@ -204,11 +347,22 @@ export async function createEmploymentContract(
   const parsed = parseAndValidate(values);
   if (!parsed.ok) return { error: parsed.error, values };
 
-  await prisma.employmentContract.create({
-    data: {
-      employeeId,
-      ...parsed.data,
-    },
+  const { allowances, ...contractData } = parsed.data;
+  await prisma.$transaction(async (tx) => {
+    const created = await tx.employmentContract.create({
+      data: { employeeId, ...contractData },
+    });
+    if (allowances.length > 0) {
+      await tx.employmentContractAllowance.createMany({
+        data: allowances.map((a, i) => ({
+          contractId: created.id,
+          sortOrder: i,
+          name: a.name,
+          amountYen: a.amountYen,
+          calculationMethod: a.calculationMethod,
+        })),
+      });
+    }
   });
 
   revalidatePath(`/admin/employees/${employeeId}`);
@@ -235,9 +389,22 @@ export async function updateEmploymentContract(
   const parsed = parseAndValidate(values);
   if (!parsed.ok) return { error: parsed.error, values };
 
-  await prisma.employmentContract.update({
-    where: { id: contractId },
-    data: parsed.data,
+  const { allowances, ...contractData } = parsed.data;
+  await prisma.$transaction(async (tx) => {
+    await tx.employmentContract.update({ where: { id: contractId }, data: contractData });
+    // 全削除→全 create で同期 (件数が少なく差分計算の複雑さを避ける)
+    await tx.employmentContractAllowance.deleteMany({ where: { contractId } });
+    if (allowances.length > 0) {
+      await tx.employmentContractAllowance.createMany({
+        data: allowances.map((a, i) => ({
+          contractId,
+          sortOrder: i,
+          name: a.name,
+          amountYen: a.amountYen,
+          calculationMethod: a.calculationMethod,
+        })),
+      });
+    }
   });
 
   revalidatePath(`/admin/employees/${employeeId}`);

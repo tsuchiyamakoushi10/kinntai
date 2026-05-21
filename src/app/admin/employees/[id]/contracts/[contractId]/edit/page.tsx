@@ -22,12 +22,17 @@ export default async function EditContractPage({ params }: Props) {
   await requireAdmin();
   const { id, contractId } = await params;
 
-  const [employee, contract] = await Promise.all([
+  const [employee, contract, allowances] = await Promise.all([
     prisma.employee.findUnique({
       where: { id },
       select: { id: true, lastName: true, firstName: true },
     }),
     prisma.employmentContract.findUnique({ where: { id: contractId } }),
+    prisma.employmentContractAllowance.findMany({
+      where: { contractId },
+      orderBy: { sortOrder: "asc" },
+      select: { name: true, amountYen: true, calculationMethod: true },
+    }),
   ]);
 
   if (!employee || !contract || contract.employeeId !== id) {
@@ -58,6 +63,22 @@ export default async function EditContractPage({ params }: Props) {
     careerSubsidyTarget: contract.careerSubsidyTarget ? "on" : "",
     careerSubsidyNotes: contract.careerSubsidyNotes ?? "",
     notes: contract.notes ?? "",
+    workplaceInitial: contract.workplaceInitial ?? "",
+    workplaceScope: contract.workplaceScope ?? "会社が運営する全事業所その他業務に関連する場所",
+    jobDescriptionInitial: contract.jobDescriptionInitial ?? "",
+    jobDescriptionScope: contract.jobDescriptionScope ?? "変更なし",
+    weeklyHoursCategory: contract.weeklyHoursCategory ?? "",
+    shiftBasedSchedule: contract.shiftBasedSchedule ? "on" : "",
+    hasEarlyEndPossibility: contract.hasEarlyEndPossibility ? "on" : "",
+    hasOvertime: contract.hasOvertime ? "on" : "",
+    hasBonus: contract.hasBonus ? "on" : "",
+    bonusDescription: contract.bonusDescription ?? "",
+    retirementAllowanceStartText: contract.retirementAllowanceStartText ?? "",
+    specialMeasureType: contract.specialMeasureType,
+    specialMeasureBusinessTitle: contract.specialMeasureBusinessTitle ?? "",
+    specialMeasureStartOn: toDateInputValue(contract.specialMeasureStartOn),
+    specialMeasureEndOn: toDateInputValue(contract.specialMeasureEndOn),
+    allowancesJson: JSON.stringify(allowances),
   };
 
   const action = (

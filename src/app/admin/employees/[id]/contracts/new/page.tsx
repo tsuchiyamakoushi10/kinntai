@@ -75,6 +75,24 @@ export default async function NewContractPage({ params }: Props) {
     careerSubsidyTarget: latestContract?.careerSubsidyTarget ? "on" : "",
     careerSubsidyNotes: latestContract?.careerSubsidyNotes ?? "",
     notes: "",
+    // 1-I: 拡張カラム (直近契約からコピー、なければ既定値)
+    workplaceInitial: latestContract?.workplaceInitial ?? "",
+    workplaceScope:
+      latestContract?.workplaceScope ?? "会社が運営する全事業所その他業務に関連する場所",
+    jobDescriptionInitial: latestContract?.jobDescriptionInitial ?? "",
+    jobDescriptionScope: latestContract?.jobDescriptionScope ?? "変更なし",
+    weeklyHoursCategory: latestContract?.weeklyHoursCategory ?? "",
+    shiftBasedSchedule: latestContract?.shiftBasedSchedule === false ? "" : "on",
+    hasEarlyEndPossibility: latestContract?.hasEarlyEndPossibility === false ? "" : "on",
+    hasOvertime: latestContract?.hasOvertime ? "on" : "",
+    hasBonus: latestContract?.hasBonus ? "on" : "",
+    bonusDescription: latestContract?.bonusDescription ?? "",
+    retirementAllowanceStartText: latestContract?.retirementAllowanceStartText ?? "",
+    specialMeasureType: latestContract?.specialMeasureType ?? "NONE",
+    specialMeasureBusinessTitle: latestContract?.specialMeasureBusinessTitle ?? "",
+    specialMeasureStartOn: "",
+    specialMeasureEndOn: "",
+    allowancesJson: "[]",
   };
 
   const action = (

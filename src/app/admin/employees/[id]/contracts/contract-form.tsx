@@ -1,11 +1,66 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useMemo, useState } from "react";
 
 import { EMPLOYMENT_TYPE_OPTIONS, WAGE_TYPE_OPTIONS } from "@/lib/employee-labels";
 
-import type { EmploymentContractFormState, EmploymentContractFormValues } from "./actions";
+import type {
+  AllowanceInput,
+  EmploymentContractFormState,
+  EmploymentContractFormValues,
+} from "./actions";
+
+type AllowanceRow = { name: string; amountYen: string; calculationMethod: string };
+
+const WEEKLY_HOURS_OPTIONS = [
+  { value: "", label: "未設定" },
+  { value: "UNDER_20", label: "20時間未満 (パート)" },
+  { value: "BETWEEN_20_30", label: "20–30時間未満 (雇用保険)" },
+  { value: "BETWEEN_30_40", label: "30–40時間 (社保 + 雇用保険)" },
+];
+
+const SPECIAL_MEASURE_OPTIONS = [
+  { value: "NONE", label: "対象外" },
+  { value: "HIGH_SKILL", label: "Ⅰ 高度専門" },
+  { value: "POST_RETIREMENT", label: "Ⅱ 定年後の高齢者" },
+];
+
+function parseAllowanceRows(json: string): AllowanceRow[] {
+  try {
+    const raw = JSON.parse(json) as unknown;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter(
+        (r): r is { name?: unknown; amountYen?: unknown; calculationMethod?: unknown } =>
+          typeof r === "object" && r !== null,
+      )
+      .map((r) => ({
+        name: typeof r.name === "string" ? r.name : "",
+        amountYen:
+          typeof r.amountYen === "number"
+            ? String(r.amountYen)
+            : typeof r.amountYen === "string"
+              ? r.amountYen
+              : "",
+        calculationMethod: typeof r.calculationMethod === "string" ? r.calculationMethod : "",
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function ensureMinRows(rows: AllowanceRow[], min: number): AllowanceRow[] {
+  if (rows.length >= min) return rows;
+  return [
+    ...rows,
+    ...Array.from({ length: min - rows.length }, () => ({
+      name: "",
+      amountYen: "",
+      calculationMethod: "",
+    })),
+  ];
+}
 
 type Props = {
   action: (
@@ -23,6 +78,36 @@ export function ContractForm({ action, initial, employeeId, submitLabel }: Props
     { values: initial },
   );
   const v = state.values ?? initial;
+
+  // 諸手当: client 側の状態として持ち、submit 時に hidden input で JSON 文字列を送る
+  const [allowances, setAllowances] = useState<AllowanceRow[]>(() =>
+    ensureMinRows(parseAllowanceRows(v.allowancesJson), 4),
+  );
+  const allowancesJson = useMemo(() => {
+    const filtered: AllowanceInput[] = [];
+    for (const r of allowances) {
+      const name = r.name.trim();
+      const calculationMethod = r.calculationMethod.trim();
+      if (name === "" && r.amountYen.trim() === "" && calculationMethod === "") continue;
+      const amount = Number.parseInt(r.amountYen, 10);
+      filtered.push({
+        name,
+        amountYen: Number.isFinite(amount) && amount >= 0 ? amount : 0,
+        calculationMethod,
+      });
+    }
+    return JSON.stringify(filtered);
+  }, [allowances]);
+
+  function setAllowance(idx: number, patch: Partial<AllowanceRow>): void {
+    setAllowances((prev) => prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
+  }
+  function addAllowance(): void {
+    setAllowances((prev) => [...prev, { name: "", amountYen: "", calculationMethod: "" }]);
+  }
+  function removeAllowance(idx: number): void {
+    setAllowances((prev) => prev.filter((_, i) => i !== idx));
+  }
 
   return (
     <form action={formAction} className="flex max-w-2xl flex-col gap-8">
@@ -215,6 +300,194 @@ export function ContractForm({ action, initial, employeeId, submitLabel }: Props
             className={inputCls}
           />
         </Field>
+      </Section>
+
+      <Section title="労働条件通知書 出力用">
+        <p className="text-xs text-slate-500">
+          ここから下は PDF 出力 (S-A-15 / S-A-18) で参照されます。サンプル書式
+          (株式会社クロスハート様式) に対応した項目です。
+        </p>
+        <Row>
+          <Field label="就業の場所 (雇入直後)" hint="例: ショートステイ結いの心">
+            <input
+              type="text"
+              name="workplaceInitial"
+              defaultValue={v.workplaceInitial}
+              className={inputCls}
+            />
+          </Field>
+          <Field label="就業の場所 (変更の範囲)" hint="2024 年改正で必須">
+            <input
+              type="text"
+              name="workplaceScope"
+              defaultValue={v.workplaceScope}
+              className={inputCls}
+            />
+          </Field>
+        </Row>
+        <Row>
+          <Field label="従事すべき業務 (雇入直後)" hint="例: 介護業務(夜勤専従)">
+            <input
+              type="text"
+              name="jobDescriptionInitial"
+              defaultValue={v.jobDescriptionInitial}
+              className={inputCls}
+            />
+          </Field>
+          <Field label="従事すべき業務 (変更の範囲)">
+            <input
+              type="text"
+              name="jobDescriptionScope"
+              defaultValue={v.jobDescriptionScope}
+              className={inputCls}
+            />
+          </Field>
+        </Row>
+        <Field label="週所定労働時間区分">
+          <select
+            name="weeklyHoursCategory"
+            defaultValue={v.weeklyHoursCategory}
+            className={inputCls}
+          >
+            {WEEKLY_HOURS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <CheckboxRow
+            name="shiftBasedSchedule"
+            label="シフト勤務 (始終業はシフトで定める)"
+            defaultChecked={v.shiftBasedSchedule === "on"}
+          />
+          <CheckboxRow
+            name="hasEarlyEndPossibility"
+            label="終業時刻の繰上げの可能性あり"
+            defaultChecked={v.hasEarlyEndPossibility === "on"}
+          />
+          <CheckboxRow
+            name="hasOvertime"
+            label="所定時間外労働 あり"
+            defaultChecked={v.hasOvertime === "on"}
+          />
+        </div>
+        <CheckboxRow name="hasBonus" label="賞与 あり" defaultChecked={v.hasBonus === "on"} />
+        <Field label="賞与の内容 (有のとき)">
+          <input
+            type="text"
+            name="bonusDescription"
+            defaultValue={v.bonusDescription}
+            className={inputCls}
+            placeholder="年2回 会社業績及び個人の勤務成績・将来性等により支給"
+          />
+        </Field>
+        <Field label="退職金 支給開始時期 (有のとき)" hint="例: 勤務開始より満3年経過後より開始">
+          <input
+            type="text"
+            name="retirementAllowanceStartText"
+            defaultValue={v.retirementAllowanceStartText}
+            className={inputCls}
+          />
+        </Field>
+        <Row>
+          <Field label="有期雇用特別措置法の特例">
+            <select
+              name="specialMeasureType"
+              defaultValue={v.specialMeasureType || "NONE"}
+              className={inputCls}
+            >
+              {SPECIAL_MEASURE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="特定有期業務 (高度専門のみ)">
+            <input
+              type="text"
+              name="specialMeasureBusinessTitle"
+              defaultValue={v.specialMeasureBusinessTitle}
+              className={inputCls}
+            />
+          </Field>
+        </Row>
+        <Row>
+          <Field label="特定有期業務 開始日">
+            <input
+              type="date"
+              name="specialMeasureStartOn"
+              defaultValue={v.specialMeasureStartOn}
+              className={inputCls}
+            />
+          </Field>
+          <Field label="特定有期業務 完了日">
+            <input
+              type="date"
+              name="specialMeasureEndOn"
+              defaultValue={v.specialMeasureEndOn}
+              className={inputCls}
+            />
+          </Field>
+        </Row>
+      </Section>
+
+      <Section title="諸手当 (イロハニ)">
+        <p className="text-xs text-slate-500">
+          基本賃金とは別に支給する手当。PDF
+          の「諸手当」欄に転記されます。空欄行は保存時に無視されます。
+        </p>
+        <input type="hidden" name="allowancesJson" value={allowancesJson} />
+        <div className="flex flex-col gap-2">
+          {allowances.map((row, idx) => (
+            <div
+              key={idx}
+              className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1.5fr_1fr_2fr_auto]"
+            >
+              <input
+                type="text"
+                value={row.name}
+                onChange={(e) => setAllowance(idx, { name: e.target.value })}
+                placeholder="手当名 (例: 夜勤手当)"
+                className={inputCls}
+              />
+              <input
+                type="number"
+                min={0}
+                max={10000000}
+                step={1}
+                value={row.amountYen}
+                onChange={(e) => setAllowance(idx, { amountYen: e.target.value })}
+                placeholder="金額"
+                className={inputCls}
+              />
+              <input
+                type="text"
+                value={row.calculationMethod}
+                onChange={(e) => setAllowance(idx, { calculationMethod: e.target.value })}
+                placeholder="計算方法 (例: 20000円/1回×夜勤回数)"
+                className={inputCls}
+              />
+              <button
+                type="button"
+                onClick={() => removeAllowance(idx)}
+                className="rounded-md border border-rose-300 bg-white px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                aria-label={`${idx + 1} 行目を削除`}
+              >
+                削除
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={addAllowance}
+          className="self-start rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
+        >
+          + 行を追加
+        </button>
       </Section>
 
       <Section title="備考">
