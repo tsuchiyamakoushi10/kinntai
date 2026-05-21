@@ -122,6 +122,18 @@
 - **1-H-4 S-A-26 自動作成 UI**: 「dry-run → 下書き保存 → S-A-08 で微調整 → 確定」の 3 段フロー。警告は重大度別バッジ表示。
 - **1-H-5 S-A-08 拡張**: 自動由来セルの識別表示、未確定 run のバナー、確定取り消し導線。
 
+#### 1-I. 労働条件通知書 / 雇用契約書 PDF 出力（1〜2 週、2026-05-21 追加）
+
+> 現場の Word テンプレ運用書式に合わせて PDF を 1 ボタンで吐けるようにする。Future の S-A-15 / S-A-18 を Phase 1 に前倒し。詳細設計は [docs/employment-contract-printable.md](employment-contract-printable.md)。
+
+サブステップ:
+
+- **1-I-1 会社マスタ + DB 拡張**: `company_profile` 単一行テーブル、`employment_contracts` のカラム追加 (就業場所 / 業務内容 / 週所定区分 / 賞与 / 退職金開始 / 有期雇用特例)、`employment_contract_allowances` (諸手当 4 枠を正規化)。migration + シード。
+- **1-I-2 S-A-28 会社情報 UI**: S-A-02 配下に追加。法人名・代表者・割増率・締切日・相談窓口など全契約共通の条項を編集。
+- **1-I-3 S-A-21 拡張**: 既存契約フォームに「労働条件通知書 出力用」セクションを追加。諸手当サブフォームは動的行追加対応。
+- **1-I-4 PDF 出力**: `src/lib/employment-contract/` に HTML テンプレ (React) + Playwright Chromium で PDF 化。S-A-04 雇用契約タブから出力ボタン。S-A-15 と S-A-18 は同一書式・タイトルだけ切替で兼用。
+- **1-I-5 必須項目チェック + テスト**: 出力前に missing items を検出。HTML テンプレのスナップショットテストで書式項目を網羅。
+
 ### Phase 1 完了の定義
 
 - 全 Phase 1 画面が動作し、シード環境で 1 か月分のシフト自動作成 → 手動調整 → 確定 まで通る
