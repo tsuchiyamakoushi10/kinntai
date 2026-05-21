@@ -15,6 +15,7 @@ const ITEMS: Item[] = [
   { label: "拠点設定", href: "/admin/offices" },
   { label: "従業員", href: "/admin/employees" },
   { label: "シフトパターン", href: "/admin/shift-patterns" },
+  { label: "シフト枠", href: "/admin/quotas" },
   { label: "勤務表", href: "/admin/shifts" },
   { label: "シフト希望", href: "/admin/shift-preferences" },
   { label: "勤怠", href: "/admin/attendance" },
