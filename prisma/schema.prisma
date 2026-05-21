@@ -184,6 +184,25 @@ enum GenerationRunStatus {
   @@map("generation_run_status")
 }
 
+// 雇用契約の週所定労働時間区分。保険加入判定の根拠で、労働条件通知書にも出力する。
+// docs/employment-contract-printable.md §2.2 参照。
+enum WeeklyHoursCategory {
+  UNDER_20      @map("under_20")
+  BETWEEN_20_30 @map("between_20_30")
+  BETWEEN_30_40 @map("between_30_40")
+
+  @@map("weekly_hours_category")
+}
+
+// 有期雇用特別措置法の対象種別。docs/employment-contract-printable.md §2.2 参照。
+enum SpecialMeasureType {
+  NONE            @map("none")
+  HIGH_SKILL      @map("high_skill")
+  POST_RETIREMENT @map("post_retirement")
+
+  @@map("special_measure_type")
+}
+
 // =============================================================================
 // Models
 // =============================================================================
@@ -311,32 +330,50 @@ model Employee {
 // / daily_work_hours / base_wage_*) の履歴元。1 従業員に複数契約を時系列で積む。
 // docs/database-design.md §2.5 参照。
 model EmploymentContract {
-  id                          String         @id @default(uuid()) @db.Uuid
-  employeeId                  String         @map("employee_id") @db.Uuid
-  contractStartOn             DateTime       @map("contract_start_on") @db.Date
-  contractEndOn               DateTime?      @map("contract_end_on") @db.Date
-  employmentType              EmploymentType @map("employment_type")
-  workingHoursPerDay          Decimal        @map("working_hours_per_day") @db.Decimal(4, 2)
-  workingDaysPerWeek          Decimal        @map("working_days_per_week") @db.Decimal(3, 1)
-  wageType                    WageType       @map("wage_type")
-  wageAmount                  Int            @map("wage_amount")
-  isRenewable                 Boolean        @map("is_renewable")
-  renewalCount                Int            @default(0) @map("renewal_count")
-  hasRenewalLimit             Boolean        @default(false) @map("has_renewal_limit")
-  renewalLimitCount           Int?           @map("renewal_limit_count")
-  renewalCriteria             String?        @map("renewal_criteria")
-  hasEmploymentInsurance      Boolean        @map("has_employment_insurance")
-  hasSocialInsurance          Boolean        @map("has_social_insurance")
+  id                           String               @id @default(uuid()) @db.Uuid
+  employeeId                   String               @map("employee_id") @db.Uuid
+  contractStartOn              DateTime             @map("contract_start_on") @db.Date
+  contractEndOn                DateTime?            @map("contract_end_on") @db.Date
+  employmentType               EmploymentType       @map("employment_type")
+  workingHoursPerDay           Decimal              @map("working_hours_per_day") @db.Decimal(4, 2)
+  workingDaysPerWeek           Decimal              @map("working_days_per_week") @db.Decimal(3, 1)
+  wageType                     WageType             @map("wage_type")
+  wageAmount                   Int                  @map("wage_amount")
+  isRenewable                  Boolean              @map("is_renewable")
+  renewalCount                 Int                  @default(0) @map("renewal_count")
+  hasRenewalLimit              Boolean              @default(false) @map("has_renewal_limit")
+  renewalLimitCount            Int?                 @map("renewal_limit_count")
+  renewalCriteria              String?              @map("renewal_criteria")
+  hasEmploymentInsurance       Boolean              @map("has_employment_insurance")
+  hasSocialInsurance           Boolean              @map("has_social_insurance")
   // NULL = 自動判定値を採用、true/false = 管理者による手動上書き
-  retirementAllowanceEligible Boolean?       @map("retirement_allowance_eligible")
-  careerSubsidyTarget         Boolean        @default(false) @map("career_subsidy_target")
-  careerSubsidyNotes          String?        @map("career_subsidy_notes")
-  notes                       String?
-  createdAt                   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  retirementAllowanceEligible  Boolean?             @map("retirement_allowance_eligible")
+  careerSubsidyTarget          Boolean              @default(false) @map("career_subsidy_target")
+  careerSubsidyNotes           String?              @map("career_subsidy_notes")
+  // 労働条件通知書 / 雇用契約書 PDF 出力用 (Phase 1-I)。
+  // docs/employment-contract-printable.md §2.2 参照。
+  workplaceInitial             String?              @map("workplace_initial")
+  workplaceScope               String?              @map("workplace_scope")
+  jobDescriptionInitial        String?              @map("job_description_initial")
+  jobDescriptionScope          String?              @map("job_description_scope")
+  weeklyHoursCategory          WeeklyHoursCategory? @map("weekly_hours_category")
+  shiftBasedSchedule           Boolean              @default(true) @map("shift_based_schedule")
+  hasEarlyEndPossibility       Boolean              @default(true) @map("has_early_end_possibility")
+  hasOvertime                  Boolean              @default(false) @map("has_overtime")
+  hasBonus                     Boolean              @default(false) @map("has_bonus")
+  bonusDescription             String?              @map("bonus_description")
+  retirementAllowanceStartText String?              @map("retirement_allowance_start_text")
+  specialMeasureType           SpecialMeasureType   @default(NONE) @map("special_measure_type")
+  specialMeasureBusinessTitle  String?              @map("special_measure_business_title")
+  specialMeasureStartOn        DateTime?            @map("special_measure_start_on") @db.Date
+  specialMeasureEndOn          DateTime?            @map("special_measure_end_on") @db.Date
+  notes                        String?
+  createdAt                    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                    DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  employee  Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  documents EmployeeDocument[]
+  employee   Employee                      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  documents  EmployeeDocument[]
+  allowances EmploymentContractAllowance[]
 
   @@index([employeeId, contractStartOn(sort: Desc)])
   @@map("employment_contracts")
@@ -670,4 +707,59 @@ model ShiftGenerationRun {
 
   @@unique([officeId, targetMonth])
   @@map("shift_generation_runs")
+}
+
+// 会社マスタ (シングルトン)。労働条件通知書 / 雇用契約書 PDF 出力で参照する、
+// 全契約共通の条項を保持する。docs/employment-contract-printable.md §2.1 参照。
+//
+// レコードは常に 1 行。将来マルチテナント化する際は id を tenant_id として
+// 再利用し、複数行を許す形に拡張する (列追加で済む形にしてある)。
+model CompanyProfile {
+  id                     String   @id @default(uuid()) @db.Uuid
+  legalName              String   @map("legal_name")
+  address                String
+  phone                  String
+  representativeTitle    String   @map("representative_title")
+  representativeName     String   @map("representative_name")
+  retirementAge          Int      @map("retirement_age")
+  continuedEmploymentAge Int      @map("continued_employment_age")
+  resignNoticeDays       Int      @map("resign_notice_days")
+  wageCutoffDay          String   @map("wage_cutoff_day")
+  wagePaymentDay         String   @map("wage_payment_day")
+  wagePaymentMethod      String   @map("wage_payment_method")
+  salaryRaisePeriod      String   @map("salary_raise_period")
+  overtimeRateUnder60h   Int      @map("overtime_rate_under_60h")
+  overtimeRateOver60h    Int      @map("overtime_rate_over_60h")
+  overtimeRateWithin     Int      @map("overtime_rate_within")
+  holidayLegalRate       Int      @map("holiday_legal_rate")
+  nightRate              Int      @map("night_rate")
+  breakRuleText          String   @map("break_rule_text")
+  workRulesName          String   @map("work_rules_name")
+  partTimeWorkRulesName  String   @map("part_time_work_rules_name")
+  contactDepartment      String   @map("contact_department")
+  contactPersonTitle     String   @map("contact_person_title")
+  contactPersonName      String   @map("contact_person_name")
+  contactPhone           String   @map("contact_phone")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("company_profile")
+}
+
+// 雇用契約に紐づく諸手当 (帳票の イロハニ 4 枠を正規化)。
+// docs/employment-contract-printable.md §2.3 参照。
+model EmploymentContractAllowance {
+  id                String   @id @default(uuid()) @db.Uuid
+  contractId        String   @map("contract_id") @db.Uuid
+  sortOrder         Int      @map("sort_order")
+  name              String
+  amountYen         Int      @map("amount_yen")
+  calculationMethod String   @map("calculation_method")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  contract EmploymentContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, sortOrder])
+  @@map("employment_contract_allowances")
 }

@@ -11,6 +11,7 @@
  * 実行: `pnpm db:seed`
  */
 import { PrismaClient, ShiftKind } from "@prisma/client";
+import { seedCompanyProfile } from "./seeds/company-profile";
 import { seedEmployees } from "./seeds/employees";
 import { seedOfficeShiftQuotas } from "./seeds/quotas";
 import { seedUsers, DEV_CREDENTIALS } from "./seeds/users";
@@ -506,12 +507,17 @@ async function main(): Promise<void> {
   const quotaCount = await seedOfficeShiftQuotas(prisma, officeIds);
   console.log(`  ${quotaCount} office_shift_quotas upserted`);
 
+  console.log("seeding company profile...");
+  const inserted = await seedCompanyProfile(prisma);
+  console.log(`  company_profile ${inserted ? "created" : "already exists (skipped)"}`);
+
   const counts = {
     offices: await prisma.office.count(),
     shiftPatterns: await prisma.shiftPattern.count(),
     employees: await prisma.employee.count(),
     users: await prisma.user.count(),
     officeShiftQuotas: await prisma.officeShiftQuota.count(),
+    companyProfile: await prisma.companyProfile.count(),
   };
   console.log("done.", counts);
   console.log("");
