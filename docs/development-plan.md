@@ -112,14 +112,15 @@
 
 #### 1-H. 月次シフト自動作成（2〜3 週）
 
-- `office_shift_quotas` / `shift_generation_runs` 追加 + `shifts.generation_run_id` 追加
-- S-A-27 拠点シフト枠 設定
-- 自動作成アルゴリズム実装（`src/lib/shift/auto-generator/`）
-  - 制約: 希望休 / 不可日 / 不可曜日を除外
-  - 優先度: 正社員月間出勤目標 → 希望夜勤 → 個人上限内配置 → パート配置
-  - 5 回超夜勤は警告つきで最終手段
-- S-A-26 自動作成 UI（対象月選択 → run 実行 → 警告確認 → 確定）
-- S-A-08 月次勤務表編集（自動結果の手動微調整）
+> 詳細設計は [docs/auto-shift-design.md](auto-shift-design.md) に集約。論点 A〜G は 2026-05-21 に確定済。
+
+サブステップ:
+
+- **1-H-1 基盤**: Prisma `office_shift_quotas` / `shift_generation_runs` を追加、`shifts.generation_run_id` (nullable) を追加。migration + シード（5 拠点分の quota 雛形）。祝日マスター `src/lib/calendar/holidays.ts` を 2024–2030 年分で整備。
+- **1-H-2 S-A-27 拠点シフト枠 設定**: 拠点 × 日種 (`weekday` / `saturday` / `sunday_holiday`) × シフトパターンのマトリクス UI。休み系パターンは除外、拠点固有 + 共通パターンを並べる。
+- **1-H-3 自動作成アルゴリズム**: `src/lib/shift/auto-generator/` に純粋関数で実装。`algorithm_version = greedy-v1`。決定論性 (`seed`)、公休も自動配置、`updated_by` ベースの手動編集保護を含む（[auto-shift-design §4](auto-shift-design.md#4-ドメインロジック)）。ユニットテストで [auto-shift-design §8](auto-shift-design.md#8-テスト方針) のシナリオを網羅。
+- **1-H-4 S-A-26 自動作成 UI**: 「dry-run → 下書き保存 → S-A-08 で微調整 → 確定」の 3 段フロー。警告は重大度別バッジ表示。
+- **1-H-5 S-A-08 拡張**: 自動由来セルの識別表示、未確定 run のバナー、確定取り消し導線。
 
 ### Phase 1 完了の定義
 

@@ -12,6 +12,7 @@
  */
 import { PrismaClient, ShiftKind } from "@prisma/client";
 import { seedEmployees } from "./seeds/employees";
+import { seedOfficeShiftQuotas } from "./seeds/quotas";
 import { seedUsers, DEV_CREDENTIALS } from "./seeds/users";
 
 const prisma = new PrismaClient();
@@ -501,11 +502,16 @@ async function main(): Promise<void> {
   const users = await seedUsers(prisma);
   console.log(`  ${users.admin} admin + ${users.employee} employee users ready`);
 
+  console.log("seeding office shift quotas...");
+  const quotaCount = await seedOfficeShiftQuotas(prisma, officeIds);
+  console.log(`  ${quotaCount} office_shift_quotas upserted`);
+
   const counts = {
     offices: await prisma.office.count(),
     shiftPatterns: await prisma.shiftPattern.count(),
     employees: await prisma.employee.count(),
     users: await prisma.user.count(),
+    officeShiftQuotas: await prisma.officeShiftQuota.count(),
   };
   console.log("done.", counts);
   console.log("");

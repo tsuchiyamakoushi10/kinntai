@@ -164,6 +164,26 @@ enum ShiftPreferenceStatus {
   @@map("shift_preference_status")
 }
 
+// 拠点シフト枠の日種区分。docs/database-design.md §2.11 / docs/auto-shift-design.md §3.1 参照。
+//   - sunday_holiday は「日曜 + 日本の祝日 + 振替休日」をまとめた区分
+enum DayKind {
+  WEEKDAY        @map("weekday")
+  SATURDAY       @map("saturday")
+  SUNDAY_HOLIDAY @map("sunday_holiday")
+
+  @@map("day_kind")
+}
+
+// シフト自動作成 run のステータス。docs/auto-shift-design.md §6 参照。
+//   - draft     : 自動作成直後 / 微調整中。同月再実行で上書き可
+//   - confirmed : 管理者が確定したスナップショット。再実行には「確定取り消し」が必要
+enum GenerationRunStatus {
+  DRAFT     @map("draft")
+  CONFIRMED @map("confirmed")
+
+  @@map("generation_run_status")
+}
+
 // =============================================================================
 // Models
 // =============================================================================
@@ -180,10 +200,12 @@ model Office {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  employees         Employee[]
-  shiftPatterns     ShiftPattern[]
-  shifts            Shift[]
-  attendanceRecords AttendanceRecord[]
+  employees           Employee[]
+  shiftPatterns       ShiftPattern[]
+  shifts              Shift[]
+  attendanceRecords   AttendanceRecord[]
+  shiftQuotas         OfficeShiftQuota[]
+  shiftGenerationRuns ShiftGenerationRun[]
 
   @@map("offices")
 }
@@ -210,6 +232,7 @@ model User {
   documentAccessLogs  DocumentAccessLog[]
   createdShiftPrefs   ShiftPreference[]    @relation("ShiftPreferenceCreatedBy")
   reviewedShiftPrefs  ShiftPreference[]    @relation("ShiftPreferenceReviewedBy")
+  shiftGenerationRuns ShiftGenerationRun[] @relation("ShiftGenerationRunGeneratedBy")
 
   @@map("users")
 }
@@ -357,32 +380,38 @@ model ShiftPattern {
   office            Office?            @relation(fields: [officeId], references: [id], onDelete: Restrict)
   shifts            Shift[]
   attendanceRecords AttendanceRecord[]
+  shiftQuotas       OfficeShiftQuota[]
 
   @@map("shift_patterns")
 }
 
 // 月次シフト（勤務表）。office_id は応援勤務に備え employee.office_id と独立に保持。
+// generation_run_id が NULL なら手動入力、非 NULL なら自動作成由来 (確定取り消し後も保持)。
+// docs/auto-shift-design.md §3.3 参照。
 model Shift {
-  id             String   @id @default(uuid()) @db.Uuid
-  employeeId     String   @map("employee_id") @db.Uuid
-  officeId       String   @map("office_id") @db.Uuid
-  workDate       DateTime @map("work_date") @db.Date
-  shiftPatternId String   @map("shift_pattern_id") @db.Uuid
-  note           String?
-  createdBy      String   @map("created_by") @db.Uuid
-  updatedBy      String   @map("updated_by") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String   @id @default(uuid()) @db.Uuid
+  employeeId      String   @map("employee_id") @db.Uuid
+  officeId        String   @map("office_id") @db.Uuid
+  workDate        DateTime @map("work_date") @db.Date
+  shiftPatternId  String   @map("shift_pattern_id") @db.Uuid
+  generationRunId String?  @map("generation_run_id") @db.Uuid
+  note            String?
+  createdBy       String   @map("created_by") @db.Uuid
+  updatedBy       String   @map("updated_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   employee              Employee               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   office                Office                 @relation(fields: [officeId], references: [id], onDelete: Restrict)
   shiftPattern          ShiftPattern           @relation(fields: [shiftPatternId], references: [id], onDelete: Restrict)
+  generationRun         ShiftGenerationRun?    @relation(fields: [generationRunId], references: [id], onDelete: SetNull)
   creator               User                   @relation("ShiftCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
   updater               User                   @relation("ShiftUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
   paidLeaveConsumptions PaidLeaveConsumption[]
 
   @@unique([employeeId, workDate])
   @@index([officeId, workDate])
+  @@index([generationRunId])
   @@map("shifts")
 }
 
@@ -592,4 +621,53 @@ model ShiftPreference {
   @@unique([employeeId, targetDate, preferenceType])
   @@index([targetDate])
   @@map("shift_preferences")
+}
+
+// 拠点別 シフト必要人員数。
+// 日種 (weekday / saturday / sunday_holiday) × シフトパターンごとに必要人数を保持する。
+// docs/database-design.md §2.11 / docs/auto-shift-design.md §3.1 参照。
+//   - 休み系パターン (off / paid_leave / absence / requested_off) は対象外 (UI で除外)
+//   - required_count は 0 以上の整数。空欄 = 0 として扱う
+//   - shift_pattern_id は (office_id 一致) または (shift_patterns.office_id IS NULL の共通パターン)
+model OfficeShiftQuota {
+  id             String   @id @default(uuid()) @db.Uuid
+  officeId       String   @map("office_id") @db.Uuid
+  shiftPatternId String   @map("shift_pattern_id") @db.Uuid
+  dayKind        DayKind  @map("day_kind")
+  requiredCount  Int      @map("required_count")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  office       Office       @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  shiftPattern ShiftPattern @relation(fields: [shiftPatternId], references: [id], onDelete: Cascade)
+
+  @@unique([officeId, shiftPatternId, dayKind])
+  @@map("office_shift_quotas")
+}
+
+// シフト自動作成 run の実行履歴。1 (office, target_month) = 1 行 (再実行で上書き)。
+// docs/database-design.md §2.12 / docs/auto-shift-design.md §3.2 参照。
+//   - status: draft / confirmed。confirmed からは「確定取り消し」で draft に戻す
+//   - algorithm_version: 例 "greedy-v1"。改良ごとに更新
+//   - stats: jsonb。input/fill/warnings[]/elapsedMs/seed を保持 (スキーマは設計書を参照)
+//   - 同月再実行時、generation_run_id を持ち updated_by = generated_by の shifts のみ上書きされる
+model ShiftGenerationRun {
+  id               String              @id @default(uuid()) @db.Uuid
+  officeId         String              @map("office_id") @db.Uuid
+  targetMonth      DateTime            @map("target_month") @db.Date
+  status           GenerationRunStatus @default(DRAFT)
+  algorithmVersion String              @map("algorithm_version")
+  generatedById    String              @map("generated_by") @db.Uuid
+  generatedAt      DateTime            @default(now()) @map("generated_at") @db.Timestamptz(6)
+  confirmedAt      DateTime?           @map("confirmed_at") @db.Timestamptz(6)
+  stats            Json                @default("{}")
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  office      Office  @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  generatedBy User    @relation("ShiftGenerationRunGeneratedBy", fields: [generatedById], references: [id], onDelete: Restrict)
+  shifts      Shift[]
+
+  @@unique([officeId, targetMonth])
+  @@map("shift_generation_runs")
 }
