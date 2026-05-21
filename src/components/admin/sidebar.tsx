@@ -12,6 +12,7 @@ type Item = {
 // MVP の管理者メニュー。href が無いものは「準備中」として disabled 表示。
 const ITEMS: Item[] = [
   { label: "ダッシュボード", href: "/admin" },
+  { label: "会社情報", href: "/admin/company-profile" },
   { label: "拠点設定", href: "/admin/offices" },
   { label: "従業員", href: "/admin/employees" },
   { label: "シフトパターン", href: "/admin/shift-patterns" },
