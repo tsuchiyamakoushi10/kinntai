@@ -23,6 +23,7 @@ export function ShiftFilters({ offices, values }: Props) {
           className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
         >
           <option value="">選択してください</option>
+          <option value="all">全拠点 (閲覧専用)</option>
           {offices.map((o) => (
             <option key={o.id} value={o.id}>
               {o.name}

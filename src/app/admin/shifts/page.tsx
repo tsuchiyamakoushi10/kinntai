@@ -49,6 +49,11 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     );
   }
 
+  // ALL モード: 全拠点を読み取り専用で並べる。編集は拠点を選び直して個別画面で行う。
+  if (officeId === "all") {
+    return <AllOfficesView offices={offices} ym={ym} />;
+  }
+
   const range = monthRange(ym);
   const prevRange = monthRange(range.prevYm);
 
@@ -231,6 +236,200 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
           autoCellKeys={autoCellKeys}
         />
       )}
+    </div>
+  );
+}
+
+async function AllOfficesView({
+  offices,
+  ym,
+}: {
+  offices: ReadonlyArray<{ id: string; name: string }>;
+  ym: string;
+}) {
+  const range = monthRange(ym);
+  const officeIds = offices.map((o) => o.id);
+
+  // 全拠点を 1 クエリで取得 → 拠点 ID でグルーピング
+  const [employees, patterns, currentShifts, generationRuns] = await Promise.all([
+    prisma.employee.findMany({
+      where: {
+        officeId: { in: officeIds },
+        OR: [{ retiredAt: null }, { retiredAt: { gte: range.start } }],
+      },
+      orderBy: [{ officeId: "asc" }, { employeeCode: "asc" }],
+      select: {
+        id: true,
+        officeId: true,
+        employeeCode: true,
+        lastName: true,
+        firstName: true,
+        lastNameKana: true,
+        firstNameKana: true,
+        employmentType: true,
+      },
+    }),
+    prisma.shiftPattern.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+      select: {
+        id: true,
+        officeId: true,
+        code: true,
+        name: true,
+        shiftKind: true,
+        color: true,
+        paidLeaveUnits: true,
+      },
+    }),
+    prisma.shift.findMany({
+      where: { officeId: { in: officeIds }, workDate: { gte: range.start, lt: range.end } },
+      select: {
+        employeeId: true,
+        officeId: true,
+        workDate: true,
+        shiftPatternId: true,
+        note: true,
+        generationRunId: true,
+      },
+    }),
+    prisma.shiftGenerationRun.findMany({
+      where: { officeId: { in: officeIds }, targetMonth: range.start },
+      select: { officeId: true, status: true, confirmedAt: true },
+    }),
+  ]);
+
+  const empByOffice = new Map<string, typeof employees>();
+  for (const e of employees) {
+    const arr = empByOffice.get(e.officeId) ?? [];
+    arr.push(e);
+    empByOffice.set(e.officeId, arr);
+  }
+
+  const shiftsByOffice = new Map<string, typeof currentShifts>();
+  for (const s of currentShifts) {
+    const arr = shiftsByOffice.get(s.officeId) ?? [];
+    arr.push(s);
+    shiftsByOffice.set(s.officeId, arr);
+  }
+
+  const runByOffice = new Map(generationRuns.map((r) => [r.officeId, r] as const));
+
+  return (
+    <div className="flex flex-col gap-6">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">勤務表 (全拠点)</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {formatYmDisplay(ym)}・{offices.length} 拠点・{employees.length} 名 (読み取り専用)
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/admin/shifts?officeId=all&ym=${range.prevYm}`}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm hover:bg-slate-50"
+            aria-label="前の月"
+          >
+            ←
+          </Link>
+          <span className="min-w-24 text-center text-base font-bold text-slate-900">
+            {formatYmDisplay(ym)}
+          </span>
+          <Link
+            href={`/admin/shifts?officeId=all&ym=${range.nextYm}`}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm hover:bg-slate-50"
+            aria-label="次の月"
+          >
+            →
+          </Link>
+        </div>
+      </header>
+
+      <ShiftFilters offices={offices} values={{ officeId: "all", ym }} />
+
+      <p className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+        ALL モードは閲覧専用です。編集する場合は拠点を選び直してください。
+      </p>
+
+      {offices.map((office) => {
+        const emps = empByOffice.get(office.id) ?? [];
+        const sf = shiftsByOffice.get(office.id) ?? [];
+        const run = runByOffice.get(office.id);
+        if (emps.length === 0) return null;
+
+        const officePatterns = patterns.filter(
+          (p) => p.officeId === office.id || p.officeId === null,
+        );
+        const employeeRows: EmployeeRow[] = emps.map((e) => ({
+          id: e.id,
+          code: e.employeeCode,
+          name: `${e.lastName} ${e.firstName}`,
+          kana: `${e.lastNameKana} ${e.firstNameKana}`,
+          employmentType: e.employmentType,
+        }));
+        const patternOptions: PatternOption[] = officePatterns.map((p) => ({
+          id: p.id,
+          code: p.code,
+          name: p.name,
+          shiftKind: p.shiftKind,
+          color: p.color,
+          paidLeaveUnits: p.paidLeaveUnits.toNumber(),
+        }));
+        const initialCells: ShiftCell[] = sf.map((s) => ({
+          employeeId: s.employeeId,
+          workDate: dateToYmd(s.workDate),
+          shiftPatternId: s.shiftPatternId,
+          note: s.note,
+        }));
+        const autoKeys = new Set<string>();
+        for (const s of sf) {
+          if (s.generationRunId !== null) {
+            autoKeys.add(`${s.employeeId}:${dateToYmd(s.workDate)}`);
+          }
+        }
+
+        return (
+          <section key={office.id} className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-lg font-bold text-slate-900">
+                {office.name}
+                <span className="ml-2 text-sm font-normal text-slate-500">
+                  {employeeRows.length} 名
+                </span>
+              </h2>
+              <Link
+                href={`/admin/shifts?officeId=${office.id}&ym=${ym}`}
+                className="text-sm text-slate-600 hover:underline"
+              >
+                この拠点を編集 →
+              </Link>
+            </div>
+            {run && (
+              <div
+                role="status"
+                className={
+                  run.status === "CONFIRMED"
+                    ? "rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-900"
+                    : "rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-900"
+                }
+              >
+                自動作成: {run.status === "CONFIRMED" ? "確定済" : "下書き中"}
+              </div>
+            )}
+            <ShiftGrid
+              officeId={office.id}
+              ym={ym}
+              days={range.days}
+              employees={employeeRows}
+              patterns={patternOptions}
+              initialCells={initialCells}
+              prevMonthCells={[]}
+              autoCellKeys={autoKeys}
+              readOnly
+            />
+          </section>
+        );
+      })}
     </div>
   );
 }

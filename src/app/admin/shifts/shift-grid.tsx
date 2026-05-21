@@ -36,6 +36,8 @@ type Props = {
   prevMonthCells: ReadonlyArray<ShiftCell>;
   /** 自動作成由来の (employeeId:workDate) 集合。初期表示時の識別マーク用。 */
   autoCellKeys?: ReadonlySet<string>;
+  /** 閲覧専用モード (ALL 閲覧で使う)。パレット / 保存 / 編集 UI を全部隠す。 */
+  readOnly?: boolean;
 };
 
 type CellMap = Map<string, ShiftCell>;
@@ -76,6 +78,7 @@ export function ShiftGrid({
   initialCells,
   prevMonthCells,
   autoCellKeys,
+  readOnly = false,
 }: Props) {
   const [cells, setCells] = useState<CellMap>(() => toCellMap(initialCells));
   const initialKey = useMemo(() => JSON.stringify(initialCells), [initialCells]);
@@ -145,6 +148,7 @@ export function ShiftGrid({
   }
 
   function onKeyDown(ev: React.KeyboardEvent<HTMLDivElement>): void {
+    if (readOnly) return;
     if (!cursor) return;
     switch (ev.key) {
       case "ArrowLeft":
@@ -246,97 +250,101 @@ export function ShiftGrid({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* パレット */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-medium text-slate-600">
-            シフトパターンを選んでセルをクリックで貼り付け
-          </span>
-          {activePatternId && (
-            <button
-              type="button"
-              onClick={() => setActivePatternId(null)}
-              className="text-xs text-slate-600 underline hover:text-slate-900"
-            >
-              選択解除
-            </button>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {patterns.map((p) => {
-            const active = p.id === activePatternId;
-            return (
+      {/* パレット (閲覧専用では非表示) */}
+      {!readOnly && (
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-600">
+              シフトパターンを選んでセルをクリックで貼り付け
+            </span>
+            {activePatternId && (
               <button
-                key={p.id}
                 type="button"
-                onClick={() => setActivePatternId(active ? null : p.id)}
-                className={[
-                  "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
-                  active
-                    ? "border-slate-900 ring-2 ring-slate-900/30"
-                    : "border-slate-300 hover:bg-slate-50",
-                ].join(" ")}
-                aria-pressed={active}
-                title={`${p.name} (${p.code})`}
+                onClick={() => setActivePatternId(null)}
+                className="text-xs text-slate-600 underline hover:text-slate-900"
               >
-                <span
-                  aria-hidden
-                  className="inline-block size-3 rounded-sm"
-                  style={{ backgroundColor: p.color }}
-                />
-                <span className="font-medium text-slate-900">{p.name}</span>
+                選択解除
               </button>
-            );
-          })}
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {patterns.map((p) => {
+              const active = p.id === activePatternId;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setActivePatternId(active ? null : p.id)}
+                  className={[
+                    "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
+                    active
+                      ? "border-slate-900 ring-2 ring-slate-900/30"
+                      : "border-slate-300 hover:bg-slate-50",
+                  ].join(" ")}
+                  aria-pressed={active}
+                  title={`${p.name} (${p.code})`}
+                >
+                  <span
+                    aria-hidden
+                    className="inline-block size-3 rounded-sm"
+                    style={{ backgroundColor: p.color }}
+                  />
+                  <span className="font-medium text-slate-900">{p.name}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* ツールバー */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={copyFromPrevMonth}
-          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
-        >
-          前月コピー (空セルのみ)
-        </button>
-        <button
-          type="button"
-          onClick={clearAll}
-          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
-        >
-          全クリア
-        </button>
-        {isDirty && (
+      {/* ツールバー (閲覧専用では非表示) */}
+      {!readOnly && (
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={resetToInitial}
+            onClick={copyFromPrevMonth}
             className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
           >
-            変更を破棄
+            前月コピー (空セルのみ)
           </button>
-        )}
-        <div className="ml-auto flex items-center gap-3">
-          {message && (
-            <span
-              className={
-                message.kind === "ok" ? "text-sm text-emerald-700" : "text-sm text-rose-700"
-              }
-              role="status"
-            >
-              {message.text}
-            </span>
-          )}
           <button
             type="button"
-            onClick={onSave}
-            disabled={!isDirty || isPending}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={clearAll}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
           >
-            {isPending ? "保存中…" : isDirty ? "保存" : "変更なし"}
+            全クリア
           </button>
+          {isDirty && (
+            <button
+              type="button"
+              onClick={resetToInitial}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
+            >
+              変更を破棄
+            </button>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            {message && (
+              <span
+                className={
+                  message.kind === "ok" ? "text-sm text-emerald-700" : "text-sm text-rose-700"
+                }
+                role="status"
+              >
+                {message.text}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={!isDirty || isPending}
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isPending ? "保存中…" : isDirty ? "保存" : "変更なし"}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* グリッド */}
       <div
@@ -403,9 +411,10 @@ export function ShiftGrid({
                     <td
                       key={d}
                       className={[
-                        "relative h-9 cursor-pointer border-r border-slate-100 p-0 text-center align-middle hover:ring-2 hover:ring-slate-400/50",
+                        "relative h-9 border-r border-slate-100 p-0 text-center align-middle",
+                        readOnly ? "" : "cursor-pointer hover:ring-2 hover:ring-slate-400/50",
                         weekend && !pattern ? "bg-slate-50/60" : "",
-                        isCursor ? "ring-2 ring-slate-900 ring-inset" : "",
+                        isCursor && !readOnly ? "ring-2 ring-slate-900 ring-inset" : "",
                       ].join(" ")}
                       style={
                         pattern
@@ -413,6 +422,7 @@ export function ShiftGrid({
                           : undefined
                       }
                       onClick={() => {
+                        if (readOnly) return;
                         gridRef.current?.focus();
                         paintCell(ei, di);
                       }}
@@ -447,10 +457,12 @@ export function ShiftGrid({
         </table>
       </div>
 
-      <p className="text-xs text-slate-500">
-        矢印キーで移動、Backspace / Delete で消去、Enter で貼り付け。前月コピーは
-        当月の空セルのみ埋めます。
-      </p>
+      {!readOnly && (
+        <p className="text-xs text-slate-500">
+          矢印キーで移動、Backspace / Delete で消去、Enter で貼り付け。前月コピーは
+          当月の空セルのみ埋めます。
+        </p>
+      )}
     </div>
   );
 }
