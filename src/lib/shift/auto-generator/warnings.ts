@@ -8,6 +8,7 @@
  * placement.ts と分けた理由は、配置ロジックと警告判定で読み手の関心が違うため。
  * 警告は after-the-fact の集計でテストもしやすい。
  */
+import { buildMonthDays } from "./constraints";
 import type { PlacementResult } from "./placement";
 import {
   DEFAULT_MAX_NIGHT_SHIFTS_PER_MONTH,
@@ -118,6 +119,52 @@ export function collectWarnings(input: GenerateInput, placement: PlacementResult
         employeeId: s.employeeId,
         date: s.workDate,
         dayOfWeek: dow,
+      });
+    }
+  }
+
+  // ---- QUOTA_OVERFILLED: 既存 + 提案を合わせた件数が必要人員数を超える ----
+  // 主に「保護対象 existingShifts が quota より多く乗っている」ケースで発生する。
+  // 同 (date, patternId) の総件数を quota (dayKind 経由) と比較。
+  const monthDays = buildMonthDays(input.targetMonth);
+  const dayKindByDate = new Map(monthDays.map((d) => [d.date, d.dayKind] as const));
+  const quotaByKey = new Map<string, number>();
+  for (const q of input.quotas) {
+    quotaByKey.set(`${q.shiftPatternId}:${q.dayKind}`, q.requiredCount);
+  }
+  const countByKey = new Map<string, number>();
+  const countSource = [
+    ...input.existingShifts.map((s) => ({
+      date: s.workDate,
+      shiftPatternId: s.shiftPatternId,
+    })),
+    ...placement.proposedShifts.map((s) => ({
+      date: s.workDate,
+      shiftPatternId: s.shiftPatternId,
+    })),
+  ];
+  for (const s of countSource) {
+    const key = `${s.date}:${s.shiftPatternId}`;
+    countByKey.set(key, (countByKey.get(key) ?? 0) + 1);
+  }
+  const patternCodeById = new Map(input.shiftPatterns.map((p) => [p.id, p.code] as const));
+  const reportedOver = new Set<string>();
+  for (const [key, count] of countByKey) {
+    const idx = key.indexOf(":");
+    const date = key.slice(0, idx);
+    const patternId = key.slice(idx + 1);
+    const dayKind = dayKindByDate.get(date);
+    if (!dayKind) continue;
+    const required = quotaByKey.get(`${patternId}:${dayKind}`) ?? 0;
+    if (count > required) {
+      if (reportedOver.has(key)) continue;
+      reportedOver.add(key);
+      warnings.push({
+        code: "QUOTA_OVERFILLED",
+        date,
+        shiftPatternCode: patternCodeById.get(patternId) ?? patternId,
+        required,
+        filled: count,
       });
     }
   }

@@ -307,6 +307,13 @@ export function placeShifts(input: GenerateInput): PlacementResult {
   };
   const nightOutPattern = input.shiftPatterns.find((p) => p.shiftKind === "NIGHT_OUT");
 
+  // 既存 shifts による (date, patternId) ごとの占有数を先に数えておく
+  const existingCountByKey = new Map<string, number>();
+  for (const s of input.existingShifts) {
+    const k = `${s.workDate}:${s.shiftPatternId}`;
+    existingCountByKey.set(k, (existingCountByKey.get(k) ?? 0) + 1);
+  }
+
   const slots: Slot[] = [];
   let totalSlots = 0;
   for (const day of days) {
@@ -316,11 +323,14 @@ export function placeShifts(input: GenerateInput): PlacementResult {
       if (!pat) continue;
       if (pat.shiftKind !== "WORK" && pat.shiftKind !== "NIGHT_IN") continue;
       if (q.requiredCount <= 0) continue;
+      // 既存 shifts が同 (date, pattern) を占有している分は配置不要
+      const alreadyFilled = existingCountByKey.get(`${day.date}:${pat.id}`) ?? 0;
+      const remaining = Math.max(0, q.requiredCount - alreadyFilled);
       slots.push({
         date: day.date,
         pattern: pat,
         initialRequired: q.requiredCount,
-        remaining: q.requiredCount,
+        remaining,
       });
       totalSlots += q.requiredCount;
     }
