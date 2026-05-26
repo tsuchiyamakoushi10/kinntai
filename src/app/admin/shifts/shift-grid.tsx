@@ -12,7 +12,8 @@ export type EmployeeRow = {
   code: string;
   name: string;
   kana: string;
-  employmentType: EmploymentType;
+  // CSV 取り込み後は空欄あり。表示・並び順以外で参照しない。
+  employmentType: EmploymentType | null;
 };
 
 export type PatternOption = {
@@ -392,7 +393,7 @@ export function ShiftGrid({
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium text-slate-900">{emp.name}</span>
                     <span className="rounded-sm bg-slate-100 px-1 text-[10px] text-slate-600">
-                      {EMPLOYMENT_LABEL[emp.employmentType]}
+                      {emp.employmentType ? EMPLOYMENT_LABEL[emp.employmentType] : "—"}
                     </span>
                   </div>
                   <div className="text-[10px] text-slate-500">

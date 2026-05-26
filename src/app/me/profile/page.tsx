@@ -79,14 +79,14 @@ export default async function MyProfilePage() {
                 {employee.employeeCode}
               </dd>
               <dt className="text-slate-500">所属拠点</dt>
-              <dd className="text-right text-slate-900">{employee.office.name}</dd>
+              <dd className="text-right text-slate-900">{employee.office?.name ?? "—"}</dd>
               <dt className="text-slate-500">職種</dt>
               <dd className="text-right text-slate-900">
-                {JOB_CATEGORY_LABELS[employee.jobCategory]}
+                {employee.jobCategory ? JOB_CATEGORY_LABELS[employee.jobCategory] : "—"}
               </dd>
               <dt className="text-slate-500">雇用形態</dt>
               <dd className="text-right text-slate-900">
-                {EMPLOYMENT_TYPE_LABELS[employee.employmentType]}
+                {employee.employmentType ? EMPLOYMENT_TYPE_LABELS[employee.employmentType] : "—"}
               </dd>
             </>
           )}

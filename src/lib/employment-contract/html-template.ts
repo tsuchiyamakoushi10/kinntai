@@ -66,14 +66,14 @@ export function renderContractHtml(vm: ContractViewModel): string {
   const c = vm.contract;
   const co = vm.company;
 
-  const wageRow =
-    c.wageType === "MONTHLY"
-      ? h`月給 ${c.wageAmount.toLocaleString()} 円`
-      : h`時給 ${c.wageAmount.toLocaleString()} 円`;
+  // 賃金 / 期間が未入力の契約は本来 validation で弾く前提。万一通った場合のフォールバック表示。
+  const wageAmount = c.wageAmount?.toLocaleString() ?? "（未入力）";
+  const wageRow = c.wageType === "MONTHLY" ? h`月給 ${wageAmount} 円` : h`時給 ${wageAmount} 円`;
 
+  const startText = c.contractStartOn ? formatReiwa(c.contractStartOn) : "（未入力）";
   const periodText = c.contractEndOn
-    ? h`期間の定めあり（${formatReiwa(c.contractStartOn)} から ${formatReiwa(c.contractEndOn)}）`
-    : h`期間の定めなし（${formatReiwa(c.contractStartOn)} から）`;
+    ? h`期間の定めあり（${startText} から ${formatReiwa(c.contractEndOn)}）`
+    : h`期間の定めなし（${startText} から）`;
 
   const rows: string[] = [];
   rows.push(row("契約期間", periodText));

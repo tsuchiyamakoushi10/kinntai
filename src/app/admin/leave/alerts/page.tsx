@@ -82,7 +82,7 @@ export default async function AdminLeaveAlertsPage() {
         employeeId: e.id,
         employeeName: `${e.lastName} ${e.firstName}`,
         employeeCode: e.employeeCode,
-        officeName: e.office.name,
+        officeName: e.office?.name ?? "—",
         status: s,
       });
     }

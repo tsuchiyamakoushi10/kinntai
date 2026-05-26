@@ -19,8 +19,10 @@ import type { EmploymentType } from "@prisma/client";
 const RETIREMENT_ALLOWANCE_THRESHOLD_DAYS = 1095; // 3 年 × 365 日
 
 export type ContractForRetirement = {
-  employmentType: EmploymentType;
-  contractStartOn: Date;
+  // CSV 一括取り込みで nullable 化したフィールドを許容する。
+  // employmentType / contractStartOn が NULL の契約は通算対象から除外する。
+  employmentType: EmploymentType | null;
+  contractStartOn: Date | null;
   contractEndOn: Date | null;
   retirementAllowanceEligible: boolean | null;
 };
@@ -49,7 +51,10 @@ export function judgeRetirementAllowance(
   asOf: Date = new Date(),
 ): RetirementAllowanceJudgment {
   const fullTimeIntervals = contracts
-    .filter((c) => c.employmentType === "FULL_TIME")
+    .filter(
+      (c): c is ContractForRetirement & { contractStartOn: Date } =>
+        c.employmentType === "FULL_TIME" && c.contractStartOn !== null,
+    )
     .map((c) => ({
       start: startOfDay(c.contractStartOn),
       end: startOfDay(c.contractEndOn ?? asOf),
@@ -99,7 +104,10 @@ function unionDays(intervals: { start: Date; end: Date }[]): number {
 }
 
 function latestManualOverride(contracts: ContractForRetirement[]): boolean | null {
-  const latest = [...contracts].sort(
+  const dated = contracts.filter(
+    (c): c is ContractForRetirement & { contractStartOn: Date } => c.contractStartOn !== null,
+  );
+  const latest = [...dated].sort(
     (a, b) => b.contractStartOn.getTime() - a.contractStartOn.getTime(),
   )[0];
   return latest?.retirementAllowanceEligible ?? null;

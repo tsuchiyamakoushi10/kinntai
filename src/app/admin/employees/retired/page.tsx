@@ -145,11 +145,11 @@ export default async function RetiredEmployeesPage({ searchParams }: Props) {
                     <span className="ml-2 font-mono text-slate-400">{e.employeeCode}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3">{e.office.name}</td>
+                <td className="px-4 py-3">{e.office?.name ?? "—"}</td>
                 <td className="px-4 py-3">
-                  <div>{JOB_CATEGORY_LABELS[e.jobCategory]}</div>
+                  <div>{e.jobCategory ? JOB_CATEGORY_LABELS[e.jobCategory] : "—"}</div>
                   <div className="text-xs text-slate-500">
-                    {EMPLOYMENT_TYPE_LABELS[e.employmentType]}
+                    {e.employmentType ? EMPLOYMENT_TYPE_LABELS[e.employmentType] : "—"}
                   </div>
                 </td>
                 <td className="px-4 py-3 text-slate-600">{formatDate(e.hiredAt)}</td>

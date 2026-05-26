@@ -141,6 +141,10 @@ export async function seedDemoMonth(
   // ---- 1. 有給付与 ----------------------------------------------------------
   let leaveGrantsCreated = 0;
   for (const emp of employees) {
+    // 必須項目が空の従業員はデモ計算対象外。
+    if (emp.weeklyWorkDays === null || emp.dailyWorkHours === null || emp.hiredAt === null) {
+      continue;
+    }
     const wkDays = emp.weeklyWorkDays.toNumber();
     const dailyHours = emp.dailyWorkHours.toNumber();
     const ctx: EmployeeContext = {
@@ -171,6 +175,7 @@ export async function seedDemoMonth(
   let breakRecordsCreated = 0;
 
   for (const emp of employees) {
+    if (emp.weeklyWorkDays === null || emp.officeId === null) continue;
     const wkDays = emp.weeklyWorkDays.toNumber();
     for (const ymd of range.days) {
       const date = fromJstYmd(ymd);

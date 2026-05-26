@@ -49,15 +49,20 @@ export default async function NewContractPage({ params }: Props) {
       ? toDateInputValue(addDays(latestContract.contractEndOn, 1))
       : toDateInputValue(employee.hiredAt),
     contractEndOn: "",
-    employmentType: latestContract?.employmentType ?? employee.employmentType,
-    workingHoursPerDay: String(
-      Number(latestContract?.workingHoursPerDay ?? employee.dailyWorkHours),
-    ),
-    workingDaysPerWeek: String(
-      Number(latestContract?.workingDaysPerWeek ?? employee.weeklyWorkDays),
-    ),
-    wageType: latestContract?.wageType ?? employee.baseWageType,
-    wageAmount: String(latestContract?.wageAmount ?? employee.baseWageAmount),
+    employmentType: latestContract?.employmentType ?? employee.employmentType ?? "",
+    workingHoursPerDay: (() => {
+      const v = latestContract?.workingHoursPerDay ?? employee.dailyWorkHours;
+      return v !== null && v !== undefined ? String(Number(v)) : "";
+    })(),
+    workingDaysPerWeek: (() => {
+      const v = latestContract?.workingDaysPerWeek ?? employee.weeklyWorkDays;
+      return v !== null && v !== undefined ? String(Number(v)) : "";
+    })(),
+    wageType: latestContract?.wageType ?? employee.baseWageType ?? "",
+    wageAmount: (() => {
+      const v = latestContract?.wageAmount ?? employee.baseWageAmount;
+      return v !== null && v !== undefined ? String(v) : "";
+    })(),
     isRenewable: latestContract?.isRenewable ? "on" : "",
     renewalCount: latestContract ? String((latestContract.renewalCount ?? 0) + 1) : "0",
     hasRenewalLimit: latestContract?.hasRenewalLimit ? "on" : "",

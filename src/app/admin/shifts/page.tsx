@@ -124,7 +124,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     id: e.id,
     code: e.employeeCode,
     name: `${e.lastName} ${e.firstName}`,
-    kana: `${e.lastNameKana} ${e.firstNameKana}`,
+    kana: `${e.lastNameKana ?? ""} ${e.firstNameKana ?? ""}`.trim(),
     employmentType: e.employmentType,
   }));
 
@@ -301,6 +301,8 @@ async function AllOfficesView({
 
   const empByOffice = new Map<string, typeof employees>();
   for (const e of employees) {
+    // 拠点未割当の従業員は勤務表に並べない (CSV 取り込みで officeId 空欄の人)。
+    if (e.officeId === null) continue;
     const arr = empByOffice.get(e.officeId) ?? [];
     arr.push(e);
     empByOffice.set(e.officeId, arr);
@@ -364,7 +366,7 @@ async function AllOfficesView({
           id: e.id,
           code: e.employeeCode,
           name: `${e.lastName} ${e.firstName}`,
-          kana: `${e.lastNameKana} ${e.firstNameKana}`,
+          kana: `${e.lastNameKana ?? ""} ${e.firstNameKana ?? ""}`.trim(),
           employmentType: e.employmentType,
         }));
         const patternOptions: PatternOption[] = officePatterns.map((p) => ({

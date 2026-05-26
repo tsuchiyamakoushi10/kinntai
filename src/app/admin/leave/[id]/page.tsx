@@ -75,7 +75,7 @@ export default async function AdminLeaveDetailPage({
           {employee.lastName} {employee.firstName}
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          {employee.office.name}・入社 {formatDate(employee.hiredAt)}
+          {employee.office?.name ?? "—"}・入社 {formatDate(employee.hiredAt)}
         </p>
       </header>
 

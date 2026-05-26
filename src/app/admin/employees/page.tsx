@@ -121,10 +121,12 @@ export default async function EmployeeListPage({ searchParams }: Props) {
                       <span className="ml-2 font-mono text-slate-400">{e.employeeCode}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{e.office.name}</td>
-                  <td className="px-4 py-3 text-slate-700">{JOB_CATEGORY_LABELS[e.jobCategory]}</td>
+                  <td className="px-4 py-3 text-slate-700">{e.office?.name ?? "—"}</td>
                   <td className="px-4 py-3 text-slate-700">
-                    {EMPLOYMENT_TYPE_LABELS[e.employmentType]}
+                    {e.jobCategory ? JOB_CATEGORY_LABELS[e.jobCategory] : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">
+                    {e.employmentType ? EMPLOYMENT_TYPE_LABELS[e.employmentType] : "—"}
                   </td>
                   <td className="px-4 py-3">
                     <span className={statusChipClass(e.employmentStatus)}>

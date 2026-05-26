@@ -73,32 +73,39 @@ export default async function AdminLeavePage({ searchParams }: Props) {
     }));
     const balance = computeBalance(grants, consumptions, asOf);
 
-    const weeklyDays = e.weeklyWorkDays.toNumber();
-    const dailyHours = e.dailyWorkHours.toNumber();
-    const ctx: EmployeeContext = {
-      id: e.id,
-      hiredOn: toJstYmd(e.hiredAt),
-      retiredOn: null,
-      weeklyWorkDays: weeklyDays,
-      weeklyWorkHours: weeklyDays * dailyHours,
-    };
-    const statutoryDates = e.paidLeaveGrants
-      .filter((g) => g.grantType === "STATUTORY")
-      .map((g) => toJstYmd(g.grantedOn));
-    const pendingPlans = planGrantsForEmployee(ctx, asOf, statutoryDates);
-
-    const lastStatutory = statutoryDates.sort().at(-1) ?? null;
-    const nextGrantOn = nextGrantDate(toJstYmd(e.hiredAt), lastStatutory);
+    // CSV 取り込みで未入力の従業員は法定計算をスキップ。表示上は「—」扱い。
+    const hasGrantInputs =
+      e.hiredAt !== null && e.weeklyWorkDays !== null && e.dailyWorkHours !== null;
+    let pendingCount = 0;
+    let nextGrantOn: string | null = null;
+    if (hasGrantInputs) {
+      const weeklyDays = e.weeklyWorkDays!.toNumber();
+      const dailyHours = e.dailyWorkHours!.toNumber();
+      const ctx: EmployeeContext = {
+        id: e.id,
+        hiredOn: toJstYmd(e.hiredAt!),
+        retiredOn: null,
+        weeklyWorkDays: weeklyDays,
+        weeklyWorkHours: weeklyDays * dailyHours,
+      };
+      const statutoryDates = e.paidLeaveGrants
+        .filter((g) => g.grantType === "STATUTORY")
+        .map((g) => toJstYmd(g.grantedOn));
+      const pendingPlans = planGrantsForEmployee(ctx, asOf, statutoryDates);
+      const lastStatutory = statutoryDates.sort().at(-1) ?? null;
+      pendingCount = pendingPlans.length;
+      nextGrantOn = nextGrantDate(toJstYmd(e.hiredAt!), lastStatutory);
+    }
 
     return {
       id: e.id,
       code: e.employeeCode,
       name: `${e.lastName} ${e.firstName}`,
-      officeName: e.office.name,
+      officeName: e.office?.name ?? "—",
       hiredOn: e.hiredAt,
       totalRemaining: balance.totalRemaining,
       totalConsumed: balance.totalConsumed,
-      pendingCount: pendingPlans.length,
+      pendingCount,
       nextGrantOn,
     };
   });

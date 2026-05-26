@@ -94,7 +94,9 @@ export default async function TabletHomePage({ searchParams }: PageProps) {
   });
 
   const filtered =
-    row === "ALL" ? employees : employees.filter((e) => inRow(e.lastNameKana.charAt(0), row));
+    row === "ALL"
+      ? employees
+      : employees.filter((e) => inRow((e.lastNameKana ?? "").charAt(0), row));
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-5 p-6">

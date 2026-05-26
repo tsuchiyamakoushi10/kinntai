@@ -80,7 +80,7 @@ export default async function AdminAttendanceEmployeePage({ params, searchParams
     },
   });
   if (!employee) notFound();
-  const dailyWorkHours = employee.dailyWorkHours.toNumber();
+  const dailyWorkHours = employee.dailyWorkHours?.toNumber() ?? 0;
 
   const records = await prisma.attendanceRecord.findMany({
     where: {
@@ -139,7 +139,7 @@ export default async function AdminAttendanceEmployeePage({ params, searchParams
           <p className="mt-0.5 text-xs text-slate-500">
             {employee.lastNameKana} {employee.firstNameKana}
             <span className="ml-2 font-mono text-slate-400">{employee.employeeCode}</span>
-            <span className="ml-3">{employee.office.name}</span>
+            <span className="ml-3">{employee.office?.name ?? "—"}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">

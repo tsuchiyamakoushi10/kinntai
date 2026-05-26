@@ -18,24 +18,25 @@ export type ContractViewModel = {
   /** 従業員情報 */
   employee: {
     fullName: string;
-    lastNameKana: string;
-    firstNameKana: string;
+    // CSV 取り込み後はカナ未入力の場合あり。出力前に validation で弾く想定。
+    lastNameKana: string | null;
+    firstNameKana: string | null;
   };
   /** 契約本体 + 諸手当 */
   contract: {
-    contractStartOn: Date;
+    contractStartOn: Date | null;
     contractEndOn: Date | null;
-    isRenewable: boolean;
+    isRenewable: boolean | null;
     hasRenewalLimit: boolean;
     renewalLimitCount: number | null;
     renewalCriteria: string | null;
-    employmentType: string;
-    workingHoursPerDay: number;
-    workingDaysPerWeek: number;
-    wageType: "HOURLY" | "MONTHLY";
-    wageAmount: number;
-    hasEmploymentInsurance: boolean;
-    hasSocialInsurance: boolean;
+    employmentType: string | null;
+    workingHoursPerDay: number | null;
+    workingDaysPerWeek: number | null;
+    wageType: "HOURLY" | "MONTHLY" | null;
+    wageAmount: number | null;
+    hasEmploymentInsurance: boolean | null;
+    hasSocialInsurance: boolean | null;
     workplaceInitial: string;
     workplaceScope: string;
     jobDescriptionInitial: string;
@@ -91,7 +92,7 @@ export async function loadContractViewModel(
 
   return {
     documentTitle,
-    issuedOn: formatReiwa(contract.contractStartOn),
+    issuedOn: contract.contractStartOn ? formatReiwa(contract.contractStartOn) : "",
     company,
     employee: {
       fullName: `${contract.employee.lastName} ${contract.employee.firstName}`,
@@ -106,8 +107,10 @@ export async function loadContractViewModel(
       renewalLimitCount: contract.renewalLimitCount,
       renewalCriteria: contract.renewalCriteria,
       employmentType: contract.employmentType,
-      workingHoursPerDay: Number(contract.workingHoursPerDay),
-      workingDaysPerWeek: Number(contract.workingDaysPerWeek),
+      workingHoursPerDay:
+        contract.workingHoursPerDay !== null ? Number(contract.workingHoursPerDay) : null,
+      workingDaysPerWeek:
+        contract.workingDaysPerWeek !== null ? Number(contract.workingDaysPerWeek) : null,
       wageType: contract.wageType,
       wageAmount: contract.wageAmount,
       hasEmploymentInsurance: contract.hasEmploymentInsurance,

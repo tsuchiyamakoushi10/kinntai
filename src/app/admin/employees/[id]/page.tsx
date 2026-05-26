@@ -313,7 +313,9 @@ function BasicTab({
   const fullName = `${employee.lastName} ${employee.firstName}`;
   const fullKana = `${employee.lastNameKana} ${employee.firstNameKana}`;
   const weeklyTotal =
-    Math.round(Number(employee.weeklyWorkDays) * Number(employee.dailyWorkHours) * 10) / 10;
+    employee.weeklyWorkDays !== null && employee.dailyWorkHours !== null
+      ? Math.round(Number(employee.weeklyWorkDays) * Number(employee.dailyWorkHours) * 10) / 10
+      : 0;
   const hasTabletPin = !!employee.user?.pinCodeHash;
 
   return (
@@ -333,14 +335,28 @@ function BasicTab({
         <InfoRow
           label="拠点"
           value={
-            <span>
-              {employee.office.name}
-              <span className="ml-2 font-mono text-xs text-slate-500">{employee.office.code}</span>
-            </span>
+            employee.office ? (
+              <span>
+                {employee.office.name}
+                <span className="ml-2 font-mono text-xs text-slate-500">
+                  {employee.office.code}
+                </span>
+              </span>
+            ) : (
+              <span className="text-slate-400">未設定</span>
+            )
           }
         />
-        <InfoRow label="職種" value={JOB_CATEGORY_LABELS[employee.jobCategory]} />
-        <InfoRow label="雇用形態" value={EMPLOYMENT_TYPE_LABELS[employee.employmentType]} />
+        <InfoRow
+          label="職種"
+          value={employee.jobCategory ? JOB_CATEGORY_LABELS[employee.jobCategory] : "未設定"}
+        />
+        <InfoRow
+          label="雇用形態"
+          value={
+            employee.employmentType ? EMPLOYMENT_TYPE_LABELS[employee.employmentType] : "未設定"
+          }
+        />
       </Card>
 
       <Card title="現在の雇用条件">
@@ -354,15 +370,23 @@ function BasicTab({
         )}
         <InfoRow
           label="勤務条件"
-          value={`週 ${Number(employee.weeklyWorkDays)} 日 × 1 日 ${Number(
-            employee.dailyWorkHours,
-          )} 時間（週合計 約 ${weeklyTotal} 時間）`}
+          value={
+            employee.weeklyWorkDays !== null && employee.dailyWorkHours !== null
+              ? `週 ${Number(employee.weeklyWorkDays)} 日 × 1 日 ${Number(employee.dailyWorkHours)} 時間（週合計 約 ${weeklyTotal} 時間）`
+              : "未設定"
+          }
         />
       </Card>
 
       <Card title="給与">
-        <InfoRow label="給与形態" value={WAGE_TYPE_LABELS[employee.baseWageType]} />
-        <InfoRow label="基本給" value={formatYen(employee.baseWageAmount)} />
+        <InfoRow
+          label="給与形態"
+          value={employee.baseWageType ? WAGE_TYPE_LABELS[employee.baseWageType] : "未設定"}
+        />
+        <InfoRow
+          label="基本給"
+          value={employee.baseWageAmount !== null ? formatYen(employee.baseWageAmount) : "未設定"}
+        />
       </Card>
 
       <Card title="保有資格">
@@ -406,6 +430,7 @@ function ContractsTab({
   const today = new Date();
   const current = contracts.find(
     (c) =>
+      c.contractStartOn !== null &&
       c.contractStartOn.getTime() <= today.getTime() &&
       (c.contractEndOn === null || c.contractEndOn.getTime() >= today.getTime()),
   );
@@ -432,16 +457,27 @@ function ContractsTab({
                 current.contractEndOn ? formatDate(current.contractEndOn) : "無期"
               }`}
             />
-            <InfoRow label="雇用形態" value={EMPLOYMENT_TYPE_LABELS[current.employmentType]} />
+            <InfoRow
+              label="雇用形態"
+              value={
+                current.employmentType ? EMPLOYMENT_TYPE_LABELS[current.employmentType] : "未設定"
+              }
+            />
             <InfoRow
               label="勤務条件"
-              value={`週 ${Number(current.workingDaysPerWeek)} 日 × ${Number(
-                current.workingHoursPerDay,
-              )} 時間`}
+              value={
+                current.workingDaysPerWeek !== null && current.workingHoursPerDay !== null
+                  ? `週 ${Number(current.workingDaysPerWeek)} 日 × ${Number(current.workingHoursPerDay)} 時間`
+                  : "未設定"
+              }
             />
             <InfoRow
               label="賃金"
-              value={`${WAGE_TYPE_LABELS[current.wageType]} ${formatYen(current.wageAmount)}`}
+              value={
+                current.wageType && current.wageAmount !== null
+                  ? `${WAGE_TYPE_LABELS[current.wageType]} ${formatYen(current.wageAmount)}`
+                  : "未設定"
+              }
             />
             <InfoRow
               label="保険"
@@ -492,12 +528,18 @@ function ContractsTab({
                     {c.contractEndOn ? formatDate(c.contractEndOn) : "無期"}
                   </div>
                 </td>
-                <td className="px-4 py-3">{EMPLOYMENT_TYPE_LABELS[c.employmentType]}</td>
-                <td className="px-4 py-3 text-xs">
-                  週 {Number(c.workingDaysPerWeek)} 日 × {Number(c.workingHoursPerDay)} 時間
+                <td className="px-4 py-3">
+                  {c.employmentType ? EMPLOYMENT_TYPE_LABELS[c.employmentType] : "—"}
                 </td>
                 <td className="px-4 py-3 text-xs">
-                  {WAGE_TYPE_LABELS[c.wageType]} {formatYen(c.wageAmount)}
+                  {c.workingDaysPerWeek !== null && c.workingHoursPerDay !== null
+                    ? `週 ${Number(c.workingDaysPerWeek)} 日 × ${Number(c.workingHoursPerDay)} 時間`
+                    : "—"}
+                </td>
+                <td className="px-4 py-3 text-xs">
+                  {c.wageType && c.wageAmount !== null
+                    ? `${WAGE_TYPE_LABELS[c.wageType]} ${formatYen(c.wageAmount)}`
+                    : "—"}
                 </td>
                 <td className="px-4 py-3 text-xs">
                   {c.retirementAllowanceEligible === null

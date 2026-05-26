@@ -54,6 +54,11 @@ export async function runStatutoryGrant(): Promise<RunStatutoryGrantResult> {
   }> = [];
 
   for (const emp of employees) {
+    // CSV 取り込み後は必須項目が空欄の従業員が存在し得る。有給付与は法定計算なので
+    // 雇い入れ日 / 週日数 / 1日時間 が揃っていない場合は付与計算をスキップする。
+    if (emp.hiredAt === null || emp.weeklyWorkDays === null || emp.dailyWorkHours === null) {
+      continue;
+    }
     const weeklyDays = emp.weeklyWorkDays.toNumber();
     const dailyHours = emp.dailyWorkHours.toNumber();
     const ctx: EmployeeContext = {

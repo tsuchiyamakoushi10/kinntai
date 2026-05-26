@@ -171,32 +171,38 @@ export async function loadGenerateInput(
   const constraintByEmp = new Map(constraintsRaw.map((c) => [c.employeeId, c] as const));
   const hourlyByEmp = new Map<string, number>();
   for (const c of contracts) {
-    if (!hourlyByEmp.has(c.employeeId)) hourlyByEmp.set(c.employeeId, c.wageAmount);
+    if (!hourlyByEmp.has(c.employeeId) && c.wageAmount !== null) {
+      hourlyByEmp.set(c.employeeId, c.wageAmount);
+    }
   }
 
-  const employees: EmployeeForGen[] = employeesRaw.map((e) => {
-    const c = constraintByEmp.get(e.id) ?? null;
-    return {
-      id: e.id,
-      employeeCode: e.employeeCode,
-      employmentType: e.employmentType,
-      joinedOn: ymd(e.joinedAt),
-      isOnLeave: e.employmentStatus === "ON_LEAVE",
-      weeklyWorkDays: Number(e.weeklyWorkDays),
-      hourlyWageYen: hourlyByEmp.get(e.id) ?? null,
-      retiredOn: e.retiredAt ? ymd(e.retiredAt) : null,
-      constraint: c
-        ? {
-            maxMonthlyWorkMinutes: c.maxMonthlyWorkMinutes,
-            maxNightShiftsPerMonth: c.maxNightShiftsPerMonth,
-            allowNightShiftOverride: c.allowNightShiftOverride,
-            targetMonthlyWorkDays: c.targetMonthlyWorkDays,
-            annualIncomeCapYen: c.annualIncomeCapYen,
-            unavailableDaysOfWeek: c.unavailableDaysOfWeek,
-          }
-        : null,
-    };
-  });
+  // CSV 取り込みで必須項目が空欄の従業員は自動生成の入力にできないので除外する。
+  // (employmentType / joinedAt / weeklyWorkDays が無いと公休生成や 130 万判定が成立しない)
+  const employees: EmployeeForGen[] = employeesRaw
+    .filter((e) => e.employmentType !== null && e.joinedAt !== null && e.weeklyWorkDays !== null)
+    .map((e) => {
+      const c = constraintByEmp.get(e.id) ?? null;
+      return {
+        id: e.id,
+        employeeCode: e.employeeCode,
+        employmentType: e.employmentType!,
+        joinedOn: ymd(e.joinedAt!),
+        isOnLeave: e.employmentStatus === "ON_LEAVE",
+        weeklyWorkDays: Number(e.weeklyWorkDays),
+        hourlyWageYen: hourlyByEmp.get(e.id) ?? null,
+        retiredOn: e.retiredAt ? ymd(e.retiredAt) : null,
+        constraint: c
+          ? {
+              maxMonthlyWorkMinutes: c.maxMonthlyWorkMinutes,
+              maxNightShiftsPerMonth: c.maxNightShiftsPerMonth,
+              allowNightShiftOverride: c.allowNightShiftOverride,
+              targetMonthlyWorkDays: c.targetMonthlyWorkDays,
+              annualIncomeCapYen: c.annualIncomeCapYen,
+              unavailableDaysOfWeek: c.unavailableDaysOfWeek,
+            }
+          : null,
+      };
+    });
 
   const shiftPatterns: PatternForGen[] = patternsRaw.map((p) => {
     const pi: ShiftPatternInput = {

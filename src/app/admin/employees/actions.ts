@@ -385,7 +385,8 @@ export async function retireEmployee(
   if (employee.employmentStatus === EmploymentStatus.RETIRED) {
     return { error: "この従業員はすでに退職処理されています。", values };
   }
-  if (retiredAt < employee.hiredAt) {
+  // 雇い入れ日が未登録 (CSV 取り込み直後等) の場合は前後判定をスキップ。
+  if (employee.hiredAt !== null && retiredAt < employee.hiredAt) {
     return { error: "退職日は雇い入れ日以降の日付にしてください。", values };
   }
 

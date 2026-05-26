@@ -42,11 +42,13 @@ export default async function EditContractPage({ params }: Props) {
   const initial: EmploymentContractFormValues = {
     contractStartOn: toDateInputValue(contract.contractStartOn),
     contractEndOn: toDateInputValue(contract.contractEndOn),
-    employmentType: contract.employmentType,
-    workingHoursPerDay: String(Number(contract.workingHoursPerDay)),
-    workingDaysPerWeek: String(Number(contract.workingDaysPerWeek)),
-    wageType: contract.wageType,
-    wageAmount: String(contract.wageAmount),
+    employmentType: contract.employmentType ?? "",
+    workingHoursPerDay:
+      contract.workingHoursPerDay !== null ? String(Number(contract.workingHoursPerDay)) : "",
+    workingDaysPerWeek:
+      contract.workingDaysPerWeek !== null ? String(Number(contract.workingDaysPerWeek)) : "",
+    wageType: contract.wageType ?? "",
+    wageAmount: contract.wageAmount !== null ? String(contract.wageAmount) : "",
     isRenewable: contract.isRenewable ? "on" : "",
     renewalCount: String(contract.renewalCount),
     hasRenewalLimit: contract.hasRenewalLimit ? "on" : "",

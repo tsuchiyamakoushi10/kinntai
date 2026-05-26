@@ -283,37 +283,42 @@ model PasswordResetToken {
 // 従業員。退職後も勤怠データを保持するため、退職は employment_status で表現（物理削除しない）。
 // retired_at だけだと休職 (on_leave) を表現できないため、employment_status と併用する。
 // TODO(multi-tenant): tenant_id を追加する際は employee_code の一意性を tenant 内に絞る
+// 2026-05-26 CSV 一括取り込み (案 A) のため、CSV に値が無い項目を nullable 化。
+// 暫定値を入れない方針 (docs/取り込み指示書) に合わせる。投入後 UI から手入力する。
+// nullable 化したもの:
+//   lastNameKana, firstNameKana, birthDate, officeId, jobCategory, employmentType,
+//   joinedAt, hiredAt, weeklyWorkDays, dailyWorkHours, baseWageType, baseWageAmount
 model Employee {
   id                       String           @id @default(uuid()) @db.Uuid
   employeeCode             String           @unique @map("employee_code")
   lastName                 String           @map("last_name")
   firstName                String           @map("first_name")
-  lastNameKana             String           @map("last_name_kana")
-  firstNameKana            String           @map("first_name_kana")
-  birthDate                DateTime         @map("birth_date") @db.Date
+  lastNameKana             String?          @map("last_name_kana")
+  firstNameKana            String?          @map("first_name_kana")
+  birthDate                DateTime?        @map("birth_date") @db.Date
   gender                   Gender?
   phone                    String?
   address                  String?
-  officeId                 String           @map("office_id") @db.Uuid
-  jobCategory              JobCategory      @map("job_category")
-  employmentType           EmploymentType   @map("employment_type")
-  joinedAt                 DateTime         @map("joined_at") @db.Date
-  hiredAt                  DateTime         @map("hired_at") @db.Date
+  officeId                 String?          @map("office_id") @db.Uuid
+  jobCategory              JobCategory?     @map("job_category")
+  employmentType           EmploymentType?  @map("employment_type")
+  joinedAt                 DateTime?        @map("joined_at") @db.Date
+  hiredAt                  DateTime?        @map("hired_at") @db.Date
   employmentStatus         EmploymentStatus @default(ACTIVE) @map("employment_status")
   retiredAt                DateTime?        @map("retired_at") @db.Date
   retirementReason         String?          @map("retirement_reason")
   emergencyContactName     String?          @map("emergency_contact_name")
   emergencyContactRelation String?          @map("emergency_contact_relation")
   emergencyContactPhone    String?          @map("emergency_contact_phone")
-  weeklyWorkDays           Decimal          @map("weekly_work_days") @db.Decimal(3, 1)
-  dailyWorkHours           Decimal          @map("daily_work_hours") @db.Decimal(4, 2)
-  baseWageType             WageType         @map("base_wage_type")
-  baseWageAmount           Int              @map("base_wage_amount")
+  weeklyWorkDays           Decimal?         @map("weekly_work_days") @db.Decimal(3, 1)
+  dailyWorkHours           Decimal?         @map("daily_work_hours") @db.Decimal(4, 2)
+  baseWageType             WageType?        @map("base_wage_type")
+  baseWageAmount           Int?             @map("base_wage_amount")
   notes                    String?
   createdAt                DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  office                Office                 @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  office                Office?                @relation(fields: [officeId], references: [id], onDelete: Restrict)
   user                  User?
   qualifications        Qualification[]
   employmentContracts   EmploymentContract[]
@@ -333,23 +338,27 @@ model Employee {
 // 雇用契約履歴。employees に持つスナップショット (employment_type / weekly_work_days
 // / daily_work_hours / base_wage_*) の履歴元。1 従業員に複数契約を時系列で積む。
 // docs/database-design.md §2.5 参照。
+// 2026-05-26 CSV 一括取り込み (案 A) のため、CSV に値が無い項目を nullable 化。
+// nullable 化したもの:
+//   contractStartOn, employmentType, workingHoursPerDay, workingDaysPerWeek,
+//   wageType, wageAmount, isRenewable, hasEmploymentInsurance, hasSocialInsurance
 model EmploymentContract {
   id                           String               @id @default(uuid()) @db.Uuid
   employeeId                   String               @map("employee_id") @db.Uuid
-  contractStartOn              DateTime             @map("contract_start_on") @db.Date
+  contractStartOn              DateTime?            @map("contract_start_on") @db.Date
   contractEndOn                DateTime?            @map("contract_end_on") @db.Date
-  employmentType               EmploymentType       @map("employment_type")
-  workingHoursPerDay           Decimal              @map("working_hours_per_day") @db.Decimal(4, 2)
-  workingDaysPerWeek           Decimal              @map("working_days_per_week") @db.Decimal(3, 1)
-  wageType                     WageType             @map("wage_type")
-  wageAmount                   Int                  @map("wage_amount")
-  isRenewable                  Boolean              @map("is_renewable")
+  employmentType               EmploymentType?      @map("employment_type")
+  workingHoursPerDay           Decimal?             @map("working_hours_per_day") @db.Decimal(4, 2)
+  workingDaysPerWeek           Decimal?             @map("working_days_per_week") @db.Decimal(3, 1)
+  wageType                     WageType?            @map("wage_type")
+  wageAmount                   Int?                 @map("wage_amount")
+  isRenewable                  Boolean?             @map("is_renewable")
   renewalCount                 Int                  @default(0) @map("renewal_count")
   hasRenewalLimit              Boolean              @default(false) @map("has_renewal_limit")
   renewalLimitCount            Int?                 @map("renewal_limit_count")
   renewalCriteria              String?              @map("renewal_criteria")
-  hasEmploymentInsurance       Boolean              @map("has_employment_insurance")
-  hasSocialInsurance           Boolean              @map("has_social_insurance")
+  hasEmploymentInsurance       Boolean?             @map("has_employment_insurance")
+  hasSocialInsurance           Boolean?             @map("has_social_insurance")
   // NULL = 自動判定値を採用、true/false = 管理者による手動上書き
   retirementAllowanceEligible  Boolean?             @map("retirement_allowance_eligible")
   careerSubsidyTarget          Boolean              @default(false) @map("career_subsidy_target")
@@ -388,7 +397,8 @@ model Qualification {
   id                String            @id @default(uuid()) @db.Uuid
   employeeId        String            @map("employee_id") @db.Uuid
   qualificationType QualificationType @map("qualification_type")
-  acquiredOn        DateTime          @map("acquired_on") @db.Date
+  // 2026-05-26 CSV 取り込みで取得日不明なため nullable 化。
+  acquiredOn        DateTime?         @map("acquired_on") @db.Date
   certificateNumber String?           @map("certificate_number")
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -603,7 +613,8 @@ model TrainingRecord {
   trainingName String       @map("training_name")
   trainingType TrainingType @map("training_type")
   costYen      Int?         @map("cost_yen")
-  trainedOn    DateTime     @map("trained_on") @db.Date
+  // 2026-05-26 CSV 取り込みで受講日不明なため nullable 化。
+  trainedOn    DateTime?    @map("trained_on") @db.Date
   notes        String?
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)

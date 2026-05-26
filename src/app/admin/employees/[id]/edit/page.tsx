@@ -36,20 +36,22 @@ export default async function EditEmployeePage({ params }: Props) {
   const initial: EmployeeFormValues = {
     lastName: employee.lastName,
     firstName: employee.firstName,
-    lastNameKana: employee.lastNameKana,
-    firstNameKana: employee.firstNameKana,
+    lastNameKana: employee.lastNameKana ?? "",
+    firstNameKana: employee.firstNameKana ?? "",
     email: employee.user?.email ?? "",
     phone: employee.phone ?? "",
     birthDate: toDateInputValue(employee.birthDate),
-    officeId: employee.officeId,
-    jobCategory: employee.jobCategory,
-    employmentType: employee.employmentType,
+    officeId: employee.officeId ?? "",
+    jobCategory: employee.jobCategory ?? "",
+    employmentType: employee.employmentType ?? "",
     joinedAt: toDateInputValue(employee.joinedAt),
     hiredAt: toDateInputValue(employee.hiredAt),
-    weeklyWorkDays: Number(employee.weeklyWorkDays).toString(),
-    dailyWorkHours: Number(employee.dailyWorkHours).toString(),
-    baseWageType: employee.baseWageType,
-    baseWageAmount: employee.baseWageAmount.toString(),
+    weeklyWorkDays:
+      employee.weeklyWorkDays !== null ? Number(employee.weeklyWorkDays).toString() : "",
+    dailyWorkHours:
+      employee.dailyWorkHours !== null ? Number(employee.dailyWorkHours).toString() : "",
+    baseWageType: employee.baseWageType ?? "",
+    baseWageAmount: employee.baseWageAmount !== null ? employee.baseWageAmount.toString() : "",
   };
 
   const fullName = `${employee.lastName} ${employee.firstName}`;

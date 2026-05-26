@@ -86,7 +86,10 @@ export async function GET(
     where: { id },
     select: { employeeCode: true },
   });
-  const stamp = vm.contract.contractStartOn.toISOString().slice(0, 10);
+  const stamp =
+    vm.contract.contractStartOn !== null
+      ? vm.contract.contractStartOn.toISOString().slice(0, 10)
+      : "no-date";
   const baseName = type === "contract" ? "雇用契約書" : "労働条件通知書";
   const filename = `${baseName}_${employee?.employeeCode ?? id}_${stamp}.pdf`;
 
