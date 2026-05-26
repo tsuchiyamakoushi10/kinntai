@@ -65,3 +65,8 @@ docs/*.pdf
 
 # uploaded employee documents (local FS storage driver only, never check in PII)
 /storage/
+
+# 本物の社員データ (個人情報) は絶対にコミットしない。
+# 取り込み済みの CSV / Excel はローカル運用ファイル扱い。
+/*.csv
+/*.xlsx
