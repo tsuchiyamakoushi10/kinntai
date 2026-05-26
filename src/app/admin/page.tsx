@@ -1,12 +1,6 @@
 import Link from "next/link";
 
-import {
-  currentJstYm,
-  monthRange,
-  todayJstDate,
-  todayJstYmd,
-  toJstYmd,
-} from "@/lib/attendance/business-date";
+import { currentJstYm, todayJstDate, todayJstYmd, toJstYmd } from "@/lib/attendance/business-date";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { DOCUMENT_TYPE_LABELS } from "@/lib/employee-labels";
@@ -19,33 +13,23 @@ export const dynamic = "force-dynamic";
  * S-A-01 管理者ダッシュボード。
  *
  * 「今日 (JST) の現場で何が起きているか」を一画面で見せ、対応が必要な
- * 数字をハイライトする。重い集計はせず、件数 / カウントベースに留める。
+ * 数字をハイライトする。
  *
- * 構成:
- *   - 上段: 全社サマリ（勤務中 / 承認待ち / 年5日アラート / 在籍）
- *   - 中段: 拠点別の本日状況テーブル
- *   - 下段: 主要画面へのクイックリンク
+ * 勤怠 (打刻) は現運用では未使用のため、勤務中 / 休憩中 / 承認待ち /
+ * 本日の出勤状況テーブル / 勤怠承認 リンクは非表示。
  */
 export default async function AdminDashboardPage() {
   await requireAdmin();
 
   const today = todayJstDate();
   const ym = currentJstYm();
-  const month = monthRange(ym);
   const asOf = todayJstYmd();
 
   // 書類期限アラート: 期限切れ + 30 日以内に期限切れになるものを件数集計し、上位を一覧で出す。
   const docWarnUntil = new Date(today);
   docWarnUntil.setDate(docWarnUntil.getDate() + 30);
 
-  const [
-    offices,
-    todaysAttendance,
-    monthlyPendingCount,
-    employeesForLeave,
-    expiringDocs,
-    expiredDocsCount,
-  ] = await Promise.all([
+  const [offices, employeesForLeave, expiringDocs, expiredDocsCount] = await Promise.all([
     prisma.office.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -53,21 +37,6 @@ export default async function AdminDashboardPage() {
         id: true,
         name: true,
         _count: { select: { employees: { where: { retiredAt: null } } } },
-      },
-    }),
-    prisma.attendanceRecord.findMany({
-      where: { workDate: today },
-      select: {
-        officeId: true,
-        clockInAt: true,
-        clockOutAt: true,
-        breakRecords: { select: { breakEndAt: true } },
-      },
-    }),
-    prisma.attendanceRecord.count({
-      where: {
-        workDate: { gte: month.start, lt: month.end },
-        status: { in: ["OPEN", "SUBMITTED"] },
       },
     }),
     prisma.employee.findMany({
@@ -109,35 +78,13 @@ export default async function AdminDashboardPage() {
     id: string;
     name: string;
     activeEmployees: number;
-    onShift: number;
-    onBreak: number;
-    finished: number;
   };
 
-  const byOffice = new Map<string, OfficeStat>();
-  for (const o of offices) {
-    byOffice.set(o.id, {
-      id: o.id,
-      name: o.name,
-      activeEmployees: o._count.employees,
-      onShift: 0,
-      onBreak: 0,
-      finished: 0,
-    });
-  }
-
-  for (const a of todaysAttendance) {
-    const stat = byOffice.get(a.officeId);
-    if (!stat) continue;
-    if (!a.clockInAt) continue;
-    if (a.clockOutAt) {
-      stat.finished += 1;
-      continue;
-    }
-    const openBreak = a.breakRecords.some((b) => b.breakEndAt === null);
-    if (openBreak) stat.onBreak += 1;
-    else stat.onShift += 1;
-  }
+  const officeStats: OfficeStat[] = offices.map((o) => ({
+    id: o.id,
+    name: o.name,
+    activeEmployees: o._count.employees,
+  }));
 
   // 年5日アラート: violated + warn を「要対応」として 1 件カウント。watch / ok は集計外。
   let fiveDayWarn = 0;
@@ -160,11 +107,7 @@ export default async function AdminDashboardPage() {
     }
   }
 
-  const stats = Array.from(byOffice.values());
-  const totalOnShift = stats.reduce((acc, s) => acc + s.onShift, 0);
-  const totalOnBreak = stats.reduce((acc, s) => acc + s.onBreak, 0);
-  const totalFinished = stats.reduce((acc, s) => acc + s.finished, 0);
-  const totalActive = stats.reduce((acc, s) => acc + s.activeEmployees, 0);
+  const totalActive = officeStats.reduce((acc, s) => acc + s.activeEmployees, 0);
   const fiveDayActionable = fiveDayWarn + fiveDayViolated;
   const expiringDocsCount = expiringDocs.length;
 
@@ -177,16 +120,8 @@ export default async function AdminDashboardPage() {
         </p>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <SummaryCard label="勤務中" value={totalOnShift} unit="人" tone="primary" />
-        <SummaryCard label="休憩中" value={totalOnBreak} unit="人" tone="muted" />
-        <SummaryCard
-          label="今月の承認待ち"
-          value={monthlyPendingCount}
-          unit="件"
-          tone={monthlyPendingCount > 0 ? "warning" : "muted"}
-          href="/admin/attendance"
-        />
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <SummaryCard label="在籍" value={totalActive} unit="人" tone="primary" />
         <SummaryCard
           label="年5日アラート"
           value={fiveDayActionable}
@@ -252,83 +187,46 @@ export default async function AdminDashboardPage() {
 
       <section className="rounded-xl border border-slate-200 bg-white">
         <header className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-          <h2 className="text-base font-semibold text-slate-800">本日の出勤状況</h2>
-          <span className="text-xs text-slate-500">
-            全社 {totalOnShift + totalOnBreak} / {totalActive} 人が稼働中
-          </span>
+          <h2 className="text-base font-semibold text-slate-800">拠点別 在籍人数</h2>
+          <span className="text-xs text-slate-500">全社 {totalActive} 人</span>
         </header>
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-600">
             <tr>
               <th className="px-5 py-2.5 font-medium">拠点</th>
               <th className="px-5 py-2.5 text-right font-medium">在籍</th>
-              <th className="px-5 py-2.5 text-right font-medium">勤務中</th>
-              <th className="px-5 py-2.5 text-right font-medium">休憩中</th>
-              <th className="px-5 py-2.5 text-right font-medium">退勤済</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {stats.map((s) => (
+            {officeStats.map((s) => (
               <tr key={s.id}>
                 <td className="px-5 py-2.5 font-medium text-slate-900">{s.name}</td>
                 <td className="px-5 py-2.5 text-right text-slate-600 tabular-nums">
                   {s.activeEmployees}
                 </td>
-                <td className="px-5 py-2.5 text-right tabular-nums">
-                  {s.onShift > 0 ? (
-                    <span className="font-semibold text-emerald-700">{s.onShift}</span>
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </td>
-                <td className="px-5 py-2.5 text-right tabular-nums">
-                  {s.onBreak > 0 ? (
-                    <span className="font-semibold text-amber-700">{s.onBreak}</span>
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </td>
-                <td className="px-5 py-2.5 text-right text-slate-600 tabular-nums">
-                  {s.finished > 0 ? s.finished : <span className="text-slate-400">—</span>}
-                </td>
               </tr>
             ))}
-            {stats.length === 0 && (
+            {officeStats.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-5 py-8 text-center text-slate-500">
-                  稼働中の拠点がありません。
+                <td colSpan={2} className="px-5 py-8 text-center text-slate-500">
+                  拠点がありません。
                 </td>
               </tr>
             )}
           </tbody>
-          {stats.length > 0 && (
-            <tfoot className="bg-slate-50 text-slate-700">
-              <tr>
-                <td className="px-5 py-2.5 font-semibold">全社</td>
-                <td className="px-5 py-2.5 text-right tabular-nums">{totalActive}</td>
-                <td className="px-5 py-2.5 text-right font-semibold tabular-nums">
-                  {totalOnShift}
-                </td>
-                <td className="px-5 py-2.5 text-right font-semibold tabular-nums">
-                  {totalOnBreak}
-                </td>
-                <td className="px-5 py-2.5 text-right tabular-nums">{totalFinished}</td>
-              </tr>
-            </tfoot>
-          )}
         </table>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <QuickLink
-          href="/admin/attendance"
-          title="勤怠承認"
-          description="月別の打刻を確認して承認します"
-        />
-        <QuickLink
           href="/admin/shifts"
           title="勤務表"
           description="拠点ごとに月次のシフトを編集します"
+        />
+        <QuickLink
+          href="/admin/shift-preferences"
+          title="シフト希望"
+          description="紙で集めた希望休を月別に登録します"
         />
         <QuickLink
           href="/admin/leave"
@@ -340,11 +238,7 @@ export default async function AdminDashboardPage() {
           title="年5日アラート"
           description="取得義務に達していない従業員の一覧"
         />
-        <QuickLink
-          href="/admin/employees"
-          title="従業員"
-          description="基本情報・雇用契約・タブレット PIN の管理"
-        />
+        <QuickLink href="/admin/employees" title="従業員" description="基本情報・雇用契約の管理" />
         <QuickLink
           href="/admin/shift-patterns"
           title="シフトパターン"

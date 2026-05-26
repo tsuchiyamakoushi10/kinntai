@@ -15,28 +15,56 @@ import {
   SHIFT_PREFERENCE_STATUS_LABELS,
   SHIFT_PREFERENCE_TYPE_LABELS,
 } from "@/lib/employee-labels";
-import { formatDate } from "@/lib/format";
+import { formatDate, toDateInputValue } from "@/lib/format";
 
-import { acceptShiftPreference, rejectShiftPreference, resetShiftPreference } from "./actions";
+import {
+  acceptShiftPreference,
+  bulkSetMonthlyOffPreferences,
+  createShiftPreferenceByAdmin,
+  deleteShiftPreference,
+  rejectShiftPreference,
+  resetShiftPreference,
+} from "./actions";
+import { BulkOffCalendar } from "./bulk-off-calendar";
+import { ProxyPreferenceForm } from "./proxy-form";
 
 export const dynamic = "force-dynamic";
 
 type Props = {
-  searchParams: Promise<{ ym?: string; officeId?: string; status?: string }>;
+  searchParams: Promise<{
+    ym?: string;
+    officeId?: string;
+    status?: string;
+    bulkEmployeeId?: string;
+  }>;
 };
 
 export default async function AdminShiftPreferencesPage({ searchParams }: Props) {
   await requireAdmin();
-  const { ym: ymRaw, officeId, status: statusRaw } = await searchParams;
+  const { ym: ymRaw, officeId, status: statusRaw, bulkEmployeeId } = await searchParams;
   const ym = isValidYm(ymRaw) ? ymRaw : currentJstYm();
   const month = monthRange(ym);
   const status = isValidStatus(statusRaw) ? statusRaw : "ALL";
 
-  const [offices, preferences] = await Promise.all([
+  const [offices, employees, preferences] = await Promise.all([
     prisma.office.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
       select: { id: true, name: true, code: true },
+    }),
+    prisma.employee.findMany({
+      where: {
+        retiredAt: null,
+        ...(officeId ? { officeId } : {}),
+      },
+      orderBy: [{ office: { code: "asc" } }, { employeeCode: "asc" }],
+      select: {
+        id: true,
+        employeeCode: true,
+        lastName: true,
+        firstName: true,
+        office: { select: { name: true } },
+      },
     }),
     prisma.shiftPreference.findMany({
       where: {
@@ -64,6 +92,37 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
     accepted: preferences.filter((p) => p.status === "ACCEPTED").length,
     rejected: preferences.filter((p) => p.status === "REJECTED").length,
   };
+
+  const employeeOptions = employees.map((e) => ({
+    id: e.id,
+    employeeCode: e.employeeCode,
+    name: `${e.lastName} ${e.firstName}`,
+    officeName: e.office?.name ?? "—",
+  }));
+
+  // 月絞り込みと連動した既定の対象日 (当月の 1 日)。
+  const defaultTargetDate = `${ym}-01`;
+
+  // 月初の曜日 (JST 0=日 .. 6=土)。fromJstYmd は UTC 0 時に揃えるので
+  // 月初の getUTCDay がそのまま JST 曜日になる。
+  const firstWeekday = month.start.getUTCDay();
+
+  // 一括カレンダー対象社員と、その月の既存希望休を取得
+  const bulkEmployee = bulkEmployeeId
+    ? (employeeOptions.find((e) => e.id === bulkEmployeeId) ?? null)
+    : null;
+  const bulkExistingOffDays = bulkEmployee
+    ? (
+        await prisma.shiftPreference.findMany({
+          where: {
+            employeeId: bulkEmployee.id,
+            preferenceType: "REQUESTED_OFF",
+            targetDate: { gte: month.start, lt: month.end },
+          },
+          select: { targetDate: true },
+        })
+      ).map((p) => toDateInputValue(p.targetDate))
+    : [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -130,6 +189,69 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
         <SummaryCard label="却下" value={counts.rejected} tone="muted" />
       </section>
 
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-slate-800">
+          希望休カレンダー入力（社員 1 人ずつ）
+        </h2>
+        <p className="text-xs text-slate-500">
+          紙で集めた希望休をカレンダー上でまとめてチェック → 保存。1 人ぶんずつ繰り返します。
+        </p>
+        <form
+          method="get"
+          className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm"
+        >
+          <input type="hidden" name="ym" value={ym} />
+          <input type="hidden" name="officeId" value={officeId ?? ""} />
+          <input type="hidden" name="status" value={status} />
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-600">対象社員</span>
+            <select
+              name="bulkEmployeeId"
+              defaultValue={bulkEmployee?.id ?? ""}
+              className="rounded-md border border-slate-300 px-3 py-2"
+            >
+              <option value="">選択してください</option>
+              {employeeOptions.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}（{e.officeName}）
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            カレンダーを開く
+          </button>
+        </form>
+
+        {bulkEmployee ? (
+          <BulkOffCalendar
+            action={bulkSetMonthlyOffPreferences}
+            employeeId={bulkEmployee.id}
+            employeeName={bulkEmployee.name}
+            ym={ym}
+            days={month.days}
+            firstWeekday={firstWeekday}
+            initialSelected={bulkExistingOffDays}
+          />
+        ) : null}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-slate-800">単発の代理入力</h2>
+        <p className="text-xs text-slate-500">
+          1 件だけ追加したい場合はここから。種別で「希望休 / 希望夜勤 / 勤務不可」を選べます。
+          複数日まとめて入れる時は上のカレンダー入力が便利です。
+        </p>
+        <ProxyPreferenceForm
+          action={createShiftPreferenceByAdmin}
+          employees={employeeOptions}
+          defaultDate={defaultTargetDate}
+        />
+      </section>
+
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         {preferences.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-slate-500">該当する希望はありません。</p>
@@ -159,7 +281,7 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
                     </Link>
                     <div className="text-xs text-slate-500">{p.employee.employeeCode}</div>
                   </td>
-                  <td className="px-4 py-3 text-xs">{p.employee.office.name}</td>
+                  <td className="px-4 py-3 text-xs">{p.employee.office?.name ?? "—"}</td>
                   <td className="px-4 py-3 text-xs">
                     {SHIFT_PREFERENCE_TYPE_LABELS[p.preferenceType]}
                   </td>
@@ -199,6 +321,15 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
                           </button>
                         </form>
                       )}
+                      <form action={deleteShiftPreference.bind(null, p.id)}>
+                        <button
+                          type="submit"
+                          aria-label="削除"
+                          className="rounded-md border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                        >
+                          削除
+                        </button>
+                      </form>
                     </div>
                   </td>
                 </tr>

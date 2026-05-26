@@ -20,7 +20,8 @@ const ITEMS: Item[] = [
   { label: "自動作成", href: "/admin/shifts/auto" },
   { label: "勤務表", href: "/admin/shifts" },
   { label: "シフト希望", href: "/admin/shift-preferences" },
-  { label: "勤怠", href: "/admin/attendance" },
+  // 勤怠 (打刻) は現運用では未使用のため非表示。再開時はコメントを戻す。
+  // { label: "勤怠", href: "/admin/attendance" },
   { label: "有給管理", href: "/admin/leave" },
 ];
 
