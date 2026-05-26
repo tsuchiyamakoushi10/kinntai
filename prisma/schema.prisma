@@ -17,8 +17,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // DATABASE_URL: 通常はコネクションプール経由 (Supabase pgBouncer / port 6543)。
+  // DIRECT_URL : マイグレーション・introspection で使う直結 URL (port 5432)。
+  //               Supabase Integration が両方を自動で Vercel に流し込む。
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // =============================================================================
