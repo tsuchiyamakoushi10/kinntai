@@ -18,10 +18,18 @@ if (codespaceName) {
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // Playwright は Node ランタイムで動的に起動する重い依存なので、webpack の
+  // Chromium 系は Node ランタイムで動的に起動する重い依存なので、webpack の
   // バンドル対象から外してネイティブモジュールの解決失敗を防ぐ。
   // (S-A-15 / S-A-18 PDF 出力用、route handler から動的 import される)
-  serverExternalPackages: ["@playwright/test", "playwright", "playwright-core"],
+  // - Playwright: ローカル / Codespaces / 自前サーバ用
+  // - @sparticuz/chromium + puppeteer-core: Vercel/Lambda の serverless 用
+  serverExternalPackages: [
+    "@playwright/test",
+    "playwright",
+    "playwright-core",
+    "@sparticuz/chromium",
+    "puppeteer-core",
+  ],
   experimental: {
     serverActions: {
       allowedOrigins: serverActionAllowedOrigins,

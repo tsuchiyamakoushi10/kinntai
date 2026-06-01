@@ -1,29 +1,62 @@
 /**
- * HTML テンプレを Playwright Chromium で PDF にレンダリングする。
+ * HTML テンプレを Chromium で PDF にレンダリングする。
  *
- * scripts/build-demo-pdf.ts と同じスタックを使い、A4 縦・日本語フォント
- * (IPAGothic / WenQuanYi Zen Hei / Noto Sans CJK JP) を効かせる。
- * 既存 docs:pdf で導入済の依存だけで動く (追加 npm パッケージ不要)。
+ * 実行環境で 2 系統を切り替える:
+ * - Vercel / Lambda (serverless): puppeteer-core + @sparticuz/chromium。
+ *   バイナリサイズが小さく Lambda の 250MB 制限内に収まる。
+ * - ローカル / Codespaces / 自前サーバ: Playwright の Chromium。
+ *   IPAGothic / WenQuanYi Zen Hei / Noto Sans CJK JP のフォントが効く。
  */
 import type { ContractViewModel } from "./data";
 import { renderContractHtml } from "./html-template";
 
+const PDF_OPTIONS = {
+  format: "A4" as const,
+  printBackground: true,
+  margin: { top: "16mm", bottom: "16mm", left: "14mm", right: "14mm" },
+};
+
+function isServerless(): boolean {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+}
+
 /** 1 契約分の PDF を Buffer で返す。 */
 export async function renderContractPdf(vm: ContractViewModel): Promise<Buffer> {
   const fullHtml = renderContractHtml(vm);
+  return isServerless() ? renderWithPuppeteer(fullHtml) : renderWithPlaywright(fullHtml);
+}
 
-  // Playwright は重いので、リクエスト時に動的 import (起動コスト削減)。
+async function renderWithPlaywright(html: string): Promise<Buffer> {
   const { chromium } = await import("@playwright/test");
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
-    await page.setContent(fullHtml, { waitUntil: "networkidle" });
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "16mm", bottom: "16mm", left: "14mm", right: "14mm" },
-    });
-    return pdf;
+    await page.setContent(html, { waitUntil: "networkidle" });
+    await page.evaluate(() => document.fonts.ready);
+    return await page.pdf(PDF_OPTIONS);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function renderWithPuppeteer(html: string): Promise<Buffer> {
+  const [{ default: chromium }, puppeteer] = await Promise.all([
+    import("@sparticuz/chromium"),
+    import("puppeteer-core"),
+  ]);
+  const browser = await puppeteer.launch({
+    args: chromium.args,
+    executablePath: await chromium.executablePath(),
+    headless: true,
+  });
+  try {
+    const page = await browser.newPage();
+    // puppeteer-core の setContent は networkidle 系を受け付けないため
+    // load + document.fonts.ready で Google Fonts (Noto Sans JP) の到着を待つ
+    await page.setContent(html, { waitUntil: "load" });
+    await page.evaluate(() => document.fonts.ready);
+    const pdf = await page.pdf(PDF_OPTIONS);
+    return Buffer.from(pdf);
   } finally {
     await browser.close();
   }

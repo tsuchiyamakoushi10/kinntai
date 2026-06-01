@@ -206,9 +206,10 @@ export function renderContractHtml(vm: ContractViewModel): string {
 }
 
 const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
 @page { size: A4; margin: 16mm 14mm; }
 html, body {
-  font-family: "IPAGothic", "WenQuanYi Zen Hei", "Noto Sans CJK JP", sans-serif;
+  font-family: "Noto Sans JP", "IPAGothic", "WenQuanYi Zen Hei", "Noto Sans CJK JP", sans-serif;
   font-size: 9.5pt;
   line-height: 1.5;
   color: #1f2937;
