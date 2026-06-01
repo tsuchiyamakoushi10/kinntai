@@ -12,7 +12,6 @@
  */
 
 import fs from "node:fs";
-import path from "node:path";
 
 // ============================================================================
 // 1. CSV パース (依存追加せず手書き)
@@ -72,7 +71,6 @@ function splitCsvLine(line: string): string[] {
 // ============================================================================
 
 type EmploymentType = "FULL_TIME" | "CONTRACT" | "PART_TIME";
-type WageType = "HOURLY" | "MONTHLY";
 type JobCategory =
   | "CARE_WORKER"
   | "NURSE"
