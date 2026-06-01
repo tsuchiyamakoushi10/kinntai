@@ -20,14 +20,7 @@ import { authConfig } from "@/auth.config";
 
 const { auth } = NextAuth(authConfig);
 
-const PUBLIC_PREFIXES = [
-  "/login",
-  "/password-reset",
-  "/api/auth",
-  "/api/whoami",
-  "/_next",
-  "/favicon",
-];
+const PUBLIC_PREFIXES = ["/login", "/password-reset", "/api/auth", "/_next", "/favicon"];
 
 export default auth((req) => {
   const { nextUrl } = req;
