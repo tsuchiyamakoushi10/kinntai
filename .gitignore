@@ -32,6 +32,8 @@ yarn-error.log*
 .env.development
 .env.production
 .env.test
+# vercel env pull の一時ファイル (本番接続文字列を含むため絶対にコミットしない)
+.env*.tmp
 
 # vercel
 .vercel
