@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { signOut } from "@/auth";
@@ -23,7 +24,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">管理</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-600">{name} さん</span>
+          <Link
+            href="/admin/profile"
+            className="text-sm text-slate-600 hover:text-slate-900 hover:underline"
+          >
+            {name} さん
+          </Link>
           <form action={logoutAction}>
             <button
               type="submit"
