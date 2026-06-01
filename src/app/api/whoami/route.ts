@@ -23,6 +23,13 @@ export async function GET(): Promise<Response> {
   const projectRef = refMatch ? refMatch[1] : "(parse failed)";
 
   try {
+    // 「同じ URL なのに DB が違う」可能性を見るための raw クエリ
+    const sessionInfo = (await prisma.$queryRawUnsafe(
+      "select current_database() as db, current_user as usr, current_schema as schema, version() as version",
+    )) as Array<Record<string, string>>;
+    const publicTables = (await prisma.$queryRawUnsafe(
+      "select count(*)::int as count from pg_tables where schemaname = 'public'",
+    )) as Array<{ count: number }>;
     const userCount = await prisma.user.count();
     const adminUser = await prisma.user.findFirst({
       where: { role: "ADMIN" },
@@ -38,6 +45,8 @@ export async function GET(): Promise<Response> {
       projectRef,
       databaseUrl: masked,
       directUrl: directMasked,
+      session: sessionInfo[0],
+      publicTableCount: publicTables[0]?.count,
       userCount,
       firstAdmin: adminUser,
       targetAdmin: targetUser,
