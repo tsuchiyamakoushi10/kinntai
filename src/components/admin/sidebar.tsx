@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { ATTENDANCE_ENABLED } from "@/lib/feature-flags";
+
 type Item = {
   label: string;
   href?: string;
@@ -10,6 +12,7 @@ type Item = {
 };
 
 // MVP の管理者メニュー。href が無いものは「準備中」として disabled 表示。
+// 勤怠 (打刻) は封印中のため ATTENDANCE_ENABLED が true のときだけ表示する。
 const ITEMS: Item[] = [
   { label: "ダッシュボード", href: "/admin" },
   { label: "会社情報", href: "/admin/company-profile" },
@@ -20,8 +23,7 @@ const ITEMS: Item[] = [
   { label: "自動作成", href: "/admin/shifts/auto" },
   { label: "勤務表", href: "/admin/shifts" },
   { label: "シフト希望", href: "/admin/shift-preferences" },
-  // 勤怠 (打刻) は現運用では未使用のため非表示。再開時はコメントを戻す。
-  // { label: "勤怠", href: "/admin/attendance" },
+  ...(ATTENDANCE_ENABLED ? [{ label: "勤怠", href: "/admin/attendance" }] : []),
   { label: "有給管理", href: "/admin/leave" },
 ];
 

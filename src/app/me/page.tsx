@@ -11,6 +11,7 @@ import {
   deriveState,
   type PunchAction,
 } from "@/lib/attendance/punch";
+import { ATTENDANCE_ENABLED } from "@/lib/feature-flags";
 
 import { punch } from "./actions";
 
@@ -33,10 +34,12 @@ export default async function MyHomePage({ searchParams }: PageProps) {
   const employeeId = session.user.employeeId;
   const { err } = await searchParams;
 
+  // 打刻封印中は勤怠データを取得せず、状態表示・打刻ボタンも出さない。
   const todayDate = todayJstDate();
-  const attendance = employeeId ? await findRelevantAttendance(employeeId, todayDate) : null;
+  const attendance =
+    ATTENDANCE_ENABLED && employeeId ? await findRelevantAttendance(employeeId, todayDate) : null;
   const state = deriveState(attendance, attendance?.breakRecords ?? []);
-  const actions = allowedActions(state);
+  const actions = ATTENDANCE_ENABLED ? allowedActions(state) : [];
   const openBreakStart =
     attendance?.breakRecords.find((b) => b.breakEndAt === null)?.breakStartAt ?? null;
 
@@ -54,30 +57,32 @@ export default async function MyHomePage({ searchParams }: PageProps) {
         </form>
       </header>
 
-      <section className="rounded-2xl bg-white p-5 shadow-sm">
-        <p className="text-xs font-medium text-slate-500">いまの状態</p>
-        <p className="mt-1 text-3xl font-bold tracking-tight text-slate-900">
-          {STATE_LABELS[state]}
-        </p>
-        <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-          <dt className="text-slate-500">出勤</dt>
-          <dd className="text-right text-slate-900 tabular-nums">
-            {formatJstHm(attendance?.clockInAt)}
-          </dd>
-          {openBreakStart && (
-            <>
-              <dt className="text-slate-500">休憩開始</dt>
-              <dd className="text-right text-slate-900 tabular-nums">
-                {formatJstHm(openBreakStart)}
-              </dd>
-            </>
-          )}
-          <dt className="text-slate-500">退勤</dt>
-          <dd className="text-right text-slate-900 tabular-nums">
-            {formatJstHm(attendance?.clockOutAt)}
-          </dd>
-        </dl>
-      </section>
+      {ATTENDANCE_ENABLED && (
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <p className="text-xs font-medium text-slate-500">いまの状態</p>
+          <p className="mt-1 text-3xl font-bold tracking-tight text-slate-900">
+            {STATE_LABELS[state]}
+          </p>
+          <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+            <dt className="text-slate-500">出勤</dt>
+            <dd className="text-right text-slate-900 tabular-nums">
+              {formatJstHm(attendance?.clockInAt)}
+            </dd>
+            {openBreakStart && (
+              <>
+                <dt className="text-slate-500">休憩開始</dt>
+                <dd className="text-right text-slate-900 tabular-nums">
+                  {formatJstHm(openBreakStart)}
+                </dd>
+              </>
+            )}
+            <dt className="text-slate-500">退勤</dt>
+            <dd className="text-right text-slate-900 tabular-nums">
+              {formatJstHm(attendance?.clockOutAt)}
+            </dd>
+          </dl>
+        </section>
+      )}
 
       {err && (
         <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
@@ -85,32 +90,35 @@ export default async function MyHomePage({ searchParams }: PageProps) {
         </p>
       )}
 
-      {!employeeId ? (
-        <p className="rounded-2xl bg-white p-5 text-sm text-slate-700 shadow-sm">
-          このアカウントには従業員情報が紐づいていません。管理者にお問い合わせください。
-        </p>
-      ) : actions.length === 0 ? (
-        <p className="rounded-2xl bg-white p-5 text-center text-sm text-slate-700 shadow-sm">
-          今日の出退勤は完了しています。修正は管理者へ連絡してください。
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 gap-3">
-          {actions.map((a) => (
-            <PunchButton key={a} action={a} />
-          ))}
-        </div>
-      )}
+      {ATTENDANCE_ENABLED &&
+        (!employeeId ? (
+          <p className="rounded-2xl bg-white p-5 text-sm text-slate-700 shadow-sm">
+            このアカウントには従業員情報が紐づいていません。管理者にお問い合わせください。
+          </p>
+        ) : actions.length === 0 ? (
+          <p className="rounded-2xl bg-white p-5 text-center text-sm text-slate-700 shadow-sm">
+            今日の出退勤は完了しています。修正は管理者へ連絡してください。
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3">
+            {actions.map((a) => (
+              <PunchButton key={a} action={a} />
+            ))}
+          </div>
+        ))}
 
       <nav className="mt-2 grid grid-cols-1 gap-2">
-        <Link
-          href="/me/attendance"
-          className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
-        >
-          <span>今月の勤怠を見る</span>
-          <span aria-hidden className="text-slate-400">
-            →
-          </span>
-        </Link>
+        {ATTENDANCE_ENABLED && (
+          <Link
+            href="/me/attendance"
+            className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
+          >
+            <span>今月の勤怠を見る</span>
+            <span aria-hidden className="text-slate-400">
+              →
+            </span>
+          </Link>
+        )}
         <Link
           href="/me/shifts"
           className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"

@@ -17,10 +17,14 @@ import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 
 import { authConfig } from "@/auth.config";
+import { ATTENDANCE_ENABLED } from "@/lib/feature-flags";
 
 const { auth } = NextAuth(authConfig);
 
 const PUBLIC_PREFIXES = ["/login", "/password-reset", "/api/auth", "/_next", "/favicon"];
+
+// 打刻 (勤怠) 封印中は直 URL アクセスもブロックする経路。Phase 2 で解禁。
+const ATTENDANCE_PREFIXES = ["/tablet", "/me/attendance", "/admin/attendance"];
 
 export default auth((req) => {
   const { nextUrl } = req;
@@ -28,6 +32,14 @@ export default auth((req) => {
 
   if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
+  }
+
+  // 打刻封印中は関連ルートをホームへ送る。認証要否の判定より先に弾く。
+  if (
+    !ATTENDANCE_ENABLED &&
+    ATTENDANCE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+  ) {
+    return NextResponse.redirect(new URL("/", nextUrl));
   }
 
   // /tablet 配下は専用 cookie で認証する。/tablet/setup だけは管理者ログインが必須。

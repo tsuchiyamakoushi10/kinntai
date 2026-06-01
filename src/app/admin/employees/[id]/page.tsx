@@ -18,6 +18,7 @@ import {
   TRAINING_TYPE_LABELS,
   WAGE_TYPE_LABELS,
 } from "@/lib/employee-labels";
+import { ATTENDANCE_ENABLED } from "@/lib/feature-flags";
 import { formatDate, formatYen } from "@/lib/format";
 import { projectAnnualIncome, type IncomeProjectionResult } from "@/lib/shift/income-projection";
 import { createSignedToken } from "@/lib/storage";
@@ -404,16 +405,18 @@ function BasicTab({
         )}
       </Card>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-slate-800">共有タブレット打刻</h2>
-        <div className="mt-3">
-          <TabletPinForm
-            hasPin={hasTabletPin}
-            setAction={setPinAction}
-            clearAction={clearPinAction}
-          />
-        </div>
-      </section>
+      {ATTENDANCE_ENABLED && (
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-semibold text-slate-800">共有タブレット打刻</h2>
+          <div className="mt-3">
+            <TabletPinForm
+              hasPin={hasTabletPin}
+              setAction={setPinAction}
+              clearAction={clearPinAction}
+            />
+          </div>
+        </section>
+      )}
     </div>
   );
 }
