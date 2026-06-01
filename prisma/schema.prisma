@@ -242,6 +242,10 @@ model User {
   employeeId   String?   @unique @map("employee_id") @db.Uuid
   pinCodeHash  String?   @map("pin_code_hash")
   isActive     Boolean   @default(true) @map("is_active")
+  // 初期パスワード (kinntai0000 等) のまま運用に出さないためのフラグ。
+  // true の間は layout ガードで /password-change に強制誘導する。
+  // 本人が changeMyPassword / confirmPasswordReset で新 PW を設定すると false。
+  mustChangePassword Boolean @default(true) @map("must_change_password")
   lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)

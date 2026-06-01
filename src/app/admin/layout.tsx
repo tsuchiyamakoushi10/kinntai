@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { signOut } from "@/auth";
 import { AdminSidebar } from "@/components/admin/sidebar";
 import { requireAdmin } from "@/lib/auth-guard";
+import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,14 @@ async function logoutAction(): Promise<void> {
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const session = await requireAdmin();
+
+  // 初期パスワードのままなら、管理画面に入る前に変更画面へ誘導する。
+  const account = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { mustChangePassword: true },
+  });
+  if (account?.mustChangePassword) redirect("/password-change");
+
   const name = session.user.name ?? "管理者";
 
   return (

@@ -52,7 +52,8 @@ export async function changeMyPassword(
   const newHash = await hashPassword(next);
   await prisma.user.update({
     where: { id: userId },
-    data: { passwordHash: newHash },
+    // 本人が新パスワードを設定したので初期パスワード強制変更フラグを下ろす。
+    data: { passwordHash: newHash, mustChangePassword: false },
   });
 
   return { message: "パスワードを変更しました。" };

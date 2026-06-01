@@ -52,6 +52,7 @@ users ──── employees   (1:1、users.role で管理者/従業員を区別
 | employee_id             | uuid (nullable)           | `employees.id` FK。管理者でも従業員情報を持つ場合あり |
 | pin_code_hash           | text (nullable)           | 共有タブレット打刻用の4桁暗証番号ハッシュ             |
 | is_active               | boolean                   | 無効化フラグ                                          |
+| must_change_password    | boolean                   | 初期パスワードのまま。true の間は変更画面に強制誘導   |
 | last_login_at           | timestamptz               | 最終ログイン                                          |
 | created_at / updated_at | timestamptz               |                                                       |
 

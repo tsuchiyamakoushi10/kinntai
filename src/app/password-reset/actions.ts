@@ -95,7 +95,8 @@ export async function confirmPasswordReset(
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: verified.userId },
-      data: { passwordHash },
+      // 本人が新パスワードを設定したので初期パスワード強制変更フラグを下ろす。
+      data: { passwordHash, mustChangePassword: false },
     });
     await tx.passwordResetToken.update({
       where: { id: verified.id },
