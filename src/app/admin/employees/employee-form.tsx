@@ -61,36 +61,20 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
             <input name="lastName" defaultValue={v.lastName} required className={inputCls} />
           </Field>
           <Field label="名" hint="例: 花子">
-            <input name="firstName" defaultValue={v.firstName} required className={inputCls} />
+            <input name="firstName" defaultValue={v.firstName} className={inputCls} />
           </Field>
         </Row>
         <Row>
           <Field label="姓 (フリガナ)" hint="カタカナ。例: ヤマダ">
-            <input
-              name="lastNameKana"
-              defaultValue={v.lastNameKana}
-              required
-              className={inputCls}
-            />
+            <input name="lastNameKana" defaultValue={v.lastNameKana} className={inputCls} />
           </Field>
           <Field label="名 (フリガナ)" hint="カタカナ。例: ハナコ">
-            <input
-              name="firstNameKana"
-              defaultValue={v.firstNameKana}
-              required
-              className={inputCls}
-            />
+            <input name="firstNameKana" defaultValue={v.firstNameKana} className={inputCls} />
           </Field>
         </Row>
         <Row>
           <Field label="生年月日">
-            <input
-              type="date"
-              name="birthDate"
-              defaultValue={v.birthDate}
-              required
-              className={inputCls}
-            />
+            <input type="date" name="birthDate" defaultValue={v.birthDate} className={inputCls} />
           </Field>
           <div />
         </Row>
@@ -103,7 +87,6 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
               type="email"
               name="email"
               defaultValue={v.email}
-              required
               autoComplete="off"
               className={inputCls}
             />
@@ -117,10 +100,8 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
       <Section title="所属">
         <Row>
           <Field label="所属拠点">
-            <select name="officeId" defaultValue={v.officeId} required className={inputCls}>
-              <option value="" disabled>
-                選択してください
-              </option>
+            <select name="officeId" defaultValue={v.officeId} className={inputCls}>
+              <option value="">（未設定）</option>
               {offices.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}（{o.code}）
@@ -129,7 +110,8 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
             </select>
           </Field>
           <Field label="職種">
-            <select name="jobCategory" defaultValue={v.jobCategory} required className={inputCls}>
+            <select name="jobCategory" defaultValue={v.jobCategory} className={inputCls}>
+              <option value="">（未設定）</option>
               {JOB_CATEGORY_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -140,12 +122,8 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
         </Row>
         <Row>
           <Field label="雇用形態">
-            <select
-              name="employmentType"
-              defaultValue={v.employmentType}
-              required
-              className={inputCls}
-            >
+            <select name="employmentType" defaultValue={v.employmentType} className={inputCls}>
+              <option value="">（未設定）</option>
               {EMPLOYMENT_TYPE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -160,22 +138,10 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
       <Section title="雇用契約">
         <Row>
           <Field label="入社日" hint="実際に勤務を始めた日">
-            <input
-              type="date"
-              name="joinedAt"
-              defaultValue={v.joinedAt}
-              required
-              className={inputCls}
-            />
+            <input type="date" name="joinedAt" defaultValue={v.joinedAt} className={inputCls} />
           </Field>
           <Field label="雇い入れ日" hint="契約上の起算日（有給付与の起点）">
-            <input
-              type="date"
-              name="hiredAt"
-              defaultValue={v.hiredAt}
-              required
-              className={inputCls}
-            />
+            <input type="date" name="hiredAt" defaultValue={v.hiredAt} className={inputCls} />
           </Field>
         </Row>
         <Row>
@@ -187,7 +153,6 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
               min="0.5"
               max="7"
               defaultValue={v.weeklyWorkDays}
-              required
               className={inputCls}
               onChange={(e) => setWeeklyDays(e.currentTarget.value)}
             />
@@ -203,7 +168,6 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
               min="0.5"
               max="12"
               defaultValue={v.dailyWorkHours}
-              required
               className={inputCls}
               onChange={(e) => setDailyHours(e.currentTarget.value)}
             />
@@ -214,7 +178,8 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
       <Section title="給与">
         <Row>
           <Field label="給与形態">
-            <select name="baseWageType" defaultValue={v.baseWageType} required className={inputCls}>
+            <select name="baseWageType" defaultValue={v.baseWageType} className={inputCls}>
+              <option value="">（未設定）</option>
               {WAGE_TYPE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -229,7 +194,6 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
               step="1"
               min="1"
               defaultValue={v.baseWageAmount}
-              required
               className={inputCls}
             />
           </Field>

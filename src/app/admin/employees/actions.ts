@@ -50,39 +50,41 @@ const PHONE_PATTERN = /^[0-9+\-()\s]{0,20}$/;
 type Parsed = {
   lastName: string;
   firstName: string;
-  lastNameKana: string;
-  firstNameKana: string;
-  email: string;
-  phone: string;
-  birthDate: Date;
-  officeId: string;
-  jobCategory: JobCategory;
-  employmentType: EmploymentType;
-  joinedAt: Date;
-  hiredAt: Date;
-  weeklyWorkDays: number;
-  dailyWorkHours: number;
-  baseWageType: WageType;
-  baseWageAmount: number;
+  lastNameKana: string | null;
+  firstNameKana: string | null;
+  email: string | null;
+  phone: string | null;
+  birthDate: Date | null;
+  officeId: string | null;
+  jobCategory: JobCategory | null;
+  employmentType: EmploymentType | null;
+  joinedAt: Date | null;
+  hiredAt: Date | null;
+  weeklyWorkDays: number | null;
+  dailyWorkHours: number | null;
+  baseWageType: WageType | null;
+  baseWageAmount: number | null;
 };
 
 function parseAndValidate(
   values: EmployeeFormValues,
 ): { ok: true; data: Parsed } | { ok: false; error: string } {
+  // 必須は「姓」のみ。氏名なしレコードは一覧 UI が壊れるため最低限残す。
+  // それ以外は任意 — 値が入っているときだけ形式・範囲を検証する
+  // (CSV 取り込み直後など、未入力のまま一部だけ編集して保存できるようにするため)。
   if (!values.lastName) return { ok: false, error: "姓を入力してください。" };
-  if (!values.firstName) return { ok: false, error: "名を入力してください。" };
   if (values.lastName.length > 40 || values.firstName.length > 40) {
     return { ok: false, error: "氏名は姓・名それぞれ 40 文字以内で入力してください。" };
   }
 
-  if (!values.lastNameKana || !values.firstNameKana) {
-    return { ok: false, error: "フリガナを入力してください。" };
+  if (values.lastNameKana && !KANA_PATTERN.test(values.lastNameKana)) {
+    return { ok: false, error: "姓のフリガナはカタカナで入力してください。" };
   }
-  if (!KANA_PATTERN.test(values.lastNameKana) || !KANA_PATTERN.test(values.firstNameKana)) {
-    return { ok: false, error: "フリガナはカタカナで入力してください。" };
+  if (values.firstNameKana && !KANA_PATTERN.test(values.firstNameKana)) {
+    return { ok: false, error: "名のフリガナはカタカナで入力してください。" };
   }
 
-  if (!EMAIL_PATTERN.test(values.email)) {
+  if (values.email && !EMAIL_PATTERN.test(values.email)) {
     return { ok: false, error: "メールアドレスの形式が正しくありません。" };
   }
 
@@ -90,40 +92,59 @@ function parseAndValidate(
     return { ok: false, error: "電話番号は数字とハイフン等で 20 文字以内で入力してください。" };
   }
 
-  const birthDate = parseDateInputValue(values.birthDate);
-  if (!birthDate) return { ok: false, error: "生年月日を正しく入力してください。" };
-
-  if (!values.officeId) return { ok: false, error: "所属拠点を選択してください。" };
-
-  if (!(values.jobCategory in JobCategory)) {
-    return { ok: false, error: "職種を選択してください。" };
-  }
-  if (!(values.employmentType in EmploymentType)) {
-    return { ok: false, error: "雇用形態を選択してください。" };
+  let birthDate: Date | null = null;
+  if (values.birthDate) {
+    birthDate = parseDateInputValue(values.birthDate);
+    if (!birthDate) return { ok: false, error: "生年月日を正しく入力してください。" };
   }
 
-  const joinedAt = parseDateInputValue(values.joinedAt);
-  const hiredAt = parseDateInputValue(values.hiredAt);
-  if (!joinedAt) return { ok: false, error: "入社日を正しく入力してください。" };
-  if (!hiredAt) return { ok: false, error: "雇い入れ日を正しく入力してください。" };
-
-  const weeklyWorkDays = Number(values.weeklyWorkDays);
-  if (!Number.isFinite(weeklyWorkDays) || weeklyWorkDays < 0.5 || weeklyWorkDays > 7) {
-    return { ok: false, error: "週所定労働日数は 0.5〜7.0 の範囲で入力してください。" };
+  if (values.jobCategory && !(values.jobCategory in JobCategory)) {
+    return { ok: false, error: "職種の値が不正です。" };
+  }
+  if (values.employmentType && !(values.employmentType in EmploymentType)) {
+    return { ok: false, error: "雇用形態の値が不正です。" };
   }
 
-  const dailyWorkHours = Number(values.dailyWorkHours);
-  if (!Number.isFinite(dailyWorkHours) || dailyWorkHours < 0.5 || dailyWorkHours > 12) {
-    return { ok: false, error: "1 日の所定労働時間は 0.5〜12.0 の範囲で入力してください。" };
+  let joinedAt: Date | null = null;
+  if (values.joinedAt) {
+    joinedAt = parseDateInputValue(values.joinedAt);
+    if (!joinedAt) return { ok: false, error: "入社日を正しく入力してください。" };
+  }
+  let hiredAt: Date | null = null;
+  if (values.hiredAt) {
+    hiredAt = parseDateInputValue(values.hiredAt);
+    if (!hiredAt) return { ok: false, error: "雇い入れ日を正しく入力してください。" };
   }
 
-  if (!(values.baseWageType in WageType)) {
-    return { ok: false, error: "給与形態（時給 / 月給）を選択してください。" };
+  let weeklyWorkDays: number | null = null;
+  if (values.weeklyWorkDays) {
+    const n = Number(values.weeklyWorkDays);
+    if (!Number.isFinite(n) || n < 0.5 || n > 7) {
+      return { ok: false, error: "週所定労働日数は 0.5〜7.0 の範囲で入力してください。" };
+    }
+    weeklyWorkDays = n;
   }
 
-  const baseWageAmount = Number(values.baseWageAmount);
-  if (!Number.isInteger(baseWageAmount) || baseWageAmount <= 0) {
-    return { ok: false, error: "基本給は 1 円以上の整数で入力してください。" };
+  let dailyWorkHours: number | null = null;
+  if (values.dailyWorkHours) {
+    const n = Number(values.dailyWorkHours);
+    if (!Number.isFinite(n) || n < 0.5 || n > 12) {
+      return { ok: false, error: "1 日の所定労働時間は 0.5〜12.0 の範囲で入力してください。" };
+    }
+    dailyWorkHours = n;
+  }
+
+  if (values.baseWageType && !(values.baseWageType in WageType)) {
+    return { ok: false, error: "給与形態の値が不正です。" };
+  }
+
+  let baseWageAmount: number | null = null;
+  if (values.baseWageAmount) {
+    const n = Number(values.baseWageAmount);
+    if (!Number.isInteger(n) || n <= 0) {
+      return { ok: false, error: "基本給は 1 円以上の整数で入力してください。" };
+    }
+    baseWageAmount = n;
   }
 
   return {
@@ -131,19 +152,19 @@ function parseAndValidate(
     data: {
       lastName: values.lastName.trim(),
       firstName: values.firstName.trim(),
-      lastNameKana: values.lastNameKana.trim(),
-      firstNameKana: values.firstNameKana.trim(),
-      email: values.email.trim().toLowerCase(),
-      phone: values.phone.trim(),
+      lastNameKana: values.lastNameKana.trim() || null,
+      firstNameKana: values.firstNameKana.trim() || null,
+      email: values.email.trim().toLowerCase() || null,
+      phone: values.phone.trim() || null,
       birthDate,
-      officeId: values.officeId,
-      jobCategory: values.jobCategory as JobCategory,
-      employmentType: values.employmentType as EmploymentType,
+      officeId: values.officeId || null,
+      jobCategory: (values.jobCategory || null) as JobCategory | null,
+      employmentType: (values.employmentType || null) as EmploymentType | null,
       joinedAt,
       hiredAt,
       weeklyWorkDays,
       dailyWorkHours,
-      baseWageType: values.baseWageType as WageType,
+      baseWageType: (values.baseWageType || null) as WageType | null,
       baseWageAmount,
     },
   };
@@ -231,14 +252,17 @@ export async function createEmployee(
           baseWageAmount: parsed.data.baseWageAmount,
         },
       });
-      await tx.user.create({
-        data: {
-          email: parsed.data.email,
-          passwordHash,
-          role: "EMPLOYEE",
-          employeeId: employee.id,
-        },
-      });
+      // メール未入力なら login User は作らない (CSV 取り込み相当の「ログインなし社員」)。
+      if (parsed.data.email) {
+        await tx.user.create({
+          data: {
+            email: parsed.data.email,
+            passwordHash,
+            role: "EMPLOYEE",
+            employeeId: employee.id,
+          },
+        });
+      }
       return employee.id;
     });
   } catch (e) {
@@ -311,7 +335,11 @@ export async function updateEmployee(
           baseWageAmount: parsed.data.baseWageAmount,
         },
       });
-      await syncUserEmail(tx, id, parsed.data.email);
+      // メールが入力されているときだけ login User を作成 / 更新する。
+      // 空欄なら既存アカウントはそのまま (誤って消さない)。
+      if (parsed.data.email) {
+        await syncUserEmail(tx, id, parsed.data.email);
+      }
     });
   } catch (e) {
     if (emailIsTaken(e)) {
