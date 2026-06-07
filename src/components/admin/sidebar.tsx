@@ -21,6 +21,7 @@ const ITEMS: Item[] = [
   { label: "シフトパターン", href: "/admin/shift-patterns" },
   { label: "シフト枠", href: "/admin/quotas" },
   { label: "自動作成", href: "/admin/shifts/auto" },
+  { label: "梨花シフト", href: "/admin/shifts/rika" },
   { label: "勤務表", href: "/admin/shifts" },
   { label: "シフト希望", href: "/admin/shift-preferences" },
   ...(ATTENDANCE_ENABLED ? [{ label: "勤怠", href: "/admin/attendance" }] : []),
