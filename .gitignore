@@ -72,3 +72,6 @@ docs/*.pdf
 # 取り込み済みの CSV / Excel はローカル運用ファイル扱い。
 /*.csv
 /*.xlsx
+
+# 本番DBバックアップ (PII を含むためコミットしない)
+/backups/
