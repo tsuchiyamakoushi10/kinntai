@@ -1,18 +1,22 @@
 /**
- * 自動作成の配置本体 (greedy)。
+ * 自動作成の配置本体 (フェーズ式)。
  *
- * docs/auto-shift-design.md §4.4 / §4.5 を実装。スコアリングと配置を
- * 1 ファイルにまとめる (MVP の規模なら分割しなくても読める)。
+ * docs/auto-shift-design-v2.md を実装。v1 の「スコア合算 greedy」を、
+ * シフトを組む人間の手順そのままの **優先順位フェーズ** に置き換える。
  *
  * 配置の流れ:
- *   1. 当月の (date, pattern, slot_index) を全列挙
- *   2. 配置順は date 昇順 → pattern.sortOrder 昇順
- *   3. 各 slot に対し、配置可能な候補 employee からスコア最大を採用
- *   4. NIGHT_IN を埋めたら翌日に同 employee の NIGHT_OUT も入れる
- *   5. 最後に「所定労働日数を超える未割当日」を OFF で埋める
+ *   0. 前処理 + 前月末 NIGHT_IN の引き継ぎ (当月 1 日の NIGHT_OUT)
+ *   1. 需要を確定 (各日 × 勤務系 quota の slots)
+ *   2. 夜勤を先取り (NIGHT_IN を「夜勤希望が残る人」優先で。月の夜勤上限内)  ★案A
+ *   3. 正社員(+契約) を配置 (勤務日数=目標に届くよう。目標まで遠い人優先)
+ *   4. パートで穴埋め (希望休除外・年収上限を超えない範囲で。勤務少ない人優先)
+ *   5. 公休埋め (未割当日に OFF)
  *
- * 決定論性: 入力の `seed` から Mulberry32 PRNG を作り、スコア同点時の
- * tiebreak に使う。同じ入力 → 同じ出力。
+ * 全フェーズ共通のハード制約: 希望休/不可日/雇用期間外に入れない、連勤上限を超えない、
+ * 1 人 1 日 1 コマ、夜勤を入れたら翌日に夜明けを対で置く。
+ *
+ * 決定論性: 入力の `seed` から Mulberry32 PRNG を作り、優先順が同点のときの
+ * tiebreak に使う (候補ごとに 1 回引いてキー化)。同じ入力 + seed → 同じ出力。
  */
 import { EmploymentType } from "@prisma/client";
 
@@ -22,15 +26,14 @@ import {
   findOffPattern,
   monthlyRequiredWorkDays,
   resolveHangingNightOut,
-  type DayInfo,
 } from "./constraints";
 import {
-  DEFAULT_MAX_NIGHT_SHIFTS_PER_MONTH,
-  MAX_CONSECUTIVE_WORK_DAYS,
+  DEFAULT_SHIFT_GEN_SETTING,
   type EmployeeForGen,
   type GenerateInput,
   type PatternForGen,
   type ProposedShift,
+  type ShiftGenSetting,
 } from "./types";
 
 // =============================================================================
@@ -56,17 +59,20 @@ export function mulberry32(seed: number): () => number {
 type EmployeeState = {
   id: string;
   employmentType: EmploymentType;
-  hasPreferredNight: boolean;
   isOnLeave: boolean;
   /** 当月の不可日集合 (前処理で構築済み)。 */
   unavailable: Set<string>;
   /** 当月割当て済みの (date -> shiftPatternId)。同日重複防止と連勤判定に使う。 */
   assignedByDate: Map<string, string>;
+  /** 当月の勤務日数 (WORK + NIGHT_IN。OFF / NIGHT_OUT は除く)。目標・公平判定に使う。 */
+  workDayCount: number;
   /** 当月配置済の夜勤 (NIGHT_IN) 件数。 */
   nightShiftCount: number;
-  /** 当月の所定労働日数 (上限の目安)。これを超えると追加配置をスコア減点。 */
+  /** 月の夜勤希望回数 (Phase 2 の優先に使う。0 = 希望なし)。 */
+  desiredNightShifts: number;
+  /** 当月の所定労働日数 (目標の目安)。 */
   targetWorkDays: number;
-  /** 制約からの月間夜勤上限 (override 許可フラグ込み)。 */
+  /** 制約からの月間夜勤上限。 */
   maxNightShifts: number;
   allowNightShiftOverride: boolean;
   /** パートの年収アラート判定用。 */
@@ -80,19 +86,20 @@ function initEmployeeState(
   e: EmployeeForGen,
   unavailable: Set<string>,
   daysInMonth: number,
-  hasPreferredNight: boolean,
+  setting: ShiftGenSetting,
 ): EmployeeState {
   const target =
     e.constraint?.targetMonthlyWorkDays ?? monthlyRequiredWorkDays(e.weeklyWorkDays, daysInMonth);
-  const maxNight = e.constraint?.maxNightShiftsPerMonth ?? DEFAULT_MAX_NIGHT_SHIFTS_PER_MONTH;
+  const maxNight = e.constraint?.maxNightShiftsPerMonth ?? setting.defaultMaxNightShiftsPerMonth;
   return {
     id: e.id,
     employmentType: e.employmentType,
-    hasPreferredNight,
     isOnLeave: e.isOnLeave,
     unavailable,
     assignedByDate: new Map<string, string>(),
+    workDayCount: 0,
     nightShiftCount: 0,
+    desiredNightShifts: e.desiredNightShiftsPerMonth ?? 0,
     targetWorkDays: target,
     maxNightShifts: maxNight,
     allowNightShiftOverride: e.constraint?.allowNightShiftOverride ?? true,
@@ -103,77 +110,11 @@ function initEmployeeState(
 }
 
 // =============================================================================
-// スコアリング
-// =============================================================================
-
-/** 配置候補のスコア。docs/auto-shift-design.md §4.5 のルールを実装。 */
-function scoreCandidate(
-  state: EmployeeState,
-  pattern: PatternForGen,
-  day: DayInfo,
-  consecutiveDays: number,
-): number {
-  let score = 0;
-
-  // 雇用形態別のベース優先 (full_time > contract > part_time)
-  if (pattern.shiftKind === "WORK" || pattern.shiftKind === "NIGHT_IN") {
-    if (state.employmentType === EmploymentType.FULL_TIME) score += 30;
-    else if (state.employmentType === EmploymentType.CONTRACT) score += 15;
-    else score += 5;
-  } else {
-    // NIGHT_OUT 単独配置はスコアリング対象外 (NIGHT_IN とペアで配置)
-    score += 0;
-  }
-
-  // 夜勤関連
-  if (pattern.shiftKind === "NIGHT_IN") {
-    if (state.hasPreferredNight) score += 50;
-    const remainingTo4 = state.maxNightShifts - 1 - state.nightShiftCount;
-    if (remainingTo4 < 0) {
-      // 上限超過 (= state.nightShiftCount >= maxNightShifts)
-      if (state.allowNightShiftOverride) score -= 80;
-      else score -= 10000; // 実質除外
-    } else if (remainingTo4 === 0) {
-      // ちょうど上限ぎりぎり (4 件目)
-      score -= 20;
-    }
-  }
-
-  // 連続勤務
-  if (consecutiveDays + 1 >= MAX_CONSECUTIVE_WORK_DAYS + 1) {
-    score -= 200; // 7 日目以降は強制回避
-  } else if (consecutiveDays + 1 === MAX_CONSECUTIVE_WORK_DAYS) {
-    score -= 40; // 6 日目はやや回避
-  }
-
-  // 目標労働日に対する状態
-  const assignedDays = state.assignedByDate.size;
-  if (assignedDays >= state.targetWorkDays) {
-    score -= 60; // 目標を超えてからの追加はあまり嬉しくない
-  } else if (assignedDays < state.targetWorkDays * 0.5) {
-    score += 20; // 目標の半分未満なら積極配置
-  }
-
-  // パートの年収アラート (capYen が設定されているとき)
-  if (pattern.workMinutes > 0 && state.hourlyWageYen && state.hourlyWageYen > 0) {
-    const cap = state.capYen ?? 1_300_000;
-    const projected =
-      ((state.totalWorkMinutesThisYear + pattern.workMinutes) / 60) * state.hourlyWageYen;
-    if (projected > cap) score -= 120;
-    else if (projected > cap * 0.8) score -= 30;
-  }
-
-  return score;
-}
-
-// =============================================================================
 // 連続勤務日数の判定
 // =============================================================================
 
 /** date の前日まで何日連続で勤務系が入っているか。0 = 直前は休み or 月初。 */
 function consecutiveWorkDays(state: EmployeeState, date: string): number {
-  // date の 1 日前から遡って勤務系を数える。
-  // 当月内のみ参照 (跨月の連勤チェックは MVP では省略)。
   let count = 0;
   let probe = previousYmd(date);
   while (state.assignedByDate.has(probe)) {
@@ -186,15 +127,16 @@ function consecutiveWorkDays(state: EmployeeState, date: string): number {
 function previousYmd(ymd: string): string {
   const [y, m, d] = ymd.split("-").map(Number) as [number, number, number];
   const dt = new Date(Date.UTC(y, m - 1, d - 1));
-  const yy = String(dt.getUTCFullYear()).padStart(4, "0");
-  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getUTCDate()).padStart(2, "0");
-  return `${yy}-${mm}-${dd}`;
+  return ymdOf(dt);
 }
 
 function nextYmd(ymd: string): string {
   const [y, m, d] = ymd.split("-").map(Number) as [number, number, number];
   const dt = new Date(Date.UTC(y, m - 1, d + 1));
+  return ymdOf(dt);
+}
+
+function ymdOf(dt: Date): string {
   const yy = String(dt.getUTCFullYear()).padStart(4, "0");
   const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(dt.getUTCDate()).padStart(2, "0");
@@ -207,7 +149,7 @@ function nextYmd(ymd: string): string {
 
 export type PlacementResult = {
   proposedShifts: ProposedShift[];
-  /** 各 slot の充足状況 ([date, patternCode] -> filled / required)。 */
+  /** 各 slot の充足状況。 */
   fill: {
     totalSlots: number;
     filledSlots: number;
@@ -225,9 +167,19 @@ export type PlacementResult = {
   hangingNightOut: Array<{ employeeId: string; date: string }>;
 };
 
+type Slot = {
+  date: string;
+  pattern: PatternForGen;
+  initialRequired: number;
+  remaining: number;
+};
+
 export function placeShifts(input: GenerateInput): PlacementResult {
+  const setting = input.setting ?? DEFAULT_SHIFT_GEN_SETTING;
+  const maxConsec = setting.maxConsecutiveWorkDays;
   const rng = mulberry32(input.seed);
   const days = buildMonthDays(input.targetMonth);
+  const dayByDate = new Map(days.map((d) => [d.date, d] as const));
   const unavailableByEmp = buildUnavailableDays(
     input.employees,
     days,
@@ -235,28 +187,18 @@ export function placeShifts(input: GenerateInput): PlacementResult {
     input.existingShifts,
   );
 
-  const preferredNightByEmp = new Set(
-    input.preferences
-      .filter((p) => p.preferenceType === "PREFERRED_NIGHT")
-      .map((p) => p.employeeId),
-  );
-
   const states = new Map<string, EmployeeState>();
   for (const e of input.employees) {
     if (e.isOnLeave) continue;
     states.set(
       e.id,
-      initEmployeeState(
-        e,
-        unavailableByEmp.get(e.id) ?? new Set(),
-        days.length,
-        preferredNightByEmp.has(e.id),
-      ),
+      initEmployeeState(e, unavailableByEmp.get(e.id) ?? new Set(), days.length, setting),
     );
   }
 
-  // 既存 shifts を「配置済」として state に反映 (連勤計算と年収見込みに必要)
   const patternById = new Map(input.shiftPatterns.map((p) => [p.id, p] as const));
+
+  // 既存 shifts を「配置済」として state に反映 (連勤計算・勤務日数・年収見込みに必要)
   for (const s of input.existingShifts) {
     const st = states.get(s.employeeId);
     if (!st) continue;
@@ -264,14 +206,33 @@ export function placeShifts(input: GenerateInput): PlacementResult {
     const pat = patternById.get(s.shiftPatternId);
     if (pat) {
       if (pat.shiftKind === "NIGHT_IN") st.nightShiftCount += 1;
+      if (pat.shiftKind === "WORK" || pat.shiftKind === "NIGHT_IN") st.workDayCount += 1;
       if (pat.workMinutes > 0) st.totalWorkMinutesThisYear += pat.workMinutes;
     }
   }
 
   const proposed: ProposedShift[] = [];
   const hangingNightOut: Array<{ employeeId: string; date: string }> = [];
+  const nightOutPattern = input.shiftPatterns.find((p) => p.shiftKind === "NIGHT_OUT");
 
-  // ---- 0. 前月末 NIGHT_IN → 当月 1 日 NIGHT_OUT を最優先で配置 ----
+  // ---- 配置の共通処理 ----
+  const place = (st: EmployeeState, date: string, pattern: PatternForGen): void => {
+    st.assignedByDate.set(date, pattern.id);
+    if (pattern.shiftKind === "WORK" || pattern.shiftKind === "NIGHT_IN") st.workDayCount += 1;
+    if (pattern.workMinutes > 0) st.totalWorkMinutesThisYear += pattern.workMinutes;
+    proposed.push({ employeeId: st.id, workDate: date, shiftPatternId: pattern.id });
+  };
+
+  /** 勤務系で「その日に入れるか」(休み系/不可日/連勤上限/重複を弾く)。 */
+  const canWork = (st: EmployeeState, date: string): boolean => {
+    if (st.isOnLeave) return false;
+    if (st.unavailable.has(date)) return false;
+    if (st.assignedByDate.has(date)) return false;
+    if (consecutiveWorkDays(st, date) >= maxConsec) return false;
+    return true;
+  };
+
+  // ---- Phase 0: 前月末 NIGHT_IN → 当月 1 日 NIGHT_OUT を最優先で配置 ----
   const hanging = resolveHangingNightOut(
     input.prevMonthNightIn,
     input.shiftPatterns,
@@ -280,12 +241,11 @@ export function placeShifts(input: GenerateInput): PlacementResult {
   for (const h of hanging) {
     const st = states.get(h.employeeId);
     if (!st) continue;
-    if (h.shiftPatternId === null) {
-      hangingNightOut.push({ employeeId: h.employeeId, date: h.workDate });
-      continue;
-    }
-    if (st.unavailable.has(h.workDate) || st.assignedByDate.has(h.workDate)) {
-      // 不可日と衝突 / 既に占有 → 警告対象
+    if (
+      h.shiftPatternId === null ||
+      st.unavailable.has(h.workDate) ||
+      st.assignedByDate.has(h.workDate)
+    ) {
       hangingNightOut.push({ employeeId: h.employeeId, date: h.workDate });
       continue;
     }
@@ -297,24 +257,15 @@ export function placeShifts(input: GenerateInput): PlacementResult {
     });
   }
 
-  // ---- 1. 各日 × 勤務系 quota の slots を生成 ----
-  const dayByDate = new Map(days.map((d) => [d.date, d] as const));
-  type Slot = {
-    date: string;
-    pattern: PatternForGen;
-    initialRequired: number;
-    remaining: number;
-  };
-  const nightOutPattern = input.shiftPatterns.find((p) => p.shiftKind === "NIGHT_OUT");
-
-  // 既存 shifts による (date, patternId) ごとの占有数を先に数えておく
+  // ---- Phase 1: 需要を確定 (各日 × 勤務系 quota の slots) ----
   const existingCountByKey = new Map<string, number>();
   for (const s of input.existingShifts) {
     const k = `${s.workDate}:${s.shiftPatternId}`;
     existingCountByKey.set(k, (existingCountByKey.get(k) ?? 0) + 1);
   }
 
-  const slots: Slot[] = [];
+  const nightSlots: Slot[] = [];
+  const workSlots: Slot[] = [];
   let totalSlots = 0;
   for (const day of days) {
     for (const q of input.quotas) {
@@ -323,91 +274,154 @@ export function placeShifts(input: GenerateInput): PlacementResult {
       if (!pat) continue;
       if (pat.shiftKind !== "WORK" && pat.shiftKind !== "NIGHT_IN") continue;
       if (q.requiredCount <= 0) continue;
-      // 既存 shifts が同 (date, pattern) を占有している分は配置不要
       const alreadyFilled = existingCountByKey.get(`${day.date}:${pat.id}`) ?? 0;
       const remaining = Math.max(0, q.requiredCount - alreadyFilled);
-      slots.push({
+      const slot: Slot = {
         date: day.date,
         pattern: pat,
         initialRequired: q.requiredCount,
         remaining,
-      });
+      };
+      (pat.shiftKind === "NIGHT_IN" ? nightSlots : workSlots).push(slot);
       totalSlots += q.requiredCount;
     }
   }
-  // 配置順: date 昇順 → pattern.sortOrder 昇順
-  slots.sort((a, b) => {
+  const bySlotOrder = (a: Slot, b: Slot): number => {
     if (a.date !== b.date) return a.date < b.date ? -1 : 1;
     return a.pattern.sortOrder - b.pattern.sortOrder;
-  });
+  };
+  nightSlots.sort(bySlotOrder);
+  workSlots.sort(bySlotOrder);
 
-  // ---- 2. greedy 配置 ----
-  for (const slot of slots) {
+  // ---- Phase 2: 夜勤を先取り (案A) ----
+  // 夜勤希望が残る人を優先。月の夜勤上限内で、上限を超える override は最終手段。
+  for (const slot of nightSlots) {
     while (slot.remaining > 0) {
-      const candidates: Array<{ state: EmployeeState; score: number }> = [];
+      type NightCand = {
+        st: EmployeeState;
+        desiredRemaining: number;
+        over: boolean;
+        tiebreak: number;
+      };
+      const cands: NightCand[] = [];
       for (const st of states.values()) {
-        if (st.isOnLeave) continue;
-        if (st.unavailable.has(slot.date)) continue;
-        if (st.assignedByDate.has(slot.date)) continue;
-        // 夜勤の場合は翌日も使えるか確認 (NIGHT_OUT を入れる)
-        if (slot.pattern.shiftKind === "NIGHT_IN") {
-          const nextDate = nextYmd(slot.date);
-          // 翌日が当月外 (= 月末の夜入) はそれでも配置 (翌月 1 日に prevMonthNightIn を渡す)
-          if (dayByDate.has(nextDate)) {
-            if (st.assignedByDate.has(nextDate)) continue;
-            if (st.unavailable.has(nextDate)) continue;
-          }
-          if (!nightOutPattern) continue; // NIGHT_OUT パターンなしでは夜勤を組めない
-        }
-        const consec = consecutiveWorkDays(st, slot.date);
-        if (consec >= MAX_CONSECUTIVE_WORK_DAYS) continue; // 7 日目以降を阻止
-        const day = dayByDate.get(slot.date);
-        if (!day) continue;
-        const sc = scoreCandidate(st, slot.pattern, day, consec);
-        if (sc <= -1000) continue;
-        candidates.push({ state: st, score: sc });
-      }
-      if (candidates.length === 0) break;
-      // スコア最大 → tiebreak は rng で安定化
-      candidates.sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return rng() - 0.5;
-      });
-      const picked = candidates[0]!.state;
-      picked.assignedByDate.set(slot.date, slot.pattern.id);
-      if (slot.pattern.workMinutes > 0) {
-        picked.totalWorkMinutesThisYear += slot.pattern.workMinutes;
-      }
-      proposed.push({
-        employeeId: picked.id,
-        workDate: slot.date,
-        shiftPatternId: slot.pattern.id,
-      });
-
-      // NIGHT_IN なら翌日に NIGHT_OUT を自動配置
-      if (slot.pattern.shiftKind === "NIGHT_IN") {
-        picked.nightShiftCount += 1;
+        if (!canWork(st, slot.date)) continue;
+        // 翌日に夜明けを置けるか (当月外の月末夜入は許容して翌月へ引き継ぐ)
         const nextDate = nextYmd(slot.date);
-        if (dayByDate.has(nextDate) && nightOutPattern) {
-          picked.assignedByDate.set(nextDate, nightOutPattern.id);
-          if (nightOutPattern.workMinutes > 0) {
-            picked.totalWorkMinutesThisYear += nightOutPattern.workMinutes;
-          }
-          proposed.push({
-            employeeId: picked.id,
-            workDate: nextDate,
-            shiftPatternId: nightOutPattern.id,
-          });
+        if (
+          dayByDate.has(nextDate) &&
+          (st.assignedByDate.has(nextDate) || st.unavailable.has(nextDate))
+        ) {
+          continue;
         }
+        if (!nightOutPattern) continue;
+        const over = st.nightShiftCount >= st.maxNightShifts;
+        if (over && !st.allowNightShiftOverride) continue;
+        cands.push({
+          st,
+          // 希望を満たした人どうしは 0 で同列にし、超過分は夜勤回数で公平化する
+          // (低い希望を超えた人を不当に優先しないよう 0 でクランプ)。
+          desiredRemaining: Math.max(0, st.desiredNightShifts - st.nightShiftCount),
+          over,
+          tiebreak: rng(),
+        });
+      }
+      // 上限内の人を優先。全員上限超なら override 可の人だけで埋める。
+      const within = cands.filter((c) => !c.over);
+      const pool = within.length > 0 ? within : cands;
+      if (pool.length === 0) break;
+      pool.sort(
+        (a, b) =>
+          b.desiredRemaining - a.desiredRemaining || // 夜勤希望が残る人を優先
+          a.st.nightShiftCount - b.st.nightShiftCount || // 夜勤が少ない人 (偏り防止)
+          a.tiebreak - b.tiebreak,
+      );
+      const picked = pool[0]!.st;
+      place(picked, slot.date, slot.pattern);
+      picked.nightShiftCount += 1;
+      const nextDate = nextYmd(slot.date);
+      if (dayByDate.has(nextDate) && nightOutPattern) {
+        place(picked, nextDate, nightOutPattern);
+        picked.workDayCount -= 1; // 夜明けは勤務日数に数えない (place が +1 した分を戻す)
       }
       slot.remaining -= 1;
     }
   }
 
-  // 充足状況の集計 (slot.remaining > 0 = 不足)
-  const remainingTotal = slots.reduce((acc, s) => acc + s.remaining, 0);
+  // ---- Phase 3: 正社員(+契約) を配置 ----
+  // 目標まで遠い人を優先 (皆が契約日数に近づくよう公平に)。正社員 → 契約 の順。
+  for (const slot of workSlots) {
+    while (slot.remaining > 0) {
+      type WorkCand = {
+        st: EmployeeState;
+        empRank: number;
+        targetRemaining: number;
+        tiebreak: number;
+      };
+      const cands: WorkCand[] = [];
+      for (const st of states.values()) {
+        if (
+          st.employmentType !== EmploymentType.FULL_TIME &&
+          st.employmentType !== EmploymentType.CONTRACT
+        ) {
+          continue;
+        }
+        if (!canWork(st, slot.date)) continue;
+        cands.push({
+          st,
+          empRank: st.employmentType === EmploymentType.FULL_TIME ? 0 : 1,
+          targetRemaining: st.targetWorkDays - st.workDayCount,
+          tiebreak: rng(),
+        });
+      }
+      if (cands.length === 0) break;
+      cands.sort(
+        (a, b) =>
+          a.empRank - b.empRank || // 正社員を契約より先
+          b.targetRemaining - a.targetRemaining || // 目標まで遠い人を優先 (達した人は後回し)
+          a.st.workDayCount - b.st.workDayCount || // 勤務日数が少ない人
+          a.tiebreak - b.tiebreak,
+      );
+      place(cands[0]!.st, slot.date, slot.pattern);
+      slot.remaining -= 1;
+    }
+  }
+
+  // ---- Phase 4: パートで穴埋め ----
+  // 希望休は canWork で除外済み。年収上限を超えない範囲で、勤務日数が少ない人を優先。
+  for (const slot of workSlots) {
+    while (slot.remaining > 0) {
+      type PartCand = { st: EmployeeState; over: boolean; room: number; tiebreak: number };
+      const cands: PartCand[] = [];
+      for (const st of states.values()) {
+        if (st.employmentType !== EmploymentType.PART_TIME) continue;
+        if (!canWork(st, slot.date)) continue;
+        const cap = st.capYen ?? setting.defaultAnnualIncomeCapYen;
+        const wage = st.hourlyWageYen ?? 0;
+        const projected =
+          wage > 0 ? ((st.totalWorkMinutesThisYear + slot.pattern.workMinutes) / 60) * wage : 0;
+        cands.push({ st, over: projected > cap, room: cap - projected, tiebreak: rng() });
+      }
+      if (cands.length === 0) break;
+      // 上限を超えない人を優先。全員超える場合のみ最終手段で配置 (人員確保 > 年収厳守)。
+      const within = cands.filter((c) => !c.over);
+      const pool = within.length > 0 ? within : cands;
+      pool.sort(
+        (a, b) =>
+          a.st.workDayCount - b.st.workDayCount || // 勤務日数が少ない人 (公平分散)
+          b.room - a.room || // 年収に余裕がある人
+          a.tiebreak - b.tiebreak,
+      );
+      place(pool[0]!.st, slot.date, slot.pattern);
+      slot.remaining -= 1;
+    }
+  }
+
+  // 充足状況の集計
+  const allSlots = [...nightSlots, ...workSlots];
+  const remainingTotal = allSlots.reduce((acc, s) => acc + s.remaining, 0);
   const filledSlots = totalSlots - remainingTotal;
-  const underfilled: PlacementResult["fill"]["underfilled"] = slots
+  const underfilled: PlacementResult["fill"]["underfilled"] = allSlots
     .filter((s) => s.remaining > 0)
     .map((s) => ({
       date: s.date,
@@ -415,38 +429,33 @@ export function placeShifts(input: GenerateInput): PlacementResult {
       shiftPatternCode: s.pattern.code,
       required: s.initialRequired,
       filled: s.initialRequired - s.remaining,
-    }));
+    }))
+    .sort((a, b) =>
+      a.date !== b.date
+        ? a.date < b.date
+          ? -1
+          : 1
+        : a.shiftPatternCode.localeCompare(b.shiftPatternCode),
+    );
 
-  // ---- 3. 公休埋め (未割当日に OFF を入れる) ----
+  // ---- Phase 5: 公休埋め (未割当日に OFF) ----
   const offPattern = findOffPattern(input.shiftPatterns, input.officeId);
   if (offPattern) {
     for (const st of states.values()) {
       if (st.isOnLeave) continue;
       for (const day of days) {
         if (st.assignedByDate.has(day.date)) continue;
-        if (st.unavailable.has(day.date)) {
-          // 雇用期間外 / 既存占有日は OFF も入れない
-          // (UNAVAILABLE_DOW は OFF で埋めても問題ないが、unavailable と
-          //  雇用期間外を区別する情報を持っていないので、安全側で何もしない)
-          continue;
-        }
+        // 雇用期間外 / 既存占有日は OFF も入れない (unavailable と区別する情報が無いため安全側)
+        if (st.unavailable.has(day.date)) continue;
         st.assignedByDate.set(day.date, offPattern.id);
-        proposed.push({
-          employeeId: st.id,
-          workDate: day.date,
-          shiftPatternId: offPattern.id,
-        });
+        proposed.push({ employeeId: st.id, workDate: day.date, shiftPatternId: offPattern.id });
       }
     }
   }
 
   return {
     proposedShifts: proposed,
-    fill: {
-      totalSlots,
-      filledSlots,
-      underfilled,
-    },
+    fill: { totalSlots, filledSlots, underfilled },
     employeeStates: states,
     hangingNightOut,
   };

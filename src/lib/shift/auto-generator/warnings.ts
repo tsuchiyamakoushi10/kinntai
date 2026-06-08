@@ -11,6 +11,7 @@
 import { buildMonthDays } from "./constraints";
 import type { PlacementResult } from "./placement";
 import {
+  DEFAULT_ANNUAL_INCOME_CAP_YEN,
   DEFAULT_MAX_NIGHT_SHIFTS_PER_MONTH,
   type GenerateInput,
   type PatternForGen,
@@ -52,18 +53,31 @@ export function collectWarnings(input: GenerateInput, placement: PlacementResult
 
   // ---- NIGHT_SHIFT_OVER_LIMIT / TARGET_WORKDAYS_UNREACHED ----
   // placement 後の employee state を見て、上限を越えた件数 / 目標未達の件数を出す
+  const defaultMaxNight =
+    input.setting?.defaultMaxNightShiftsPerMonth ?? DEFAULT_MAX_NIGHT_SHIFTS_PER_MONTH;
   const empById = new Map(input.employees.map((e) => [e.id, e] as const));
   for (const [empId, state] of placement.employeeStates) {
     const emp = empById.get(empId);
     if (!emp) continue;
 
-    const maxNight = emp.constraint?.maxNightShiftsPerMonth ?? DEFAULT_MAX_NIGHT_SHIFTS_PER_MONTH;
+    const maxNight = emp.constraint?.maxNightShiftsPerMonth ?? defaultMaxNight;
     if (state.nightShiftCount > maxNight) {
       warnings.push({
         code: "NIGHT_SHIFT_OVER_LIMIT",
         employeeId: empId,
         month: input.targetMonth,
         limit: maxNight,
+        assigned: state.nightShiftCount,
+      });
+    }
+
+    // 夜勤希望日数に届かなかった (希望 > 実績)
+    if (state.desiredNightShifts > 0 && state.nightShiftCount < state.desiredNightShifts) {
+      warnings.push({
+        code: "NIGHT_PREF_UNMET",
+        employeeId: empId,
+        month: input.targetMonth,
+        desired: state.desiredNightShifts,
         assigned: state.nightShiftCount,
       });
     }
@@ -89,9 +103,10 @@ export function collectWarnings(input: GenerateInput, placement: PlacementResult
   // placement で workMinutes を累積しているので、それと時給で評価。
   // 制約に capYen がなければ既定 130 万円。月給契約 (hourlyWageYen=null) はスキップ。
   const year = yearOf(input.targetMonth);
+  const defaultCap = input.setting?.defaultAnnualIncomeCapYen ?? DEFAULT_ANNUAL_INCOME_CAP_YEN;
   for (const [empId, state] of placement.employeeStates) {
     if (!state.hourlyWageYen || state.hourlyWageYen <= 0) continue;
-    const cap = state.capYen ?? 1_300_000;
+    const cap = state.capYen ?? defaultCap;
     const projected = Math.floor((state.totalWorkMinutesThisYear / 60) * state.hourlyWageYen);
     if (projected > cap) {
       warnings.push({

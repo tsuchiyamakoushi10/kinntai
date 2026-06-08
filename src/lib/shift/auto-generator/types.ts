@@ -27,6 +27,11 @@ export type EmployeeForGen = {
   hourlyWageYen: number | null;
   /** 退職日 (null = 在籍中)。当月以降の日付なら不可日に反映する。 */
   retiredOn: string | null;
+  /**
+   * 月の夜勤希望回数 (従業員登録の項目)。Phase 2 はこの回数まで夜勤を優先割当する。
+   * null / 未指定 = 希望なし (0 扱い)。夜勤は希望が無くても頭数で埋まるが、希望者が先。
+   */
+  desiredNightShiftsPerMonth?: number | null;
   /** 個人別シフト制約 (なければ既定値で扱う)。 */
   constraint: ShiftConstraintForGen | null;
 };
@@ -92,6 +97,19 @@ export type PrevMonthNightIn = {
   workDate: string;
 };
 
+/**
+ * 拠点別のシフト自動生成 設定 (docs/auto-shift-design-v2.md §4.1)。
+ * 将来 `office_shift_setting` テーブルから渡す。未指定なら DEFAULT_SHIFT_GEN_SETTING。
+ */
+export type ShiftGenSetting = {
+  /** 連勤上限 (これ以上は配置しない)。 */
+  maxConsecutiveWorkDays: number;
+  /** 月の夜勤上限の既定値 (個人制約で上書き可)。 */
+  defaultMaxNightShiftsPerMonth: number;
+  /** パート年収上限の既定値 (個人制約で上書き可)。 */
+  defaultAnnualIncomeCapYen: number;
+};
+
 export type GenerateInput = {
   officeId: string;
   /** "YYYY-MM" */
@@ -108,6 +126,8 @@ export type GenerateInput = {
   prevMonthNightIn: ReadonlyArray<PrevMonthNightIn>;
   /** 当月の祝日 (src/lib/calendar/holidays.ts から渡す)。"YYYY-MM-DD"。 */
   holidays: ReadonlyArray<string>;
+  /** 拠点別設定 (未指定なら既定値)。 */
+  setting?: ShiftGenSetting;
 };
 
 // =============================================================================
@@ -126,6 +146,7 @@ export type WarningCode =
   | "QUOTA_UNDERFILLED"
   | "QUOTA_OVERFILLED"
   | "NIGHT_SHIFT_OVER_LIMIT"
+  | "NIGHT_PREF_UNMET"
   | "TARGET_WORKDAYS_UNREACHED"
   | "INCOME_CAP_EXCEEDED"
   | "UNAVAILABLE_DOW_VIOLATED"
@@ -152,6 +173,13 @@ export type Warning =
       employeeId: string;
       month: string;
       limit: number;
+      assigned: number;
+    }
+  | {
+      code: "NIGHT_PREF_UNMET";
+      employeeId: string;
+      month: string;
+      desired: number;
       assigned: number;
     }
   | {
@@ -219,3 +247,12 @@ export type GenerateOutput = {
 export const DEFAULT_MAX_NIGHT_SHIFTS_PER_MONTH = 5;
 /** 連続勤務日数の上限 (これ以上は配置を強制回避)。 */
 export const MAX_CONSECUTIVE_WORK_DAYS = 6;
+/** パート年収上限の既定値 (制約未設定時に適用)。 */
+export const DEFAULT_ANNUAL_INCOME_CAP_YEN = 1_300_000;
+
+/** 拠点別設定の既定値 (office_shift_setting の行が無い拠点に適用)。 */
+export const DEFAULT_SHIFT_GEN_SETTING: ShiftGenSetting = {
+  maxConsecutiveWorkDays: MAX_CONSECUTIVE_WORK_DAYS,
+  defaultMaxNightShiftsPerMonth: DEFAULT_MAX_NIGHT_SHIFTS_PER_MONTH,
+  defaultAnnualIncomeCapYen: DEFAULT_ANNUAL_INCOME_CAP_YEN,
+};

@@ -11,7 +11,7 @@ import { loadGenerateInput } from "./data";
 export const dynamic = "force-dynamic";
 
 const YM_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
-const ALGORITHM_VERSION = "greedy-v1";
+const ALGORITHM_VERSION = "phase-v2";
 
 type SearchParams = { officeId?: string; ym?: string; seed?: string };
 type Props = { searchParams: Promise<SearchParams> };
@@ -232,6 +232,7 @@ const WARNING_LABELS: Record<string, string> = {
   QUOTA_UNDERFILLED: "必要人員に達していない枠",
   QUOTA_OVERFILLED: "必要人員を超えている枠 (保護対象が多い)",
   NIGHT_SHIFT_OVER_LIMIT: "夜勤上限を超えている従業員",
+  NIGHT_PREF_UNMET: "夜勤希望回数に達していない従業員",
   TARGET_WORKDAYS_UNREACHED: "月間出勤目標に達していない従業員",
   INCOME_CAP_EXCEEDED: "年収上限を超える見込みのパート",
   UNAVAILABLE_DOW_VIOLATED: "不可曜日に既存シフトが乗っている",
