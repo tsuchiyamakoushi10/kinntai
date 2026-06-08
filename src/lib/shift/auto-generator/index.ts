@@ -72,4 +72,8 @@ export type {
   PreferenceForGen,
   ExistingShift,
   PrevMonthNightIn,
+  ShiftGenSetting,
 } from "./types";
+
+// 拠点別設定の既定値 (画面・サーバアクションから参照)
+export { DEFAULT_SHIFT_GEN_SETTING } from "./types";

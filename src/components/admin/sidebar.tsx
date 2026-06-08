@@ -33,6 +33,7 @@ const SECTIONS: Section[] = [
       { label: "シフト希望", href: "/admin/shift-preferences" },
       { label: "シフトパターン", href: "/admin/shift-patterns" },
       { label: "シフト枠", href: "/admin/quotas" },
+      { label: "自動作成の設定", href: "/admin/shift-settings" },
     ],
   },
   {
