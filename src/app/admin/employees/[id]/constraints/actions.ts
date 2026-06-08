@@ -10,6 +10,8 @@ export type ShiftConstraintFormValues = {
   maxMonthlyWorkHours: string;
   maxDailyWorkHours: string;
   maxNightShiftsPerMonth: string;
+  /** 月の夜勤希望回数 (Employee 列)。上限とは別軸。空 = 希望なし。 */
+  desiredNightShiftsPerMonth: string;
   allowNightShiftOverride: string;
   targetMonthlyWorkDays: string;
   annualIncomeCapYen: string;
@@ -24,6 +26,7 @@ export type ShiftConstraintFormState = {
   values?: ShiftConstraintFormValues;
 };
 
+// shift_constraints に保存する値。
 type Parsed = {
   maxMonthlyWorkMinutes: number | null;
   maxDailyWorkMinutes: number | null;
@@ -41,6 +44,7 @@ function readForm(formData: FormData): ShiftConstraintFormValues {
     maxMonthlyWorkHours: String(formData.get("maxMonthlyWorkHours") ?? "").trim(),
     maxDailyWorkHours: String(formData.get("maxDailyWorkHours") ?? "").trim(),
     maxNightShiftsPerMonth: String(formData.get("maxNightShiftsPerMonth") ?? "").trim(),
+    desiredNightShiftsPerMonth: String(formData.get("desiredNightShiftsPerMonth") ?? "").trim(),
     allowNightShiftOverride: formData.get("allowNightShiftOverride") ? "on" : "",
     targetMonthlyWorkDays: String(formData.get("targetMonthlyWorkDays") ?? "").trim(),
     annualIncomeCapYen: String(formData.get("annualIncomeCapYen") ?? "").trim(),
@@ -79,13 +83,17 @@ function parseInteger(
 
 function parseAndValidate(
   values: ShiftConstraintFormValues,
-): { ok: true; data: Parsed } | { ok: false; error: string } {
+):
+  | { ok: true; data: Parsed; desiredNightShiftsPerMonth: number | null }
+  | { ok: false; error: string } {
   const monthly = parseHoursToMinutes(values.maxMonthlyWorkHours, "月間勤務時間上限", 400);
   if (!monthly.ok) return monthly;
   const daily = parseHoursToMinutes(values.maxDailyWorkHours, "1 日勤務時間上限", 24);
   if (!daily.ok) return daily;
   const nightMax = parseInteger(values.maxNightShiftsPerMonth, "月間夜勤上限", 0, 31);
   if (!nightMax.ok) return nightMax;
+  const nightDesired = parseInteger(values.desiredNightShiftsPerMonth, "月の夜勤希望回数", 0, 31);
+  if (!nightDesired.ok) return nightDesired;
   const target = parseInteger(values.targetMonthlyWorkDays, "月間出勤目標日数", 0, 31);
   if (!target.ok) return target;
   const cap = parseInteger(values.annualIncomeCapYen, "年収上限 (円)", 0, 100_000_000);
@@ -119,6 +127,7 @@ function parseAndValidate(
       unavailableDaysOfWeek: uniqueDays,
       notes: values.notes,
     },
+    desiredNightShiftsPerMonth: nightDesired.value,
   };
 }
 
@@ -139,11 +148,18 @@ export async function upsertShiftConstraint(
   const parsed = parseAndValidate(values);
   if (!parsed.ok) return { error: parsed.error, values };
 
-  await prisma.shiftConstraint.upsert({
-    where: { employeeId },
-    create: { employeeId, ...parsed.data, notes: parsed.data.notes || null },
-    update: { ...parsed.data, notes: parsed.data.notes || null },
-  });
+  // 夜勤希望回数は Employee 列のため、制約 upsert と従業員更新を 1 トランザクションで揃える。
+  await prisma.$transaction([
+    prisma.shiftConstraint.upsert({
+      where: { employeeId },
+      create: { employeeId, ...parsed.data, notes: parsed.data.notes || null },
+      update: { ...parsed.data, notes: parsed.data.notes || null },
+    }),
+    prisma.employee.update({
+      where: { id: employeeId },
+      data: { desiredNightShiftsPerMonth: parsed.desiredNightShiftsPerMonth },
+    }),
+  ]);
 
   revalidatePath(`/admin/employees/${employeeId}`);
   return { message: "保存しました。", values };

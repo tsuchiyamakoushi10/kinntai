@@ -273,6 +273,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
         <ConstraintsTab
           employeeId={employee.id}
           constraint={employee.shiftConstraint}
+          desiredNightShiftsPerMonth={employee.desiredNightShiftsPerMonth}
           projection={projection}
           hasHourlyContract={currentContract?.wageType === "HOURLY"}
         />
@@ -919,11 +920,13 @@ type ShiftConstraintRow = NonNullable<EmployeeWithRelations["shiftConstraint"]>;
 function ConstraintsTab({
   employeeId,
   constraint,
+  desiredNightShiftsPerMonth,
   projection,
   hasHourlyContract,
 }: {
   employeeId: string;
   constraint: ShiftConstraintRow | null;
+  desiredNightShiftsPerMonth: number | null;
   projection: IncomeProjectionResult;
   hasHourlyContract: boolean;
 }) {
@@ -932,6 +935,7 @@ function ConstraintsTab({
     maxMonthlyWorkHours: minutesToHours(constraint?.maxMonthlyWorkMinutes ?? null),
     maxDailyWorkHours: minutesToHours(constraint?.maxDailyWorkMinutes ?? null),
     maxNightShiftsPerMonth: constraint?.maxNightShiftsPerMonth?.toString() ?? "",
+    desiredNightShiftsPerMonth: desiredNightShiftsPerMonth?.toString() ?? "",
     allowNightShiftOverride: constraint ? (constraint.allowNightShiftOverride ? "on" : "") : "on",
     targetMonthlyWorkDays: constraint?.targetMonthlyWorkDays?.toString() ?? "",
     annualIncomeCapYen: constraint?.annualIncomeCapYen?.toString() ?? "",

@@ -63,6 +63,20 @@ export function ConstraintForm({ action, initial }: Props) {
             className={inputCls}
           />
         </Field>
+        <Field
+          label="夜勤希望 (月の回数)"
+          hint="本人が入りたい回数。自動作成はこの回数まで夜勤を優先。空欄 = 希望なし"
+        >
+          <input
+            type="number"
+            name="desiredNightShiftsPerMonth"
+            defaultValue={v.desiredNightShiftsPerMonth}
+            min={0}
+            max={31}
+            step={1}
+            className={inputCls}
+          />
+        </Field>
         <Field label="月間出勤目標 (日)" hint="正社員既定 21。空欄 = 目標なし">
           <input
             type="number"
