@@ -429,6 +429,11 @@ model ShiftPattern {
   endTime         DateTime? @map("end_time") @db.Time(0)
   crossesMidnight Boolean   @default(false) @map("crosses_midnight")
   breakMinutes    Int       @default(0) @map("break_minutes")
+  // 午前 / 午後の在席カウント (0/1)。配置基準を「午前◯名・午後◯名」で評価するため。
+  // 正は勤務記号マスター_確定.csv。scripts/sync-coverage.ts で name 名寄せ更新。
+  // docs/auto-shift-design-v2.md (案A)。休 / 夜勤 / 厨房 系は 0。
+  amCount         Int       @default(0) @map("am_count")
+  pmCount         Int       @default(0) @map("pm_count")
   paidLeaveUnits  Decimal   @default(0) @map("paid_leave_units") @db.Decimal(3, 1)
   color           String    @default("#888888")
   sortOrder       Int       @default(0) @map("sort_order")

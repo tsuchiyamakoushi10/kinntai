@@ -5,12 +5,33 @@
  * 値は docs/shift-patterns.md と現運用 (株式会社クロスハート) の実値。
  * upsert なので複数回流しても重複しない。
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { PrismaClient, ShiftKind } from "@prisma/client";
+
+import { parseSymbolMaster, type SymbolMaster } from "../../src/lib/shift/coverage";
 
 type OfficeSeed = {
   code: string;
   name: string;
 };
+
+/**
+ * 勤務記号マスター_確定.csv から午前/午後カウントを読む (記号定義の正)。
+ * CSV が読めない環境では空マップを返し、am/pm=0 で seed する
+ * (sync-coverage.ts で後追い反映できる)。
+ */
+function loadCoverage(): SymbolMaster {
+  try {
+    return parseSymbolMaster(
+      readFileSync(join(process.cwd(), "勤務記号マスター_確定.csv"), "utf8"),
+    );
+  } catch (e) {
+    console.warn("勤務記号マスターを読めませんでした。am/pm=0 で seed します:", e);
+    return new Map();
+  }
+}
 
 export const OFFICES: OfficeSeed[] = [
   { code: "NRS-CENTER", name: "ナーシングホーム結いの心" },
@@ -423,11 +444,14 @@ export async function seedShiftPatterns(
   prisma: PrismaClient,
   officeIds: Map<string, string>,
 ): Promise<void> {
+  // 午前/午後カウントは勤務記号マスター CSV を正とし name で引く (docs/auto-shift-design-v2.md 案A)。
+  const coverage = loadCoverage();
   for (const p of PATTERNS) {
     const officeId = p.officeCode ? (officeIds.get(p.officeCode) ?? null) : null;
     if (p.officeCode && !officeId) {
       throw new Error(`shift pattern ${p.code} references unknown office ${p.officeCode}`);
     }
+    const cov = coverage.get(p.name);
 
     const data = {
       code: p.code,
@@ -437,6 +461,8 @@ export async function seedShiftPatterns(
       endTime: p.end ? t(p.end) : null,
       crossesMidnight: p.crossesMidnight ?? false,
       breakMinutes: p.breakMinutes ?? 0,
+      amCount: cov?.amCount ?? 0,
+      pmCount: cov?.pmCount ?? 0,
       paidLeaveUnits: p.paidLeaveUnits ?? 0,
       officeId,
       color: p.color ?? "#888888",

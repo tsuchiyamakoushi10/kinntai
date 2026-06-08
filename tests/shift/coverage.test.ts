@@ -44,9 +44,15 @@ describe("parseSymbolMaster (実CSV)", () => {
     expect(master.get("有休")).toMatchObject({ amCount: 0, pmCount: 0 });
   });
 
+  it("DB に合わせ追記した記号 (デ日/半日E/ショ日) も終日/午前で取り込む", () => {
+    expect(master.get("デ日")).toMatchObject({ amCount: 1, pmCount: 1 });
+    expect(master.get("ショ日")).toMatchObject({ amCount: 1, pmCount: 1 });
+    expect(master.get("半日E")).toMatchObject({ amCount: 1, pmCount: 0, band: "午前" });
+  });
+
   it("想定どおりの記号数を取り込む", () => {
     // CSV のデータ行 (ヘッダ除く) すべてが入る
-    expect(master.size).toBe(30);
+    expect(master.size).toBe(33);
   });
 
   it("ヘッダが壊れていれば例外", () => {
