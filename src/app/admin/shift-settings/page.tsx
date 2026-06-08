@@ -3,8 +3,11 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { OFFICE_SHIFT_SETTING_DEFAULTS } from "@/lib/shift/office-setting";
+import { EMPTY_COVERAGE_DEMAND, type CoverageDemandValues } from "@/lib/shift/coverage-demand";
+import type { DayKind } from "@prisma/client";
 
 import { SettingsForm } from "./settings-form";
+import { CoverageDemandForm } from "./coverage-demand-form";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +53,7 @@ export default async function AdminShiftSettingsPage({ searchParams }: Props) {
     );
   }
 
-  const [office, setting] = await Promise.all([
+  const [office, setting, demands] = await Promise.all([
     prisma.office.findUnique({ where: { id: officeId }, select: { id: true, name: true } }),
     prisma.officeShiftSetting.findUnique({
       where: { officeId },
@@ -58,6 +61,18 @@ export default async function AdminShiftSettingsPage({ searchParams }: Props) {
         maxConsecutiveWorkDays: true,
         defaultMaxNightShiftsPerMonth: true,
         defaultAnnualIncomeCapYen: true,
+      },
+    }),
+    prisma.officeCoverageDemand.findMany({
+      where: { officeId },
+      select: {
+        dayKind: true,
+        amRequired: true,
+        pmRequired: true,
+        counselorAmRequired: true,
+        counselorPmRequired: true,
+        nightInRequired: true,
+        nightOutRequired: true,
       },
     }),
   ]);
@@ -72,6 +87,27 @@ export default async function AdminShiftSettingsPage({ searchParams }: Props) {
 
   // 行が無ければ既定値を初期表示し、保存で初めてこの拠点専用の設定になる。
   const initialValues = setting ?? OFFICE_SHIFT_SETTING_DEFAULTS;
+
+  // 配置基準: 日種ごとに DB 値、無い日種は全0 で初期化。
+  const demandByDayKind = new Map(demands.map((d) => [d.dayKind, d] as const));
+  const pick = (dk: DayKind): CoverageDemandValues => {
+    const d = demandByDayKind.get(dk);
+    return d
+      ? {
+          amRequired: d.amRequired,
+          pmRequired: d.pmRequired,
+          counselorAmRequired: d.counselorAmRequired,
+          counselorPmRequired: d.counselorPmRequired,
+          nightInRequired: d.nightInRequired,
+          nightOutRequired: d.nightOutRequired,
+        }
+      : { ...EMPTY_COVERAGE_DEMAND };
+  };
+  const coverageInitial = {
+    WEEKDAY: pick("WEEKDAY"),
+    SATURDAY: pick("SATURDAY"),
+    SUNDAY_HOLIDAY: pick("SUNDAY_HOLIDAY"),
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -102,11 +138,19 @@ export default async function AdminShiftSettingsPage({ searchParams }: Props) {
         ))}
       </nav>
 
-      <SettingsForm
-        officeId={officeId}
-        initialValues={initialValues}
-        isUsingDefaults={setting === null}
-      />
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-slate-800">上限・既定値</h2>
+        <SettingsForm
+          officeId={officeId}
+          initialValues={initialValues}
+          isUsingDefaults={setting === null}
+        />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-slate-800">配置基準 (午前/午後)</h2>
+        <CoverageDemandForm officeId={officeId} initial={coverageInitial} />
+      </section>
     </div>
   );
 }
