@@ -378,6 +378,19 @@ export function RikaGrid({ ym, prevYm, nextYm, days, members }: Props) {
                   </th>
                   {days.map((d) => {
                     const sym = cellByKey.get(`${m.id}|${d.date}`) ?? null;
+                    // 休業日 (水土日祝): 全員休み。「休」表示の固定セルとし、クリック/ドラッグで
+                    // 中身だけ変わる誤操作を防ぐため編集不可にする (個人の公休「公」と区別)。
+                    if (!d.isBusinessDay) {
+                      return (
+                        <td
+                          key={d.date}
+                          title="休業日"
+                          className="h-9 border-b border-slate-100 bg-slate-200/70 text-slate-400 select-none"
+                        >
+                          休
+                        </td>
+                      );
+                    }
                     return (
                       <td
                         key={d.date}
@@ -395,11 +408,7 @@ export function RikaGrid({ ym, prevYm, nextYm, days, members }: Props) {
                         onClick={() => cycleCell(m, d.date)}
                         title="クリックで記号変更 / ドラッグで移動"
                         className={`h-9 cursor-pointer border-b border-slate-100 select-none ${
-                          !d.isBusinessDay
-                            ? "bg-slate-200/70 hover:bg-slate-300/70"
-                            : sym
-                              ? symbolClass(sym)
-                              : "bg-white hover:bg-slate-100"
+                          sym ? symbolClass(sym) : "bg-white hover:bg-slate-100"
                         }`}
                       >
                         {sym ? symbolDef(sym).label : ""}
@@ -624,20 +633,28 @@ function RequestOffPanel({
 }
 
 function Legend() {
-  const items: Array<{ label: string; cls: string }> = [
+  const items: Array<{ label: string; cls: string; char?: string }> = [
     { label: "終日系 (日勤/梨3-5)", cls: "bg-green-200" },
     { label: "午前 (半日F/梨2)", cls: "bg-lime-100" },
     { label: "午後 (半午)", cls: "bg-orange-200" },
-    { label: "公休", cls: "bg-slate-200" },
+    { label: "公休 (個人の休み)", cls: "bg-slate-200 text-slate-500", char: "公" },
     { label: "有休", cls: "bg-sky-200" },
     { label: "希望休", cls: "bg-pink-200" },
-    { label: "休業日", cls: "bg-slate-200/70 border border-slate-300" },
+    {
+      label: "休業日 (事業所が休み)",
+      cls: "bg-slate-200/70 border border-slate-300 text-slate-400",
+      char: "休",
+    },
   ];
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 print:hidden">
       {items.map((it) => (
         <span key={it.label} className="flex items-center gap-1.5">
-          <span className={`inline-block h-3 w-4 rounded-sm ${it.cls}`} />
+          <span
+            className={`inline-flex h-4 w-4 items-center justify-center rounded-sm text-[10px] font-semibold ${it.cls}`}
+          >
+            {it.char ?? ""}
+          </span>
           {it.label}
         </span>
       ))}
