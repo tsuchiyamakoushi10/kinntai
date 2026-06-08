@@ -7,6 +7,7 @@ import { PrismaClient } from "@prisma/client";
 
 import { loadDeyGenerateInput } from "../src/lib/shift/dey/data";
 import { generateDey } from "../src/lib/shift/dey/generate";
+import { summarizeDeyCoverage, toDeyProposals } from "../src/lib/shift/dey/proposals";
 
 const prisma = new PrismaClient();
 const targetMonth = process.argv[2] ?? "2026-06";
@@ -55,6 +56,23 @@ async function main(): Promise<void> {
     const e = empById.get(id)!;
     console.log(`  ${e.employeeCode} ${e.isFullTime ? "常勤" : "非常勤"}: ${n}日`);
   }
+
+  // 保存形への変換確認 (記号→shiftPatternId)
+  const patterns = await prisma.shiftPattern.findMany({ select: { id: true, name: true } });
+  const patternIdByName = new Map(patterns.map((p) => [p.name, p.id]));
+  const { proposedShifts, missingSymbols } = toDeyProposals(result, patternIdByName);
+  const offId = patternIdByName.get("公休");
+  const work = proposedShifts.filter((p) => p.shiftPatternId !== offId).length;
+  const off = proposedShifts.filter((p) => p.shiftPatternId === offId).length;
+  const summary = summarizeDeyCoverage(result);
+
+  console.log("\n-- 保存形サマリ --");
+  console.log(`  proposedShifts: ${proposedShifts.length} (勤務 ${work} / 公休 ${off})`);
+  console.log(`  記号→ID 未解決: ${missingSymbols.length ? missingSymbols.join(",") : "なし"}`);
+  console.log(
+    `  営業日 ${summary.operatingDays} / 充足 ${summary.filledDays} / ` +
+      `不足日 ${summary.amPmShortfallDays.length} / 相談員不足日 ${summary.counselorShortDays.length}`,
+  );
 }
 
 main()
