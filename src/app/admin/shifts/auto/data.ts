@@ -45,6 +45,7 @@ export async function loadGenerateInput(
     existingShiftsRaw,
     prevNightInRaw,
     contracts,
+    settingRaw,
   ] = await Promise.all([
     prisma.employee.findMany({
       where: {
@@ -63,6 +64,7 @@ export async function loadGenerateInput(
         weeklyWorkDays: true,
         baseWageType: true,
         baseWageAmount: true,
+        desiredNightShiftsPerMonth: true,
       },
     }),
     prisma.shiftPattern.findMany({
@@ -142,6 +144,15 @@ export async function loadGenerateInput(
       orderBy: { contractStartOn: "desc" },
       select: { employeeId: true, wageAmount: true },
     }),
+    // 拠点別の自動作成設定。行が無ければ既定値 (DEFAULT_SHIFT_GEN_SETTING) で扱う。
+    prisma.officeShiftSetting.findUnique({
+      where: { officeId },
+      select: {
+        maxConsecutiveWorkDays: true,
+        defaultMaxNightShiftsPerMonth: true,
+        defaultAnnualIncomeCapYen: true,
+      },
+    }),
   ]);
 
   // 当月の自動配置由来 run を引いて、保護対象 / 上書き対象を分離する
@@ -191,6 +202,7 @@ export async function loadGenerateInput(
         weeklyWorkDays: Number(e.weeklyWorkDays),
         hourlyWageYen: hourlyByEmp.get(e.id) ?? null,
         retiredOn: e.retiredAt ? ymd(e.retiredAt) : null,
+        desiredNightShiftsPerMonth: e.desiredNightShiftsPerMonth,
         constraint: c
           ? {
               maxMonthlyWorkMinutes: c.maxMonthlyWorkMinutes,
@@ -253,6 +265,8 @@ export async function loadGenerateInput(
     existingShifts,
     prevMonthNightIn,
     holidays: holidaysInMonth(targetMonth),
+    // 行が無い拠点は setting 未指定のまま (= DEFAULT_SHIFT_GEN_SETTING)。
+    setting: settingRaw ?? undefined,
   };
 }
 

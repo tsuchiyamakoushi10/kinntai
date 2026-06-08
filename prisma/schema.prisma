@@ -229,6 +229,7 @@ model Office {
   attendanceRecords   AttendanceRecord[]
   shiftQuotas         OfficeShiftQuota[]
   shiftGenerationRuns ShiftGenerationRun[]
+  shiftSetting        OfficeShiftSetting?
 
   @@map("offices")
 }
@@ -318,6 +319,9 @@ model Employee {
   dailyWorkHours           Decimal?         @map("daily_work_hours") @db.Decimal(4, 2)
   baseWageType             WageType?        @map("base_wage_type")
   baseWageAmount           Int?             @map("base_wage_amount")
+  // 月の夜勤希望回数 (自動作成 v2 Phase 2 で優先配置に使用)。null = 希望なし(0 扱い)。
+  // shift_constraints.max_night_shifts_per_month (上限) とは別軸 (希望 ≤ 上限 が通常)。
+  desiredNightShiftsPerMonth Int?           @map("desired_night_shifts_per_month")
   notes                    String?
   createdAt                DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -699,6 +703,28 @@ model OfficeShiftQuota {
 
   @@unique([officeId, shiftPatternId, dayKind])
   @@map("office_shift_quotas")
+}
+
+// 拠点別 シフト自動作成 設定 (自動作成 v2)。office と 1:1。
+// docs/database-design.md §2.22 / docs/auto-shift-design-v2.md §4.1・§8② 参照。
+//   - これまでハードコードしていた調整値を拠点別に外出しする
+//   - 行が無い拠点は DEFAULT_SHIFT_GEN_SETTING (auto-generator/types.ts) で扱う
+//   - 各列は純粋関数の ShiftGenSetting と 1:1 対応。既定値もそれに合わせる
+model OfficeShiftSetting {
+  id                            String   @id @default(uuid()) @db.Uuid
+  officeId                      String   @unique @map("office_id") @db.Uuid
+  // 連勤上限 (全フェーズのハード制約)。
+  maxConsecutiveWorkDays        Int      @default(6) @map("max_consecutive_work_days")
+  // 月の夜勤上限の既定値 (個人 shift_constraints で上書き可)。
+  defaultMaxNightShiftsPerMonth Int      @default(5) @map("default_max_night_shifts_per_month")
+  // パート年収上限の既定値 (個人 shift_constraints で上書き可)。
+  defaultAnnualIncomeCapYen     Int      @default(1300000) @map("default_annual_income_cap_yen")
+  createdAt                     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  office Office @relation(fields: [officeId], references: [id], onDelete: Cascade)
+
+  @@map("office_shift_settings")
 }
 
 // シフト自動作成 run の実行履歴。1 (office, target_month) = 1 行 (再実行で上書き)。
