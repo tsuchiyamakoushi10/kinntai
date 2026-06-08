@@ -230,6 +230,7 @@ model Office {
   shiftQuotas         OfficeShiftQuota[]
   shiftGenerationRuns ShiftGenerationRun[]
   shiftSetting        OfficeShiftSetting?
+  coverageDemands     OfficeCoverageDemand[]
 
   @@map("offices")
 }
@@ -730,6 +731,31 @@ model OfficeShiftSetting {
   office Office @relation(fields: [officeId], references: [id], onDelete: Cascade)
 
   @@map("office_shift_settings")
+}
+
+// 拠点別 配置基準 (午前/午後・自動作成 v2 案A)。office × 日種でユニーク。
+// docs/database-design.md §2.23 / docs/auto-shift-design-v2.md §10 参照。
+//   - 配置基準を「パターン単位 (office_shift_quotas)」ではなく「午前/午後の在席人数」で持つ
+//   - 営業日 = am+pm+night_in+night_out > 0 の日種 (専用フラグは持たない)
+//   - 相談員は employees.job_category=life_counselor で判定し、午前/午後 各 N 名のチェックに使う
+//     (自動配置では強制しない)
+model OfficeCoverageDemand {
+  id                  String   @id @default(uuid()) @db.Uuid
+  officeId            String   @map("office_id") @db.Uuid
+  dayKind             DayKind  @map("day_kind")
+  amRequired          Int      @default(0) @map("am_required")
+  pmRequired          Int      @default(0) @map("pm_required")
+  counselorAmRequired Int      @default(0) @map("counselor_am_required")
+  counselorPmRequired Int      @default(0) @map("counselor_pm_required")
+  nightInRequired     Int      @default(0) @map("night_in_required")
+  nightOutRequired    Int      @default(0) @map("night_out_required")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  office Office @relation(fields: [officeId], references: [id], onDelete: Cascade)
+
+  @@unique([officeId, dayKind])
+  @@map("office_coverage_demands")
 }
 
 // シフト自動作成 run の実行履歴。1 (office, target_month) = 1 行 (再実行で上書き)。
