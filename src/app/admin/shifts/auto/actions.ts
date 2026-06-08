@@ -6,12 +6,111 @@ import { fromJstYmd, monthRange } from "@/lib/attendance/business-date";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { generateMonthlyShifts } from "@/lib/shift/auto-generator";
+import { loadDeyGenerateInput } from "@/lib/shift/dey/data";
+import { generateDey } from "@/lib/shift/dey/generate";
+import { summarizeDeyCoverage, toDeyProposals } from "@/lib/shift/dey/proposals";
 
 import { loadGenerateInput } from "./data";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const YM = /^\d{4}-(0[1-9]|1[0-2])$/;
 const ALGORITHM_VERSION = "greedy-v1";
+/** デイ専用生成 (generateDey) を使う拠点コード。今後 SHORT / RIKA を足す際はここを拡張。 */
+const DEY_OFFICE_CODE = "DAY-CENTER";
+
+/** 拠点ごとに生成器を切り替え、保存形 (proposedShifts) と stats を返す。 */
+type BuiltRun = {
+  proposedShifts: ReadonlyArray<{ employeeId: string; workDate: string; shiftPatternId: string }>;
+  stats: unknown;
+  algorithmVersion: string;
+  warningCount: number;
+};
+
+type ExistingRunMeta = { id: string; generatedById: string } | null;
+
+async function buildRun(
+  officeId: string,
+  ym: string,
+  seed: number,
+  existingRun: ExistingRunMeta,
+): Promise<BuiltRun> {
+  const office = await prisma.office.findUnique({
+    where: { id: officeId },
+    select: { code: true },
+  });
+  if (office?.code === DEY_OFFICE_CODE) {
+    return buildDeyRun(officeId, ym, existingRun);
+  }
+  const genInput = await loadGenerateInput(officeId, ym, seed, ALGORITHM_VERSION);
+  const result = generateMonthlyShifts(genInput);
+  return {
+    proposedShifts: result.proposedShifts,
+    stats: JSON.parse(JSON.stringify(result.stats)),
+    algorithmVersion: ALGORITHM_VERSION,
+    warningCount: result.warnings.length,
+  };
+}
+
+/**
+ * デイ (案A) の生成。generateDey → 記号を shiftPatternId に解決 → 手修正セルを除外。
+ * 手修正保護: 既存 shifts のうち「自動配置由来かつ未編集」でないセルは上書きしない。
+ */
+async function buildDeyRun(
+  officeId: string,
+  ym: string,
+  existingRun: ExistingRunMeta,
+): Promise<BuiltRun> {
+  const input = await loadDeyGenerateInput(prisma, officeId, ym);
+  const result = generateDey(input);
+  const summary = summarizeDeyCoverage(result);
+
+  const patterns = await prisma.shiftPattern.findMany({ select: { id: true, name: true } });
+  const patternIdByName = new Map(patterns.map((p) => [p.name, p.id]));
+  const { proposedShifts } = toDeyProposals(result, patternIdByName);
+
+  const protectedCells = await loadProtectedCells(officeId, ym, existingRun);
+  const filtered = proposedShifts.filter(
+    (p) => !protectedCells.has(`${p.employeeId}|${p.workDate}`),
+  );
+
+  return {
+    proposedShifts: filtered,
+    stats: {
+      algorithm: "dey-v1",
+      employees: input.employees.length,
+      operatingDays: summary.operatingDays,
+      filledDays: summary.filledDays,
+      amPmShortfallDays: summary.amPmShortfallDays,
+      counselorShortDays: summary.counselorShortDays,
+    },
+    algorithmVersion: "dey-v1",
+    warningCount: summary.amPmShortfallDays.length + summary.counselorShortDays.length,
+  };
+}
+
+/** 当月の手修正済セル (employeeId|YYYY-MM-DD) の集合。自動配置直後で未編集のものは含めない。 */
+async function loadProtectedCells(
+  officeId: string,
+  ym: string,
+  existingRun: ExistingRunMeta,
+): Promise<Set<string>> {
+  const range = monthRange(ym);
+  const shifts = await prisma.shift.findMany({
+    where: { officeId, workDate: { gte: range.start, lt: range.end } },
+    select: { employeeId: true, workDate: true, generationRunId: true, updatedBy: true },
+  });
+  const protectedCells = new Set<string>();
+  for (const s of shifts) {
+    const autoUntouched =
+      existingRun !== null &&
+      s.generationRunId === existingRun.id &&
+      s.updatedBy === existingRun.generatedById;
+    if (!autoUntouched) {
+      protectedCells.add(`${s.employeeId}|${s.workDate.toISOString().slice(0, 10)}`);
+    }
+  }
+  return protectedCells;
+}
 
 export type AutoRunResult =
   | { ok: true; proposedCount: number; warningCount: number }
@@ -56,9 +155,8 @@ export async function saveDraftRun(input: {
     };
   }
 
-  // 入力データ + dry-run
-  const genInput = await loadGenerateInput(input.officeId, input.ym, input.seed, ALGORITHM_VERSION);
-  const result = generateMonthlyShifts(genInput);
+  // 入力データ + dry-run (拠点ごとに生成器を切り替え)
+  const result = await buildRun(input.officeId, input.ym, input.seed, existingRun);
 
   await prisma.$transaction(async (tx) => {
     // 1) run を upsert (新規 / 上書き)
@@ -73,13 +171,13 @@ export async function saveDraftRun(input: {
         officeId: input.officeId,
         targetMonth: range.start,
         status: "DRAFT",
-        algorithmVersion: ALGORITHM_VERSION,
+        algorithmVersion: result.algorithmVersion,
         generatedById: userId,
         stats: JSON.parse(JSON.stringify(result.stats)),
       },
       update: {
         status: "DRAFT",
-        algorithmVersion: ALGORITHM_VERSION,
+        algorithmVersion: result.algorithmVersion,
         generatedById: userId,
         generatedAt: new Date(),
         confirmedAt: null,
@@ -133,7 +231,7 @@ export async function saveDraftRun(input: {
   return {
     ok: true,
     proposedCount: result.proposedShifts.length,
-    warningCount: result.warnings.length,
+    warningCount: result.warningCount,
   };
 }
 
