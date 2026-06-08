@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { currentJstYm, monthRange } from "@/lib/attendance/business-date";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
+import { RIKA_OFFICE_CODE } from "@/lib/shift/rika/config";
 import type { ShiftCell } from "@/lib/shifts/diff";
 
 import { ShiftFilters } from "./shift-filters";
@@ -33,8 +35,15 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
   const offices = await prisma.office.findMany({
     where: { isActive: true },
     orderBy: { code: "asc" },
-    select: { id: true, name: true },
+    select: { id: true, name: true, code: true },
   });
+
+  // 梨花は専用画面 (午前/午後の頭数・専用ロスター・専用自動生成) を使う。
+  // 勤務表で梨花を選んだら専用画面へ送る (メニューは勤務表に一本化)。
+  const selected = offices.find((o) => o.id === officeId);
+  if (selected?.code === RIKA_OFFICE_CODE) {
+    redirect(`/admin/shifts/rika?ym=${ym}`);
+  }
 
   // 拠点未選択ならフィルタだけ表示してリターン
   if (!officeId) {
@@ -168,6 +177,13 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href={`/admin/shifts/auto?officeId=${officeId}&ym=${ym}`}
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700"
+          >
+            シフト自動生成
+          </Link>
+          <span className="mx-1 h-5 w-px bg-slate-200" />
           <Link
             href={`/admin/shifts?officeId=${officeId}&ym=${range.prevYm}`}
             className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm hover:bg-slate-50"

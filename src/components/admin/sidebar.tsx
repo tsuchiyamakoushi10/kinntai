@@ -7,25 +7,48 @@ import { ATTENDANCE_ENABLED } from "@/lib/feature-flags";
 
 type Item = {
   label: string;
-  href?: string;
-  disabled?: boolean;
+  href: string;
 };
 
-// MVP の管理者メニュー。href が無いものは「準備中」として disabled 表示。
-// 勤怠 (打刻) は封印中のため ATTENDANCE_ENABLED が true のときだけ表示する。
-const ITEMS: Item[] = [
-  { label: "ダッシュボード", href: "/admin" },
-  { label: "会社情報", href: "/admin/company-profile" },
-  { label: "拠点設定", href: "/admin/offices" },
-  { label: "従業員", href: "/admin/employees" },
-  { label: "シフトパターン", href: "/admin/shift-patterns" },
-  { label: "シフト枠", href: "/admin/quotas" },
-  { label: "自動作成", href: "/admin/shifts/auto" },
-  { label: "梨花シフト", href: "/admin/shifts/rika" },
-  { label: "勤務表", href: "/admin/shifts" },
-  { label: "シフト希望", href: "/admin/shift-preferences" },
-  ...(ATTENDANCE_ENABLED ? [{ label: "勤怠", href: "/admin/attendance" }] : []),
-  { label: "有給管理", href: "/admin/leave" },
+type Section = {
+  /** セクション見出し (省略時は見出しなしのトップ項目)。 */
+  title?: string;
+  items: Item[];
+};
+
+// MVP の管理者メニュー。関連する画面をセクションでまとめて迷わないようにする。
+// - 梨花シフト / 自動作成 は単独メニューを廃止し、勤務表 (拠点切替・自動生成ボタン) から入る。
+// - 勤怠 (打刻) は封印中のため ATTENDANCE_ENABLED が true のときだけ表示する。
+const SECTIONS: Section[] = [
+  {
+    items: [
+      { label: "ダッシュボード", href: "/admin" },
+      { label: "従業員", href: "/admin/employees" },
+    ],
+  },
+  {
+    title: "シフト",
+    items: [
+      { label: "勤務表", href: "/admin/shifts" },
+      { label: "シフト希望", href: "/admin/shift-preferences" },
+      { label: "シフトパターン", href: "/admin/shift-patterns" },
+      { label: "シフト枠", href: "/admin/quotas" },
+    ],
+  },
+  {
+    title: "有給",
+    items: [
+      { label: "有給管理", href: "/admin/leave" },
+      ...(ATTENDANCE_ENABLED ? [{ label: "勤怠", href: "/admin/attendance" }] : []),
+    ],
+  },
+  {
+    title: "設定",
+    items: [
+      { label: "会社情報", href: "/admin/company-profile" },
+      { label: "拠点", href: "/admin/offices" },
+    ],
+  },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -37,34 +60,33 @@ export function AdminSidebar() {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="管理メニュー" className="flex flex-col gap-1 p-3 text-sm">
-      {ITEMS.map((item) => {
-        if (item.disabled || !item.href) {
-          return (
-            <span
-              key={item.label}
-              className="flex items-center justify-between rounded-md px-3 py-2 text-slate-400"
-            >
-              <span>{item.label}</span>
-              <span className="text-xs">準備中</span>
-            </span>
-          );
-        }
-        const active = isActive(pathname, item.href);
-        return (
-          <Link
-            key={item.label}
-            href={item.href}
-            className={
-              active
-                ? "rounded-md bg-slate-900 px-3 py-2 font-semibold text-white"
-                : "rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100"
-            }
-          >
-            {item.label}
-          </Link>
-        );
-      })}
+    <nav aria-label="管理メニュー" className="flex flex-col gap-3 p-3 text-sm">
+      {SECTIONS.map((section, i) => (
+        <div key={section.title ?? `top-${i}`} className="flex flex-col gap-1">
+          {section.title && (
+            <p className="px-3 pt-1 text-xs font-semibold tracking-wide text-slate-400">
+              {section.title}
+            </p>
+          )}
+          {section.items.map((item) => {
+            const active = isActive(pathname, item.href);
+            return (
+              <Link
+                key={item.label}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={
+                  active
+                    ? "rounded-md bg-slate-900 px-3 py-2 font-semibold text-white"
+                    : "rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100"
+                }
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
     </nav>
   );
 }
