@@ -34,6 +34,7 @@ const SECTIONS: Section[] = [
       { label: "シフトパターン", href: "/admin/shift-patterns" },
       { label: "シフト枠", href: "/admin/quotas" },
       { label: "自動作成の設定", href: "/admin/shift-settings" },
+      { label: "相談員チェック", href: "/admin/counselor-check" },
     ],
   },
   {
