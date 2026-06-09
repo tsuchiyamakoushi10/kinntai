@@ -120,38 +120,54 @@ export type CoverageDemand = {
   counselorAm: number;
   /** 相談員の午後必要数。0 = チェックしない。 */
   counselorPm: number;
+  /** 看護師の午前必要数。0 = チェックしない。 */
+  nurseAm?: number;
+  /** 看護師の午後必要数。0 = チェックしない。 */
+  nursePm?: number;
 };
 
 /** 1 日のカバレッジ評価結果 (不足は >0)。 */
 export type CoverageResult = {
   presence: Presence;
   counselor: Presence;
+  nurse: Presence;
   /** 午前の不足人数 (required - filled, 下限 0)。 */
   amShortfall: number;
   pmShortfall: number;
   /** 相談員の午前 / 午後が不足しているか。 */
   counselorAmShort: boolean;
   counselorPmShort: boolean;
+  /** 看護師の午前 / 午後が不足しているか。 */
+  nurseAmShort: boolean;
+  nursePmShort: boolean;
 };
 
 /**
  * 1 日の割当を配置基準に照らして評価する。
  * 生成後・手修正後の両方で常時計算する想定 (設計書 §3 制約チェック)。
+ * isNurse 未指定なら看護師チェックはしない (デイ等)。
  */
 export function evaluateCoverage(
   assignments: ReadonlyArray<DayAssignment>,
   master: SymbolMaster,
   demand: CoverageDemand,
   isCounselor: (employeeId: string) => boolean,
+  isNurse?: (employeeId: string) => boolean,
 ): CoverageResult {
   const presence = countPresence(assignments, master);
   const counselor = countCounselorPresence(assignments, master, isCounselor);
+  const nurse = isNurse ? countCounselorPresence(assignments, master, isNurse) : { am: 0, pm: 0 };
+  const nurseAm = demand.nurseAm ?? 0;
+  const nursePm = demand.nursePm ?? 0;
   return {
     presence,
     counselor,
+    nurse,
     amShortfall: Math.max(0, demand.am - presence.am),
     pmShortfall: Math.max(0, demand.pm - presence.pm),
     counselorAmShort: demand.counselorAm > 0 && counselor.am < demand.counselorAm,
     counselorPmShort: demand.counselorPm > 0 && counselor.pm < demand.counselorPm,
+    nurseAmShort: nurseAm > 0 && nurse.am < nurseAm,
+    nursePmShort: nursePm > 0 && nurse.pm < nursePm,
   };
 }

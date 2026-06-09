@@ -49,8 +49,10 @@ export type ShortEmployee = {
   employeeCode: string;
   /** 常勤か (正社員/契約=常勤)。 */
   isFullTime: boolean;
-  /** 生活相談員か (午前/午後 各 N 名の充足チェック用。配置は強制しない)。 */
+  /** 生活相談員か。各営業日に必要数を最優先で確保する。 */
   isCounselor: boolean;
+  /** 看護師 (看護職員) か。各営業日に必要数を最優先で確保する。 */
+  isNurse: boolean;
   /** 入れない日 ("YYYY-MM-DD")。希望休 / 勤務不可 / 雇用期間外をまとめて渡す。 */
   unavailableDates: ReadonlySet<string>;
   /** 月の目標出勤日数 (常勤のみ使用。既定 21)。これに達したら以降は公休。 */
@@ -67,6 +69,9 @@ export type ShortDemand = {
   pm: number;
   counselorAm: number;
   counselorPm: number;
+  /** 看護師の午前/午後必要数。0 = チェックしない。 */
+  nurseAm: number;
+  nursePm: number;
   /** その日に必要な夜入の数 (ショートは 1)。 */
   nightIn: number;
 };
@@ -147,6 +152,14 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
   const fullTimers = employees.filter((e) => e.isFullTime);
   const partTimers = employees.filter((e) => !e.isFullTime);
   const counselorIds = new Set(employees.filter((e) => e.isCounselor).map((e) => e.id));
+  const nurseIds = new Set(employees.filter((e) => e.isNurse).map((e) => e.id));
+
+  // 正社員のペース配分用 (デイと同じ): 総営業日数と経過営業日数。
+  const totalOperating = input.days.reduce(
+    (n, d) => n + (isOperating(input.demandByDayKind[d.dayKind]) ? 1 : 0),
+    0,
+  );
+  let operatingSoFar = 0;
 
   // ── Phase 2: 夜勤を先取り ───────────────────────────────────────────────
   const nightDays: NightDay[] = input.days.map((d) => ({
@@ -188,6 +201,7 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
     }
 
     if (operating) {
+      operatingSoFar++;
       // 夜勤で塞がっている / 連勤上限 / 不可日 / 夜明の翌日 (公休が望ましい) は日中に置かない。
       const eligible = (e: ShortEmployee): boolean =>
         !occupiedByNight.has(e.id) &&
@@ -196,25 +210,63 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
         !night.preferredOff.has(`${e.id}|${day.date}`) &&
         consecutive.get(e.id)! < config.maxConsecutiveDays;
 
-      // Phase 3: 常勤を ショ日 で配置 (相談員優先 → 目標残り多い順 → 累計少ない順)。
+      // 日勤(日中)の在席上限。必要午前人数を上限にする (MAX。これを超えて日中に置かない)。
+      const dayCap = demand.am;
+      let dayCount = 0; // この日に日中配置した人数 (夜勤は数えない)
+      const placeDay = (e: ShortEmployee, sym: string): void => {
+        today.set(e.id, sym);
+        dayCount += 1;
+      };
+
+      // Phase 0: 相談員・看護師を必要数だけ最優先で確保 (上限内・常勤/非常勤問わず)。
+      const guarantee = (need: number, pred: (e: ShortEmployee) => boolean): void => {
+        if (need <= 0) return;
+        const cands = employees
+          .filter((e) => pred(e) && eligible(e))
+          .sort((a, b) => {
+            const overA = workDays.get(a.id)! >= a.targetWorkDays ? 1 : 0;
+            const overB = workDays.get(b.id)! >= b.targetWorkDays ? 1 : 0;
+            if (overA !== overB) return overA - overB;
+            const cntA = workDays.get(a.id)!;
+            const cntB = workDays.get(b.id)!;
+            if (cntA !== cntB) return cntA - cntB;
+            if (a.isFullTime !== b.isFullTime) return a.isFullTime ? -1 : 1;
+            return a.employeeCode.localeCompare(b.employeeCode);
+          });
+        let placed = 0;
+        for (const e of cands) {
+          if (placed >= need || dayCount >= dayCap) break;
+          placeDay(e, e.isFullTime ? config.symbols.fullDay : config.symbols.partFullDay);
+          placed += 1;
+        }
+      };
+      guarantee(Math.max(demand.counselorAm, demand.counselorPm), (e) => e.isCounselor);
+      guarantee(Math.max(demand.nurseAm, demand.nursePm), (e) => e.isNurse);
+
+      // Phase 3: 常勤を ショ日 で配置。月内ペース配分 (目標×経過/総営業日) で遅れている人を
+      // 優先し、日勤上限まで。前半集中を防ぎ MAX を守る (デイと同じ分散)。
+      const idealWorkDaysBy = (e: ShortEmployee): number =>
+        totalOperating > 0 ? Math.round((e.targetWorkDays * operatingSoFar) / totalOperating) : 0;
       const ftCandidates = fullTimers
-        .filter((e) => eligible(e) && workDays.get(e.id)! < e.targetWorkDays)
+        .filter((e) => eligible(e) && !today.has(e.id) && workDays.get(e.id)! < e.targetWorkDays)
         .sort((a, b) => {
-          if (a.isCounselor !== b.isCounselor) return a.isCounselor ? -1 : 1;
-          const remA = a.targetWorkDays - workDays.get(a.id)!;
-          const remB = b.targetWorkDays - workDays.get(b.id)!;
-          if (remA !== remB) return remB - remA;
+          const behindA = workDays.get(a.id)! < idealWorkDaysBy(a) ? 0 : 1;
+          const behindB = workDays.get(b.id)! < idealWorkDaysBy(b) ? 0 : 1;
+          if (behindA !== behindB) return behindA - behindB;
           const cntA = workDays.get(a.id)!;
           const cntB = workDays.get(b.id)!;
           if (cntA !== cntB) return cntA - cntB;
           return a.employeeCode.localeCompare(b.employeeCode);
         });
-      for (const e of ftCandidates) today.set(e.id, config.symbols.fullDay);
+      for (const e of ftCandidates) {
+        if (dayCount >= dayCap) break;
+        placeDay(e, config.symbols.fullDay);
+      }
 
-      // Phase 4: 非常勤で午前/午後不足を平等配分で穴埋め。
-      // 累計出勤が最も少ない人から、PM 不足なら終日(ショ短A)、AM だけ不足なら午前(半日A)。
+      // Phase 4: 非常勤で午前/午後不足を穴埋め (日勤上限内)。
       let guard = 0;
       while (guard++ < 10_000) {
+        if (dayCount >= dayCap) break;
         const present = countPresence(toAssignments(today), input.master);
         const amShort = present.am < demand.am;
         const pmShort = present.pm < demand.pm;
@@ -231,7 +283,7 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
         if (candidates.length === 0) break; // 人員不足。下の評価で不足として可視化される。
 
         const pick = candidates[0]!;
-        today.set(pick.id, pmShort ? config.symbols.partFullDay : config.symbols.partAm);
+        placeDay(pick, pmShort ? config.symbols.partFullDay : config.symbols.partAm);
       }
     }
 
@@ -258,8 +310,11 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
               pm: demand.pm,
               counselorAm: demand.counselorAm,
               counselorPm: demand.counselorPm,
+              nurseAm: demand.nurseAm,
+              nursePm: demand.nursePm,
             },
             (id) => counselorIds.has(id),
+            (id) => nurseIds.has(id),
           )
         : null;
 

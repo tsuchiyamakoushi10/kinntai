@@ -728,6 +728,9 @@ model OfficeCoverageDemand {
   pmRequired          Int      @default(0) @map("pm_required")
   counselorAmRequired Int      @default(0) @map("counselor_am_required")
   counselorPmRequired Int      @default(0) @map("counselor_pm_required")
+  // 午前/午後のうち看護師 (看護職員) で必要な人数。0 = チェックしない。
+  nurseAmRequired     Int      @default(0) @map("nurse_am_required")
+  nursePmRequired     Int      @default(0) @map("nurse_pm_required")
   // 午前のうち送迎 (8:15 開始) で必要な人数。デイの送迎ロジック用。0 = チェックしない。
   earlyAmRequired     Int      @default(0) @map("early_am_required")
   nightInRequired     Int      @default(0) @map("night_in_required")

@@ -100,6 +100,8 @@ export async function loadShortGenerateInput(
         pmRequired: true,
         counselorAmRequired: true,
         counselorPmRequired: true,
+        nurseAmRequired: true,
+        nursePmRequired: true,
         nightInRequired: true,
       },
     }),
@@ -157,6 +159,7 @@ export async function loadShortGenerateInput(
       employeeCode: e.employeeCode,
       isFullTime: isRegularEmployment(e.employmentType),
       isCounselor: e.jobCategory === "LIFE_COUNSELOR",
+      isNurse: e.jobCategory === "NURSE",
       unavailableDates: unavailable,
       targetWorkDays: e.shiftConstraint?.targetMonthlyWorkDays ?? SHORT_DEFAULT_TARGET_WORK_DAYS,
       nightCap: e.shiftConstraint?.maxNightShiftsPerMonth ?? SHORT_DEFAULT_NIGHT_CAP,
@@ -171,6 +174,8 @@ export async function loadShortGenerateInput(
       pm: d.pmRequired,
       counselorAm: d.counselorAmRequired,
       counselorPm: d.counselorPmRequired,
+      nurseAm: d.nurseAmRequired,
+      nursePm: d.nursePmRequired,
       nightIn: d.nightInRequired,
     };
   }

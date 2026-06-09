@@ -52,6 +52,7 @@ describe("generateShort × NRS設定 — 記号が差し替わる", () => {
     employeeCode: "E0001",
     isFullTime: true,
     isCounselor: false,
+    isNurse: false,
     unavailableDates: new Set(),
     targetWorkDays: 21,
     nightCap: 0, // 夜勤は無効化してこのテストでは日中配置だけ見る
@@ -61,7 +62,9 @@ describe("generateShort × NRS設定 — 記号が差し替わる", () => {
   const input: GenerateShortInput = {
     days: [{ date: "2026-06-01", dayKind: "WEEKDAY" }],
     employees: [fullTimer],
-    demandByDayKind: { WEEKDAY: { am: 1, pm: 1, counselorAm: 0, counselorPm: 0, nightIn: 0 } },
+    demandByDayKind: {
+      WEEKDAY: { am: 1, pm: 1, counselorAm: 0, counselorPm: 0, nurseAm: 0, nursePm: 0, nightIn: 0 },
+    },
     master,
     config: NRS_SHORT_CONFIG,
   };

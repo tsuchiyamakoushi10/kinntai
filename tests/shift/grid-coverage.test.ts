@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import { computeDayShortfalls, type CoverageNeed, type GridCell } from "@/lib/shift/grid-coverage";
 
-const fullDay = (isCounselor = false, isEarly = false): GridCell => ({
+const fullDay = (isCounselor = false, isEarly = false, isNurse = false): GridCell => ({
   amCount: 1,
   pmCount: 1,
   isNightIn: false,
   isNightOut: false,
   isCounselor,
+  isNurse,
   isEarly,
 });
 const am = (): GridCell => ({
@@ -17,6 +18,7 @@ const am = (): GridCell => ({
   isNightIn: false,
   isNightOut: false,
   isCounselor: false,
+  isNurse: false,
   isEarly: false,
 });
 const nightIn = (): GridCell => ({
@@ -25,6 +27,7 @@ const nightIn = (): GridCell => ({
   isNightIn: true,
   isNightOut: false,
   isCounselor: false,
+  isNurse: false,
   isEarly: false,
 });
 
@@ -33,6 +36,8 @@ const WEEKDAY: CoverageNeed = {
   pm: 2,
   counselorAm: 1,
   counselorPm: 1,
+  nurseAm: 0,
+  nursePm: 0,
   earlyAm: 0,
   nightIn: 0,
   nightOut: 0,
@@ -68,6 +73,8 @@ describe("computeDayShortfalls", () => {
         pm: 2,
         counselorAm: 0,
         counselorPm: 0,
+        nurseAm: 0,
+        nursePm: 0,
         earlyAm: 2,
         nightIn: 0,
         nightOut: 0,
@@ -91,6 +98,8 @@ describe("computeDayShortfalls", () => {
         pm: 0,
         counselorAm: 0,
         counselorPm: 0,
+        nurseAm: 0,
+        nursePm: 0,
         earlyAm: 0,
         nightIn: 1,
         nightOut: 0,

@@ -13,6 +13,9 @@ export type CoverageDemandValues = {
   pmRequired: number;
   counselorAmRequired: number;
   counselorPmRequired: number;
+  /** 午前/午後のうち看護師(看護職員)で必要な人数。 */
+  nurseAmRequired: number;
+  nursePmRequired: number;
   /** 午前のうち送迎(8:15開始)で必要な人数。デイの送迎ロジック用。 */
   earlyAmRequired: number;
   nightInRequired: number;
@@ -34,6 +37,8 @@ export const COVERAGE_DEMAND_BOUNDS = {
   pmRequired: { min: 0, max: 50 },
   counselorAmRequired: { min: 0, max: 10 },
   counselorPmRequired: { min: 0, max: 10 },
+  nurseAmRequired: { min: 0, max: 10 },
+  nursePmRequired: { min: 0, max: 10 },
   earlyAmRequired: { min: 0, max: 50 },
   nightInRequired: { min: 0, max: 10 },
   nightOutRequired: { min: 0, max: 10 },
@@ -44,6 +49,8 @@ const FIELD_LABELS: Record<keyof CoverageDemandValues, string> = {
   pmRequired: "午後の必要人数",
   counselorAmRequired: "午前の相談員人数",
   counselorPmRequired: "午後の相談員人数",
+  nurseAmRequired: "午前の看護師人数",
+  nursePmRequired: "午後の看護師人数",
   earlyAmRequired: "うち送迎(8:15)の人数",
   nightInRequired: "夜入の必要数",
   nightOutRequired: "夜明の必要数",
@@ -54,6 +61,8 @@ export const EMPTY_COVERAGE_DEMAND: CoverageDemandValues = {
   pmRequired: 0,
   counselorAmRequired: 0,
   counselorPmRequired: 0,
+  nurseAmRequired: 0,
+  nursePmRequired: 0,
   earlyAmRequired: 0,
   nightInRequired: 0,
   nightOutRequired: 0,
@@ -104,6 +113,12 @@ export function validateCoverageDemand(input: unknown): ValidateResult {
   }
   if (out.earlyAmRequired > out.amRequired) {
     return { ok: false, error: "送迎(8:15)の人数は午前の必要人数を超えられません。" };
+  }
+  if (out.nurseAmRequired > out.amRequired) {
+    return { ok: false, error: "午前の看護師人数は午前の必要人数を超えられません。" };
+  }
+  if (out.nursePmRequired > out.pmRequired) {
+    return { ok: false, error: "午後の看護師人数は午後の必要人数を超えられません。" };
   }
 
   return { ok: true, values: out };

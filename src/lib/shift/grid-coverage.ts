@@ -13,6 +13,9 @@ export type CoverageNeed = {
   pm: number;
   counselorAm: number;
   counselorPm: number;
+  /** 看護師(看護職員)の午前/午後必要数。0 = チェックしない。 */
+  nurseAm: number;
+  nursePm: number;
   /** 午前のうち送迎(8:15開始)で必要な人数。0 = チェックしない。 */
   earlyAm: number;
   nightIn: number;
@@ -26,6 +29,7 @@ export type GridCell = {
   isNightIn: boolean;
   isNightOut: boolean;
   isCounselor: boolean;
+  isNurse: boolean;
   /** 送迎 (8:15開始) か。 */
   isEarly: boolean;
 };
@@ -40,6 +44,8 @@ export type DayShortfall = {
   nightOut: number;
   counselorAm: number;
   counselorPm: number;
+  nurseAm: number;
+  nursePm: number;
 };
 
 function isOperating(need: CoverageNeed): boolean {
@@ -67,6 +73,8 @@ export function computeDayShortfalls(
     let nout = 0;
     let cam = 0;
     let cpm = 0;
+    let nam = 0;
+    let npm = 0;
     for (const c of cellsByDate.get(d.date) ?? []) {
       am += c.amCount;
       pm += c.pmCount;
@@ -76,6 +84,10 @@ export function computeDayShortfalls(
       if (c.isCounselor) {
         cam += c.amCount;
         cpm += c.pmCount;
+      }
+      if (c.isNurse) {
+        nam += c.amCount;
+        npm += c.pmCount;
       }
     }
 
@@ -88,6 +100,8 @@ export function computeDayShortfalls(
       nightOut: Math.max(0, need.nightOut - nout),
       counselorAm: Math.max(0, need.counselorAm - cam),
       counselorPm: Math.max(0, need.counselorPm - cpm),
+      nurseAm: Math.max(0, need.nurseAm - nam),
+      nursePm: Math.max(0, need.nursePm - npm),
     };
     if (
       sf.am ||
@@ -96,7 +110,9 @@ export function computeDayShortfalls(
       sf.nightIn ||
       sf.nightOut ||
       sf.counselorAm ||
-      sf.counselorPm
+      sf.counselorPm ||
+      sf.nurseAm ||
+      sf.nursePm
     ) {
       out.push(sf);
     }

@@ -162,6 +162,8 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
         pmRequired: true,
         counselorAmRequired: true,
         counselorPmRequired: true,
+        nurseAmRequired: true,
+        nursePmRequired: true,
         earlyAmRequired: true,
         nightInRequired: true,
         nightOutRequired: true,
@@ -205,6 +207,8 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
       pm: d.pmRequired,
       counselorAm: d.counselorAmRequired,
       counselorPm: d.counselorPmRequired,
+      nurseAm: d.nurseAmRequired,
+      nursePm: d.nursePmRequired,
       earlyAm: d.earlyAmRequired,
       nightIn: d.nightInRequired,
       nightOut: d.nightOutRequired,
@@ -213,6 +217,9 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
   const dayKinds: DayKind[] = range.days.map((d) => dayKindFor(d));
   const counselorEmployeeIds = new Set(
     employees.filter((e) => e.jobCategory === "LIFE_COUNSELOR").map((e) => e.id),
+  );
+  const nurseEmployeeIds = new Set(
+    employees.filter((e) => e.jobCategory === "NURSE").map((e) => e.id),
   );
   const hasDemands = coverageDemandRows.length > 0;
 
@@ -332,6 +339,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
             coverageDemands={hasDemands ? coverageDemands : undefined}
             dayKinds={dayKinds}
             counselorEmployeeIds={counselorEmployeeIds}
+            nurseEmployeeIds={nurseEmployeeIds}
           />
         </>
       )}

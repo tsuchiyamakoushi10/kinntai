@@ -37,6 +37,7 @@ function emp(
     employeeCode: code,
     isFullTime: opts.isFullTime ?? true,
     isCounselor: opts.isCounselor ?? false,
+    isNurse: opts.isNurse ?? false,
     unavailableDates: opts.unavailableDates ?? new Set(),
     targetWorkDays: opts.targetWorkDays ?? 21,
     nightCap: opts.nightCap ?? 5,
@@ -44,7 +45,15 @@ function emp(
   };
 }
 
-const DEMAND: ShortDemand = { am: 2, pm: 2, counselorAm: 0, counselorPm: 0, nightIn: 1 };
+const DEMAND: ShortDemand = {
+  am: 2,
+  pm: 2,
+  counselorAm: 0,
+  counselorPm: 0,
+  nurseAm: 0,
+  nursePm: 0,
+  nightIn: 1,
+};
 
 function input(
   d: ShortDay[],
@@ -124,6 +133,51 @@ describe("generateShort", () => {
     expect(r.unfilledNightDays).toEqual([]);
   });
 
+  it("日勤(日中)は配置基準の人数(MAX)を超えない", () => {
+    const d = days(10);
+    // 常勤6名・AM2/PM2 → 日中は最大2名。
+    const emps = ["A", "B", "C", "D", "E", "F"].map((c) => emp(c));
+    const r = generateShort(input(d, emps));
+    const m = byDate(r);
+    const dayShifts = new Set(["ショ日", "ショ短A", "半日A"]);
+    for (const day of d) {
+      const daytime = [...m.get(day.date)!.values()].filter((s) => dayShifts.has(s)).length;
+      expect(daytime).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it("相談員が必要なら営業日に確保される", () => {
+    const d = days(5);
+    const demand: Partial<Record<DayKind, ShortDemand>> = {
+      WEEKDAY: { am: 2, pm: 2, counselorAm: 1, counselorPm: 1, nurseAm: 0, nursePm: 0, nightIn: 0 },
+    };
+    const emps = [
+      emp("C", { isCounselor: true }),
+      emp("P1", { isFullTime: false }),
+      emp("P2", { isFullTime: false }),
+    ];
+    const r = generateShort(input(d, emps, demand));
+    for (const day of r.days) expect(day.coverage!.counselorAmShort).toBe(false);
+  });
+
+  it("看護師が必要で居れば確保、居なければ不足表示", () => {
+    const d = days(3);
+    const demand: Partial<Record<DayKind, ShortDemand>> = {
+      WEEKDAY: { am: 2, pm: 2, counselorAm: 0, counselorPm: 0, nurseAm: 1, nursePm: 1, nightIn: 0 },
+    };
+    const withNurse = [
+      emp("N", { isNurse: true }),
+      emp("P1", { isFullTime: false }),
+      emp("P2", { isFullTime: false }),
+    ];
+    const r1 = generateShort(input(d, withNurse, demand));
+    for (const day of r1.days) expect(day.coverage!.nurseAmShort).toBe(false);
+
+    const noNurse = [emp("P1", { isFullTime: false }), emp("P2", { isFullTime: false })];
+    const r2 = generateShort(input(d, noNurse, demand));
+    expect(r2.days.some((x) => x.coverage!.nurseAmShort)).toBe(true);
+  });
+
   it("休業日 (配置基準なし) は全員公休、夜勤も置かない", () => {
     const d = days(5, "SUNDAY_HOLIDAY");
     const r = generateShort(input(d, [emp("A"), emp("B")], {}));
@@ -139,7 +193,17 @@ describe("generateShort", () => {
     const d = days(3);
     const emps = [emp("A"), emp("B"), emp("Z", { isFullTime: false })];
     const r = generateShort(
-      input(d, emps, { WEEKDAY: { am: 2, pm: 2, counselorAm: 0, counselorPm: 0, nightIn: 1 } }),
+      input(d, emps, {
+        WEEKDAY: {
+          am: 2,
+          pm: 2,
+          counselorAm: 0,
+          counselorPm: 0,
+          nurseAm: 0,
+          nursePm: 0,
+          nightIn: 1,
+        },
+      }),
     );
     const m = byDate(r);
     // どこかの営業日で 常勤が ショ日、非常勤が ショ短A/半日A を持つ
@@ -201,7 +265,17 @@ describe("generateShort", () => {
     // 相談員いないが counselorAm/Pm=1 を要求
     const emps = [emp("A"), emp("B"), emp("C"), emp("D")];
     const r = generateShort(
-      input(d, emps, { WEEKDAY: { am: 2, pm: 2, counselorAm: 1, counselorPm: 1, nightIn: 1 } }),
+      input(d, emps, {
+        WEEKDAY: {
+          am: 2,
+          pm: 2,
+          counselorAm: 1,
+          counselorPm: 1,
+          nurseAm: 0,
+          nursePm: 0,
+          nightIn: 1,
+        },
+      }),
     );
     const counselorShort = r.days.filter(
       (x) => x.coverage?.counselorAmShort || x.coverage?.counselorPmShort,

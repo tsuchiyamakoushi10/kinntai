@@ -57,6 +57,8 @@ function shortfallText(s: DayShortfall): string {
   if (s.nightOut) parts.push(`夜明-${s.nightOut}`);
   if (s.counselorAm) parts.push("相談員(午前)");
   if (s.counselorPm) parts.push("相談員(午後)");
+  if (s.nurseAm) parts.push("看護師(午前)");
+  if (s.nursePm) parts.push("看護師(午後)");
   return parts.join("・");
 }
 
@@ -110,6 +112,8 @@ type Props = {
   dayKinds?: ReadonlyArray<DayKind>;
   /** 生活相談員の従業員 ID。相談員不足の判定に使う。 */
   counselorEmployeeIds?: ReadonlySet<string>;
+  /** 看護師(看護職員)の従業員 ID。看護師不足の判定に使う。 */
+  nurseEmployeeIds?: ReadonlySet<string>;
   /** 閲覧専用モード (ALL 閲覧で使う)。パレット / 保存 / 編集 UI を全部隠す。 */
   readOnly?: boolean;
 };
@@ -156,6 +160,7 @@ export function ShiftGrid({
   coverageDemands,
   dayKinds,
   counselorEmployeeIds,
+  nurseEmployeeIds,
   readOnly = false,
 }: Props) {
   const [cells, setCells] = useState<CellMap>(() => toCellMap(initialCells));
@@ -203,12 +208,21 @@ export function ShiftGrid({
         isNightIn: pattern.shiftKind === "NIGHT_IN",
         isNightOut: pattern.shiftKind === "NIGHT_OUT",
         isCounselor: counselorEmployeeIds?.has(c.employeeId) ?? false,
+        isNurse: nurseEmployeeIds?.has(c.employeeId) ?? false,
         isEarly: pattern.isEarly,
       });
       cellsByDate.set(c.workDate, arr);
     }
     return computeDayShortfalls(daysWithKind, coverageDemands, cellsByDate);
-  }, [cells, coverageDemands, dayKinds, days, patternsById, counselorEmployeeIds]);
+  }, [
+    cells,
+    coverageDemands,
+    dayKinds,
+    days,
+    patternsById,
+    counselorEmployeeIds,
+    nurseEmployeeIds,
+  ]);
 
   function paintCell(employeeIdx: number, dayIdx: number): void {
     const emp = employees[employeeIdx];

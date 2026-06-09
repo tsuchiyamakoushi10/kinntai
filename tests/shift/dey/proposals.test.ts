@@ -65,10 +65,13 @@ describe("summarizeDeyCoverage", () => {
           coverage: {
             presence: { am: 7, pm: 5 },
             counselor: { am: 1, pm: 1 },
+            nurse: { am: 0, pm: 0 },
             amShortfall: 0,
             pmShortfall: 0,
             counselorAmShort: false,
             counselorPmShort: false,
+            nurseAmShort: false,
+            nursePmShort: false,
           },
         },
         // 午前不足 + 相談員不足
@@ -79,10 +82,13 @@ describe("summarizeDeyCoverage", () => {
           coverage: {
             presence: { am: 5, pm: 5 },
             counselor: { am: 0, pm: 0 },
+            nurse: { am: 0, pm: 0 },
             amShortfall: 2,
             pmShortfall: 0,
             counselorAmShort: true,
             counselorPmShort: true,
+            nurseAmShort: false,
+            nursePmShort: false,
           },
         },
       ],
