@@ -130,10 +130,10 @@ export type BulkOffFormState = {
 /**
  * カレンダー一括入力。
  *
- * 指定従業員 × 指定月の 希望休 (REQUESTED_OFF) を、フォーム送信時の選択状態で
- * 「上書き」する (既存を消して入れ直し)。希望夜勤・勤務不可は触らない。
+ * 指定従業員 × 指定月の 希望休 (REQUESTED_OFF) と 有給 (PAID_LEAVE) を、フォーム送信時の
+ * 選択状態で「上書き」する (両種別とも当月分を消して入れ直し)。希望夜勤・勤務不可は触らない。
  *
- * dates は formData の "dates" に YYYY-MM-DD カンマ区切りで入る前提。
+ * formData: "requestedOff" / "paidLeave" に YYYY-MM-DD カンマ区切りで入る前提 (1 日 1 種別)。
  */
 export async function bulkSetMonthlyOffPreferences(
   _prev: BulkOffFormState,
@@ -144,15 +144,18 @@ export async function bulkSetMonthlyOffPreferences(
 
   const employeeId = String(formData.get("employeeId") ?? "");
   const ym = String(formData.get("ym") ?? "");
-  const datesRaw = String(formData.get("dates") ?? "");
 
   if (!employeeId) return { error: "従業員を選択してください。" };
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) return { error: "対象月が不正です。" };
 
-  const dates = datesRaw
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && s.startsWith(`${ym}-`));
+  const parseDates = (raw: string): string[] =>
+    raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && s.startsWith(`${ym}-`));
+
+  const offDates = parseDates(String(formData.get("requestedOff") ?? ""));
+  const paidDates = parseDates(String(formData.get("paidLeave") ?? ""));
 
   // 月境界
   const [yStr, mStr] = ym.split("-");
@@ -169,21 +172,26 @@ export async function bulkSetMonthlyOffPreferences(
   });
   if (!employee) return { error: "選択した従業員が見つかりませんでした。" };
 
+  const rows = [
+    ...offDates.map((d) => ({ date: d, type: ShiftPreferenceType.REQUESTED_OFF })),
+    ...paidDates.map((d) => ({ date: d, type: ShiftPreferenceType.PAID_LEAVE })),
+  ];
+
   await prisma.$transaction(async (tx) => {
     await tx.shiftPreference.deleteMany({
       where: {
         employeeId,
-        preferenceType: "REQUESTED_OFF",
+        preferenceType: { in: [ShiftPreferenceType.REQUESTED_OFF, ShiftPreferenceType.PAID_LEAVE] },
         targetDate: { gte: monthStart, lt: monthEnd },
       },
     });
-    if (dates.length > 0) {
+    if (rows.length > 0) {
       await tx.shiftPreference.createMany({
-        data: dates.map((d) => ({
+        data: rows.map((r) => ({
           employeeId,
-          targetDate: new Date(`${d}T00:00:00.000Z`),
-          preferenceType: "REQUESTED_OFF" as const,
-          status: "ACCEPTED" as const,
+          targetDate: new Date(`${r.date}T00:00:00.000Z`),
+          preferenceType: r.type,
+          status: ShiftPreferenceStatus.ACCEPTED,
           createdById: userId,
           reviewedById: userId,
           reviewedAt: new Date(),
@@ -194,7 +202,7 @@ export async function bulkSetMonthlyOffPreferences(
   });
 
   revalidatePath("/admin/shift-preferences");
-  return { saved: dates.length };
+  return { saved: rows.length };
 }
 
 function isUniqueViolation(err: unknown): boolean {

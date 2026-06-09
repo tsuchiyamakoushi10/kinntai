@@ -111,17 +111,20 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
   const bulkEmployee = bulkEmployeeId
     ? (employeeOptions.find((e) => e.id === bulkEmployeeId) ?? null)
     : null;
-  const bulkExistingOffDays = bulkEmployee
+  const bulkInitialMarks = bulkEmployee
     ? (
         await prisma.shiftPreference.findMany({
           where: {
             employeeId: bulkEmployee.id,
-            preferenceType: "REQUESTED_OFF",
+            preferenceType: { in: ["REQUESTED_OFF", "PAID_LEAVE"] },
             targetDate: { gte: month.start, lt: month.end },
           },
-          select: { targetDate: true },
+          select: { targetDate: true, preferenceType: true },
         })
-      ).map((p) => toDateInputValue(p.targetDate))
+      ).map((p) => ({
+        date: toDateInputValue(p.targetDate),
+        type: p.preferenceType as "REQUESTED_OFF" | "PAID_LEAVE",
+      }))
     : [];
 
   return (
@@ -234,7 +237,7 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
             ym={ym}
             days={month.days}
             firstWeekday={firstWeekday}
-            initialSelected={bulkExistingOffDays}
+            initialMarks={bulkInitialMarks}
           />
         ) : null}
       </section>
