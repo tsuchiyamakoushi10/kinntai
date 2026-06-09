@@ -14,6 +14,7 @@ import {
   SHORT_DEFAULT_CONFIG,
   SHORT_DEFAULT_TARGET_WORK_DAYS,
   type GenerateShortInput,
+  type ShortConfig,
   type ShortDay,
   type ShortDemand,
   type ShortEmployee,
@@ -57,11 +58,15 @@ function ymd(d: Date): string {
  * - 入れない日: 受理済みの希望休 / 勤務不可 + 雇用期間外。
  * - 目標日数: shift_constraint.target_monthly_work_days、無ければ既定 21。
  * - 夜勤上限: shift_constraint.max_night_shifts_per_month、無ければ既定 5 (上記 TODO)。
+ *
+ * config は使う記号セット (拠点ごと)。ショートステイは既定、ナーシングホーム等は終日記号が
+ * 「日勤」になるなど拠点で異なるため、呼び出し側 (office-generator.ts) から渡す。
  */
 export async function loadShortGenerateInput(
   prisma: PrismaClient,
   officeId: string,
   targetMonth: string,
+  config: ShortConfig = SHORT_DEFAULT_CONFIG,
 ): Promise<GenerateShortInput> {
   const days = monthDays(targetMonth);
   const monthDates = new Set(days.map((d) => d.date));
@@ -163,5 +168,5 @@ export async function loadShortGenerateInput(
     ]),
   );
 
-  return { days, employees, demandByDayKind, master, config: SHORT_DEFAULT_CONFIG };
+  return { days, employees, demandByDayKind, master, config };
 }

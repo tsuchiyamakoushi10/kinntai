@@ -8,6 +8,7 @@ import { generateMonthlyShifts } from "@/lib/shift/auto-generator";
 import { loadDeyGenerateInput } from "@/lib/shift/dey/data";
 import { generateDey } from "@/lib/shift/dey/generate";
 import { summarizeDeyCoverage } from "@/lib/shift/dey/proposals";
+import { isDeyOffice, shortConfigForOffice } from "@/lib/shift/office-generator";
 import { loadShortGenerateInput } from "@/lib/shift/short/data";
 import { generateShort } from "@/lib/shift/short/generate";
 import { summarizeShortCoverage } from "@/lib/shift/short/proposals";
@@ -21,10 +22,6 @@ export const dynamic = "force-dynamic";
 
 const YM_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const ALGORITHM_VERSION = "phase-v2";
-/** 案A の午前/午後モデルで生成する拠点コード。 */
-const DEY_OFFICE_CODE = "DAY-CENTER";
-/** ショート (午前/午後モデル + 夜勤先取り) で生成する拠点コード。 */
-const SHORT_OFFICE_CODE = "SHO-CENTER";
 
 type SearchParams = { officeId?: string; ym?: string; seed?: string };
 type Props = { searchParams: Promise<SearchParams> };
@@ -107,15 +104,16 @@ export default async function AdminShiftsAutoPage({ searchParams }: Props) {
   let proposedCount = 0;
   let preview: ReactNode;
 
-  if (office.code === DEY_OFFICE_CODE) {
+  const shortConfig = shortConfigForOffice(office.code);
+  if (isDeyOffice(office.code)) {
     const input = await loadDeyGenerateInput(prisma, officeId, ym);
     const result = generateDey(input);
     const summary = summarizeDeyCoverage(result);
     employeeCount = input.employees.length;
     proposedCount = result.assignments.length;
     preview = <DeyPreview days={result.days} summary={summary} />;
-  } else if (office.code === SHORT_OFFICE_CODE) {
-    const input = await loadShortGenerateInput(prisma, officeId, ym);
+  } else if (shortConfig) {
+    const input = await loadShortGenerateInput(prisma, officeId, ym, shortConfig);
     const result = generateShort(input);
     const summary = summarizeShortCoverage(result);
     employeeCount = input.employees.length;
