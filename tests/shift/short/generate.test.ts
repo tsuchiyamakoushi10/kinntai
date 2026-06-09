@@ -146,6 +146,23 @@ describe("generateShort", () => {
     }
   });
 
+  it("常勤の出勤が月内で均等に分散する (月末がスカスカにならない)", () => {
+    // 実データ相当: 正社員7名・目標21日・営業30日・午前午後6。前詰めだと月末(30日)に
+    // 全員が目標到達で休みスカスカになる。ペース配分で月末まで散らす。
+    const d = days(30);
+    const demand: Partial<Record<DayKind, ShortDemand>> = {
+      WEEKDAY: { am: 6, pm: 6, counselorAm: 0, counselorPm: 0, nurseAm: 0, nursePm: 0, nightIn: 0 },
+    };
+    const emps = [
+      ...["A", "B", "C", "D", "E", "F", "G"].map((c) => emp(c, { targetWorkDays: 21 })),
+      ...["P1", "P2", "P3", "P4"].map((c) => emp(c, { isFullTime: false })),
+    ];
+    const r = generateShort(input(d, emps, demand));
+    // 最終日 (6/30) の午前在席が大きく不足しない (>=5)。前詰めだと 1〜2 になる。
+    const last = r.days.find((x) => x.date === "2026-06-30")!;
+    expect(last.coverage!.presence.am).toBeGreaterThanOrEqual(5);
+  });
+
   it("相談員が必要なら営業日に確保される", () => {
     const d = days(5);
     const demand: Partial<Record<DayKind, ShortDemand>> = {

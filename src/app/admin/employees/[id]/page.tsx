@@ -25,6 +25,8 @@ import { createSignedToken } from "@/lib/storage";
 
 import {
   clearEmployeeTabletPin,
+  returnEmployeeFromLeave,
+  setEmployeeOnLeave,
   setEmployeeTabletPin,
   unretireEmployee,
   type TabletPinFormState,
@@ -145,7 +147,10 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
   const fullName = `${employee.lastName} ${employee.firstName}`;
   const fullKana = `${employee.lastNameKana} ${employee.firstNameKana}`;
   const isRetired = employee.employmentStatus === EmploymentStatus.RETIRED;
+  const isOnLeave = employee.employmentStatus === EmploymentStatus.ON_LEAVE;
   const unretireAction = unretireEmployee.bind(null, employee.id);
+  const onLeaveAction = setEmployeeOnLeave.bind(null, employee.id);
+  const returnFromLeaveAction = returnEmployeeFromLeave.bind(null, employee.id);
 
   const retirementJudgment = judgeRetirementAllowance(
     employee.employmentContracts.map((c) => ({
@@ -188,6 +193,26 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {!isRetired && !isOnLeave && (
+            <form action={onLeaveAction}>
+              <button
+                type="submit"
+                className="rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-50"
+              >
+                休職にする (産休等)
+              </button>
+            </form>
+          )}
+          {isOnLeave && (
+            <form action={returnFromLeaveAction}>
+              <button
+                type="submit"
+                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+              >
+                休職から復帰
+              </button>
+            </form>
+          )}
           {!isRetired && (
             <Link
               href={`/admin/employees/${employee.id}/retire`}

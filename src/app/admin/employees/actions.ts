@@ -535,3 +535,46 @@ export async function unretireEmployee(id: string): Promise<void> {
   revalidatePath(`/admin/employees/${id}`);
   redirect(`/admin/employees/${id}`);
 }
+
+/**
+ * 休職にする (産休 / 育休 / 病欠など)。自動シフト生成の対象 (ACTIVE) から外れる。
+ * 退職と違いログインや雇用情報はそのまま (一時的な離脱)。
+ */
+export async function setEmployeeOnLeave(id: string): Promise<void> {
+  await requireAdmin();
+  const employee = await prisma.employee.findUnique({
+    where: { id },
+    select: { employmentStatus: true },
+  });
+  if (!employee) redirect(`/admin/employees`);
+  if (employee.employmentStatus !== EmploymentStatus.ACTIVE) {
+    redirect(`/admin/employees/${id}`);
+  }
+  await prisma.employee.update({
+    where: { id },
+    data: { employmentStatus: EmploymentStatus.ON_LEAVE },
+  });
+  revalidatePath("/admin/employees");
+  revalidatePath(`/admin/employees/${id}`);
+  redirect(`/admin/employees/${id}`);
+}
+
+/** 休職から復帰 (ACTIVE に戻す)。 */
+export async function returnEmployeeFromLeave(id: string): Promise<void> {
+  await requireAdmin();
+  const employee = await prisma.employee.findUnique({
+    where: { id },
+    select: { employmentStatus: true },
+  });
+  if (!employee) redirect(`/admin/employees`);
+  if (employee.employmentStatus !== EmploymentStatus.ON_LEAVE) {
+    redirect(`/admin/employees/${id}`);
+  }
+  await prisma.employee.update({
+    where: { id },
+    data: { employmentStatus: EmploymentStatus.ACTIVE },
+  });
+  revalidatePath("/admin/employees");
+  revalidatePath(`/admin/employees/${id}`);
+  redirect(`/admin/employees/${id}`);
+}

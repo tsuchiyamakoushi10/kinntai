@@ -243,12 +243,13 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
       guarantee(Math.max(demand.counselorAm, demand.counselorPm), (e) => e.isCounselor);
       guarantee(Math.max(demand.nurseAm, demand.nursePm), (e) => e.isNurse);
 
-      // Phase 3: 常勤を ショ日 で配置。月内ペース配分 (目標×経過/総営業日) で遅れている人を
-      // 優先し、日勤上限まで。前半集中を防ぎ MAX を守る (デイと同じ分散)。
+      // Phase 3: 常勤を ショ日 で配置。月内ペース配分 (目標×経過/総営業日) を超えた人は今日は
+      // 休ませる (デイと同じ)。これで休みが月内に均等分散し、月末 (6/30 等) に目標到達で
+      // 一斉に休んでスカスカになるのを防ぐ。日勤上限 (dayCap) も守る。
       const idealWorkDaysBy = (e: ShortEmployee): number =>
         totalOperating > 0 ? Math.round((e.targetWorkDays * operatingSoFar) / totalOperating) : 0;
       const ftCandidates = fullTimers
-        .filter((e) => eligible(e) && !today.has(e.id) && workDays.get(e.id)! < e.targetWorkDays)
+        .filter((e) => eligible(e) && !today.has(e.id) && workDays.get(e.id)! < idealWorkDaysBy(e))
         .sort((a, b) => {
           const behindA = workDays.get(a.id)! < idealWorkDaysBy(a) ? 0 : 1;
           const behindB = workDays.get(b.id)! < idealWorkDaysBy(b) ? 0 : 1;
