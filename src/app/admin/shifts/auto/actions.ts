@@ -339,6 +339,53 @@ export async function confirmRun(input: { officeId: string; ym: string }): Promi
   return { ok: true, proposedCount: 0, warningCount: 0 };
 }
 
+/**
+ * 自動作成の下書きを破棄する (run + その run 由来の shifts をまとめて削除)。
+ *
+ * run を消すだけだと Shift.generationRun は onDelete:SetNull で残ってしまう (= 勤務表に
+ * 下書きセルが残り続ける) ため、run 由来の shifts を明示的に削除する。確定済の月は
+ * 先に確定取り消しが必要 (誤って確定スケジュールを消さないため)。
+ */
+export async function deleteRun(input: { officeId: string; ym: string }): Promise<AutoRunResult> {
+  await requireAdmin();
+  if (!UUID.test(input.officeId)) return { ok: false, error: "拠点 ID の形式が不正です。" };
+  if (!YM.test(input.ym)) return { ok: false, error: "対象月の形式が不正です。" };
+
+  const range = monthRange(input.ym);
+  const run = await prisma.shiftGenerationRun.findUnique({
+    where: { officeId_targetMonth: { officeId: input.officeId, targetMonth: range.start } },
+    select: { id: true, status: true },
+  });
+  if (!run) return { ok: false, error: "この月の自動作成結果がありません。" };
+  if (run.status === "CONFIRMED") {
+    return { ok: false, error: "確定済です。先に確定取り消しを行ってから削除してください。" };
+  }
+
+  const runShifts = await prisma.shift.findMany({
+    where: {
+      officeId: input.officeId,
+      workDate: { gte: range.start, lt: range.end },
+      generationRunId: run.id,
+    },
+    select: { id: true },
+  });
+  const shiftIds = runShifts.map((s) => s.id);
+
+  await prisma.$transaction(async (tx) => {
+    if (shiftIds.length > 0) {
+      // 有給消化レコードが紐づく場合 (手修正で有休にした等) は先に消す (SetNull の残骸防止)。
+      await tx.paidLeaveConsumption.deleteMany({ where: { shiftId: { in: shiftIds } } });
+      await tx.shift.deleteMany({ where: { id: { in: shiftIds } } });
+    }
+    await tx.shiftGenerationRun.delete({ where: { id: run.id } });
+  });
+
+  revalidatePath("/admin/shifts/auto");
+  revalidatePath("/admin/shifts");
+
+  return { ok: true, proposedCount: 0, warningCount: 0 };
+}
+
 /** confirmed → draft に戻す。shifts は触らない (再実行する場合は別途 saveDraftRun)。 */
 export async function unconfirmRun(input: {
   officeId: string;

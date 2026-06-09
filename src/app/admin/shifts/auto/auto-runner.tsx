@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { confirmRun, saveDraftRun, unconfirmRun } from "./actions";
+import { confirmRun, deleteRun, saveDraftRun, unconfirmRun } from "./actions";
 
 type Props = {
   officeId: string;
@@ -75,6 +75,33 @@ export function AutoRunner({ officeId, ym, seed, existingRunStatus, proposedCoun
     });
   }
 
+  function discard(): void {
+    setFeedback(null);
+    if (existingRunStatus === "CONFIRMED") {
+      setFeedback({
+        kind: "error",
+        message: "確定済の月です。先に確定取り消しを行ってください。",
+      });
+      return;
+    }
+    if (
+      !window.confirm(
+        "この月の自動作成 下書きを削除します。\n自動配置したシフトも勤務表から消えます。よろしいですか？",
+      )
+    ) {
+      return;
+    }
+    startTransition(async () => {
+      const r = await deleteRun({ officeId, ym });
+      if (r.ok) {
+        setFeedback({ kind: "success", message: "下書きを削除しました。" });
+        router.refresh();
+      } else {
+        setFeedback({ kind: "error", message: r.error });
+      }
+    });
+  }
+
   function unconfirm(): void {
     setFeedback(null);
     if (existingRunStatus !== "CONFIRMED") {
@@ -130,6 +157,14 @@ export function AutoRunner({ officeId, ym, seed, existingRunStatus, proposedCoun
           className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           確定取り消し
+        </button>
+        <button
+          type="button"
+          onClick={discard}
+          disabled={pending || existingRunStatus !== "DRAFT"}
+          className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          削除
         </button>
         <Link
           href={`/admin/shifts?officeId=${officeId}&ym=${ym}`}
