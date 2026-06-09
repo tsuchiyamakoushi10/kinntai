@@ -28,6 +28,8 @@ export type RikaGenMember = {
   id: string;
   employmentClass: "full" | "part";
   isHelper: boolean;
+  /** 生活相談員か (営業日は必ず 1 名必要)。 */
+  isCounselor: boolean;
   /** 配置可能な勤務記号 (休み系を除く勤務記号)。 */
   allowedSymbols: ReadonlyArray<RikaSymbolCode>;
   /** 月間勤務日数の目安 (正社員のみ。null = 目安なし)。 */
@@ -39,6 +41,7 @@ export type RikaRequestOffMap = Readonly<Record<string, ReadonlyArray<string>>>;
 
 export type RikaWarning =
   | { code: "UNDERSTAFFED"; date: string; amShort: number; pmShort: number }
+  | { code: "COUNSELOR_MISSING"; date: string }
   | { code: "TARGET_UNREACHED"; memberId: string; target: number; assigned: number }
   | { code: "REQUEST_OFF_OVER_QUOTA"; memberId: string; quota: number; requested: number };
 
@@ -112,6 +115,7 @@ export function generateRikaShifts(
 
     const need: Need = { am: RIKA_STAFFING.morning, pm: RIKA_STAFFING.afternoon };
     const assignedToday = new Set<string>();
+    let counselorWorkedToday = false;
 
     // 希望休の人は希望休セルを置き、配置候補から除外。
     const candidates: RikaGenMember[] = [];
@@ -133,12 +137,18 @@ export function generateRikaShifts(
       applyGain(need, code);
       workCount.set(m.id, (workCount.get(m.id) ?? 0) + 1);
       consec.set(m.id, (consec.get(m.id) ?? 0) + 1);
+      if (m.isCounselor) counselorWorkedToday = true;
     };
 
-    // ---- Tier1: 常勤の正社員を先に配置 (終日系優先、目安に向けて極力勤務) ----
+    // ---- Tier1: 常勤の正社員を先に配置 (相談員優先・終日系優先、目安に向けて極力勤務) ----
     const tier1 = candidates
       .filter(isResidentFull)
-      .sort((a, b) => workCount.get(a.id)! - workCount.get(b.id)! || a.id.localeCompare(b.id));
+      .sort(
+        (a, b) =>
+          Number(b.isCounselor) - Number(a.isCounselor) ||
+          workCount.get(a.id)! - workCount.get(b.id)! ||
+          a.id.localeCompare(b.id),
+      );
     for (const m of tier1) {
       const pick = chooseSymbol(m, need);
       if (pick) place(m, pick.code); // gain 0 でも常勤は勤務させる (目安日数のため)
@@ -175,6 +185,10 @@ export function generateRikaShifts(
         amShort: need.am,
         pmShort: need.pm,
       });
+    }
+    // 相談員が営業日に 1 名も勤務していない (全相談員が希望休/連勤上限など)。
+    if (!counselorWorkedToday) {
+      warnings.push({ code: "COUNSELOR_MISSING", date: day.date });
     }
   }
 

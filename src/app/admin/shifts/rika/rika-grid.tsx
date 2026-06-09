@@ -100,6 +100,7 @@ export function RikaGrid({ ym, prevYm, nextYm, days, members }: Props) {
       id: m.id,
       employmentClass: m.employmentClass,
       isHelper: m.isHelper,
+      isCounselor: m.jobLabel === "生活相談員",
       allowedSymbols: m.allowedSymbols,
       targetWorkDays: m.targetWorkDays,
     }));
@@ -500,6 +501,9 @@ function WarningPanel({
         w.pmShort > 0 ? `午後${w.pmShort}名不足` : null,
       ].filter(Boolean);
       return `${w.date}: ${parts.join(" / ")}`;
+    }
+    if (w.code === "COUNSELOR_MISSING") {
+      return `${w.date}: 相談員が不在 (必ず1名必要)`;
     }
     if (w.code === "TARGET_UNREACHED") {
       return `${memberName.get(w.memberId) ?? w.memberId}: 勤務日数 ${w.assigned}日 (目安 ${w.target}日に未達)`;

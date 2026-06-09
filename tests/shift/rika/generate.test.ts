@@ -19,6 +19,7 @@ const MEMBERS: RikaGenMember[] = RIKA_ROSTER.map((m) => ({
   id: m.name,
   employmentClass: m.employmentClass,
   isHelper: m.isHelper ?? false,
+  isCounselor: m.jobLabel === "生活相談員",
   allowedSymbols: m.allowedSymbols,
   targetWorkDays: m.targetWorkDays ?? null,
 }));
@@ -76,6 +77,16 @@ describe("generateRikaShifts", () => {
     }
     // 連勤上限で一部公休になるが、過半は勤務しているはず。
     expect(worked).toBeGreaterThan(businessDays.length / 2);
+  });
+
+  it("相談員(五木田)が営業日に勤務し、不在なら警告が出る", () => {
+    // 通常運用では相談員が居るので COUNSELOR_MISSING は出ない。
+    expect(warnings.some((w) => w.code === "COUNSELOR_MISSING")).toBe(false);
+    // 五木田が初日に希望休 → その日は相談員不在の警告が出る。
+    const r = generateRikaShifts(YM, MEMBERS, { 五木田秀美: [businessDays[0]!] });
+    expect(
+      r.warnings.some((w) => w.code === "COUNSELOR_MISSING" && w.date === businessDays[0]),
+    ).toBe(true);
   });
 
   it("希望休は維持される", () => {

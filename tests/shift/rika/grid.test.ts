@@ -39,19 +39,20 @@ describe("aggregateDay", () => {
   const date = "2025-12-01";
   const cells: RikaCell[] = [
     { memberId: "A", date, symbol: "DAY_CARE" }, // 午前1 午後1
-    { memberId: "B", date, symbol: "HALF_F" }, // 午前1 午後0
-    { memberId: "C", date, symbol: "HALF_PM" }, // 午前0 午後1
+    { memberId: "B", date, symbol: "DAY_CARE" }, // 午前1 午後1
+    { memberId: "C", date, symbol: "HALF_F" }, // 午前1 午後0
+    { memberId: "G", date, symbol: "HALF_PM" }, // 午前0 午後1
     { memberId: "D", date, symbol: "OFF" }, // 0/0
     { memberId: "E", date: "2025-12-02", symbol: "DAY_CARE" }, // 別日 (無視)
   ];
 
   it("午前/午後の頭数を勤務記号定義どおりに合算する", () => {
-    expect(aggregateDay(cells, date)).toEqual({ am: 2, pm: 2 });
+    expect(aggregateDay(cells, date)).toEqual({ am: 3, pm: 3 });
   });
 
-  it("dayCoverage は配置基準 (午前2/午後2) に対する充足を返す", () => {
+  it("dayCoverage は配置基準 (午前3/午後3) に対する充足を返す", () => {
     const cov = dayCoverage(cells, date);
-    expect(cov.counts).toEqual({ am: 2, pm: 2 });
+    expect(cov.counts).toEqual({ am: 3, pm: 3 });
     expect(cov.am).toBe("met");
     expect(cov.pm).toBe("met");
   });

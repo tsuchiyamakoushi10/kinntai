@@ -27,7 +27,10 @@ export const RIKA_MASTER_OFFICE_CODE = "RIKA";
 export const RIKA_BUSINESS_DOW: ReadonlyArray<number> = [1, 2, 4, 5];
 
 /** 配置基準: 午前 / 午後 それぞれの必要人数。 */
-export const RIKA_STAFFING = { morning: 2, afternoon: 2 } as const;
+export const RIKA_STAFFING = { morning: 3, afternoon: 3 } as const;
+
+/** 相談員 (生活相談員) の必要人数。営業日は必ず 1 名。 */
+export const RIKA_COUNSELOR_REQUIRED = 1;
 
 /** 連勤上限 (これ以上は配置を避ける)。 */
 export const RIKA_MAX_CONSECUTIVE_DAYS = 6;
