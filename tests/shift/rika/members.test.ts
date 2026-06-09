@@ -24,10 +24,9 @@ const MASTER: ReadonlyArray<MasterRow> = [
   row("須永加寿美", "RIKA", "", "PART_TIME"),
   row("益子紗生里", "RIKA", "", "PART_TIME"),
   row("横野千波", "DEY", "RIKA", "PART_TIME"),
-  row("木下潤平", "NH", "NH(午前)・DEY(午後)・RIKA(午後)", "FULL_TIME"),
-  // 誤突合チェック用ノイズ (同姓 別人 / 無関係)。
+  row("千島真紀", "RIKA", "", "PART_TIME"),
+  // 誤突合チェック用ノイズ (無関係)。
   row("木下拓哉", "SHORT", "", "FULL_TIME"),
-  row("木下理菜", "KITCHEN", "", "FULL_TIME"),
   row("中村直子", "NH", "", "FULL_TIME"),
 ];
 
@@ -64,18 +63,10 @@ describe("resolveRikaMembers (シフト用マスター)", () => {
     }
   });
 
-  it("兼務応援者 (横野・木下) は『兼務応援』として注記する", () => {
-    for (const name of ["横野千波", "木下潤平"]) {
-      const r = byName.get(name)!;
-      expect(r.discrepancies.some((d) => d.includes("兼務応援"))).toBe(true);
-      expect(r.discrepancies.some((d) => d.includes("拠点コード不一致"))).toBe(false);
-    }
-  });
-
-  it("同姓が複数いる木下潤平は完全一致で本人に突合する (誤突合しない)", () => {
-    const r = byName.get("木下潤平")!;
-    expect(r.exactNameMatch).toBe(true);
-    expect(r.master?.name).toBe("木下潤平");
+  it("兼務応援者 (横野) は『兼務応援』として注記する", () => {
+    const r = byName.get("横野千波")!;
+    expect(r.discrepancies.some((d) => d.includes("兼務応援"))).toBe(true);
+    expect(r.discrepancies.some((d) => d.includes("拠点コード不一致"))).toBe(false);
   });
 });
 

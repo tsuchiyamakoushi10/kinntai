@@ -34,6 +34,7 @@ type Member = {
   employmentClass: "full" | "part";
   jobLabel: string;
   targetWorkDays: number | null;
+  maxWorkDaysPerWeek: number | null;
   isHelper: boolean;
   allowedSymbols: RikaSymbolCode[];
   note: string | null;
@@ -103,6 +104,7 @@ export function RikaGrid({ ym, prevYm, nextYm, days, members }: Props) {
       isCounselor: m.jobLabel === "生活相談員",
       allowedSymbols: m.allowedSymbols,
       targetWorkDays: m.targetWorkDays,
+      maxWorkDaysPerWeek: m.maxWorkDaysPerWeek,
     }));
     // 既存の希望休は維持する (設計書 §4)。
     const requestOff: Record<string, string[]> = {};

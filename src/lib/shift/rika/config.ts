@@ -124,6 +124,8 @@ export type RikaRosterMember = {
   isHelper?: boolean;
   /** 月間勤務日数の目安 (正社員のみ)。 */
   targetWorkDays?: number;
+  /** 週あたりの勤務日数の上限 (例: 週1勤務の人)。未指定 = 上限なし。 */
+  maxWorkDaysPerWeek?: number;
   /** 補足メモ。 */
   note?: string;
 };
@@ -173,12 +175,11 @@ export const RIKA_ROSTER: ReadonlyArray<RikaRosterMember> = [
     note: "主はデイ結い (DEY)。梨花は応援",
   },
   {
-    name: "木下潤平",
-    employmentClass: "full",
-    jobLabel: "柔整師",
-    allowedSymbols: ["HALF_PM"],
-    pmOnly: true,
-    isHelper: true,
-    note: "午後のみ。午前は本庄ナーシング",
+    name: "千島真紀",
+    employmentClass: "part",
+    jobLabel: "介護",
+    allowedSymbols: ALL_RIKA_SYMBOLS,
+    maxWorkDaysPerWeek: 1,
+    note: "週1勤務まで",
   },
 ];

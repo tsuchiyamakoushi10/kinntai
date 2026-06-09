@@ -22,6 +22,7 @@ const MEMBERS: RikaGenMember[] = RIKA_ROSTER.map((m) => ({
   isCounselor: m.jobLabel === "生活相談員",
   allowedSymbols: m.allowedSymbols,
   targetWorkDays: m.targetWorkDays ?? null,
+  maxWorkDaysPerWeek: m.maxWorkDaysPerWeek ?? null,
 }));
 
 const YM = "2025-12"; // 12-01 は月曜
@@ -95,6 +96,21 @@ describe("generateRikaShifts", () => {
     const m = new Map(r.cells.map((c) => [`${c.memberId}|${c.date}`, c.symbol]));
     expect(m.get(`菅原知美|${businessDays[0]}`)).toBe("REQUESTED_OFF");
     expect(m.get(`菅原知美|${businessDays[1]}`)).toBe("REQUESTED_OFF");
+  });
+
+  it("週あたり上限 (千島=週1) を超えない", () => {
+    // 各週 (月曜起点) で千島の勤務日数が1以下。
+    const byWeek = new Map<string, number>();
+    for (const d of businessDays) {
+      const sym = byKey.get(`千島真紀|${d}`);
+      if (sym && sym !== "OFF" && sym !== "REQUESTED_OFF") {
+        const monday = new Date(`${d}T00:00:00.000Z`);
+        monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+        const key = monday.toISOString().slice(0, 10);
+        byWeek.set(key, (byWeek.get(key) ?? 0) + 1);
+      }
+    }
+    for (const [, n] of byWeek) expect(n).toBeLessThanOrEqual(1);
   });
 
   it("連勤は6日を超えない", () => {

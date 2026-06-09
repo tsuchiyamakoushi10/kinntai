@@ -43,6 +43,7 @@ export default async function AdminRikaShiftPage({ searchParams }: Props) {
     employmentClass: m.employmentClass,
     jobLabel: m.jobLabel,
     targetWorkDays: m.targetWorkDays ?? null,
+    maxWorkDaysPerWeek: m.maxWorkDaysPerWeek ?? null,
     isHelper: m.isHelper ?? false,
     allowedSymbols: [...m.allowedSymbols],
     note: m.note ?? null,

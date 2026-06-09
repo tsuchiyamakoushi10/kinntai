@@ -34,7 +34,17 @@ export type RikaGenMember = {
   allowedSymbols: ReadonlyArray<RikaSymbolCode>;
   /** 月間勤務日数の目安 (正社員のみ。null = 目安なし)。 */
   targetWorkDays: number | null;
+  /** 週あたりの勤務日数の上限 (null = 上限なし)。 */
+  maxWorkDaysPerWeek: number | null;
 };
+
+/** その日が属する週 (月曜) を返す。週次上限の判定キー。 */
+function mondayOf(date: string): string {
+  const d = new Date(`${date}T00:00:00.000Z`);
+  const diff = (d.getUTCDay() + 6) % 7; // 月曜からの経過日数
+  d.setUTCDate(d.getUTCDate() - diff);
+  return d.toISOString().slice(0, 10);
+}
 
 /** memberId -> 希望休の日付 ("YYYY-MM-DD")。 */
 export type RikaRequestOffMap = Readonly<Record<string, ReadonlyArray<string>>>;
@@ -100,6 +110,8 @@ export function generateRikaShifts(
   // 実働日数の累計と、連勤判定用の「直前まで何日連続勤務か」。
   const workCount = new Map<string, number>(members.map((m) => [m.id, 0]));
   const consec = new Map<string, number>(members.map((m) => [m.id, 0]));
+  // 週次勤務日数 (memberId|月曜日 → 日数)。週あたり上限の判定に使う。
+  const weekWork = new Map<string, number>();
 
   const isResidentFull = (m: RikaGenMember): boolean => m.employmentClass === "full" && !m.isHelper;
 
@@ -128,6 +140,13 @@ export function generateRikaShifts(
       }
       // 連勤上限に達している人は配置しない (この後 公休)。
       if ((consec.get(m.id) ?? 0) >= RIKA_MAX_CONSECUTIVE_DAYS) continue;
+      // 週あたり上限に達している人も配置しない (例: 週1勤務)。
+      if (
+        m.maxWorkDaysPerWeek != null &&
+        (weekWork.get(`${m.id}|${mondayOf(day.date)}`) ?? 0) >= m.maxWorkDaysPerWeek
+      ) {
+        continue;
+      }
       candidates.push(m);
     }
 
@@ -137,6 +156,8 @@ export function generateRikaShifts(
       applyGain(need, code);
       workCount.set(m.id, (workCount.get(m.id) ?? 0) + 1);
       consec.set(m.id, (consec.get(m.id) ?? 0) + 1);
+      const wk = `${m.id}|${mondayOf(day.date)}`;
+      weekWork.set(wk, (weekWork.get(wk) ?? 0) + 1);
       if (m.isCounselor) counselorWorkedToday = true;
     };
 
