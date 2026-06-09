@@ -113,9 +113,9 @@ export type RikaRosterMember = {
   jobLabel: string;
   /** 配置可能な勤務記号 (ShiftPattern.code)。 */
   allowedSymbols: ReadonlyArray<RikaSymbolCode>;
-  /** 午前のみ勤務可 (益子: 8:45-13:00)。 */
+  /** 午前のみ勤務可。 */
   amOnly?: boolean;
-  /** 午後のみ勤務可 (木下: 午前は本庄ナーシング)。 */
+  /** 午後のみ勤務可 (益子: 半日午後のみ / 木下: 午前は本庄ナーシング)。 */
   pmOnly?: boolean;
   /** 兼務応援 (主たる勤務先は別事業所。梨花には応援で来る)。 */
   isHelper?: boolean;
@@ -157,9 +157,9 @@ export const RIKA_ROSTER: ReadonlyArray<RikaRosterMember> = [
     name: "益子紗生里",
     employmentClass: "part",
     jobLabel: "介護",
-    allowedSymbols: ["HALF_F"],
-    amOnly: true,
-    note: "午前のみ (8:45-13:00)",
+    allowedSymbols: ["HALF_PM"],
+    pmOnly: true,
+    note: "半日午後のみ (13:00-16:15)",
   },
   {
     name: "横野千波",

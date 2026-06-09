@@ -5,7 +5,7 @@
  *   - 休業日は全員公休
  *   - 営業日は配置基準 (午前2/午後2) を満たす
  *   - 正社員を先に終日系で配置、不足をパート/応援で補充
- *   - 個人制約 (益子=半日F午前のみ / 木下=半午午後のみ) を守る
+ *   - 個人制約 (益子=半日午後のみ / 木下=半午午後のみ) を守る
  *   - 希望休は維持、連勤6日を超えない、決定論的
  */
 import { describe, expect, it } from "vitest";
@@ -54,11 +54,11 @@ describe("generateRikaShifts", () => {
     expect(warnings.filter((w) => w.code === "UNDERSTAFFED")).toHaveLength(0);
   });
 
-  it("個人制約を守る: 益子は半日Fのみ、木下は半午のみ (勤務日)", () => {
+  it("個人制約を守る: 益子は半日午後のみ、木下は半午のみ (勤務日)", () => {
     for (const date of businessDays) {
       const masuko = byKey.get(`益子紗生里|${date}`);
       if (masuko && masuko !== "OFF" && masuko !== "REQUESTED_OFF") {
-        expect(masuko).toBe("HALF_F");
+        expect(masuko).toBe("HALF_PM");
       }
       const kinoshita = byKey.get(`木下潤平|${date}`);
       if (kinoshita && kinoshita !== "OFF" && kinoshita !== "REQUESTED_OFF") {
