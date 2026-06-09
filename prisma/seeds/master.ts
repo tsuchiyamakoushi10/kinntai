@@ -373,7 +373,7 @@ const KT: PatternSeed[] = [
 ];
 
 const OFF_LIKE: PatternSeed[] = [
-  { code: "OFF", name: "公休", shiftKind: "OFF", color: "#e5e7eb", sortOrder: 900 },
+  { code: "OFF", name: "公休", shiftKind: "OFF", color: "#9ca3af", sortOrder: 900 },
   {
     code: "PAID_LEAVE",
     name: "有休",

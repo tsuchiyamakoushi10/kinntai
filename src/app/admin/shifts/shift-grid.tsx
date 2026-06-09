@@ -25,20 +25,15 @@ export type PreferenceMark = {
   status: ShiftPreferenceStatus;
 };
 
-/** 希望種別ごとのセル表示 (短縮ラベル + 色)。 */
-const PREF_VISUAL: Record<
-  ShiftPreferenceType,
-  { short: string; bg: string; text: string; dot: string }
-> = {
-  REQUESTED_OFF: { short: "希休", bg: "bg-pink-100", text: "text-pink-800", dot: "bg-pink-400" },
-  PAID_LEAVE: { short: "有給", bg: "bg-amber-100", text: "text-amber-800", dot: "bg-amber-400" },
-  PREFERRED_NIGHT: {
-    short: "夜希",
-    bg: "bg-indigo-100",
-    text: "text-indigo-800",
-    dot: "bg-indigo-400",
-  },
-  UNAVAILABLE: { short: "不可", bg: "bg-rose-100", text: "text-rose-800", dot: "bg-rose-400" },
+/**
+ * 希望種別ごとのセル表示 (短縮ラベル + 色)。
+ * 申請があるセルは「セル全体」をこの色で塗る (配置済みでも) ので、点ではなく見やすい。
+ */
+const PREF_VISUAL: Record<ShiftPreferenceType, { short: string; bg: string; text: string }> = {
+  REQUESTED_OFF: { short: "希休", bg: "bg-pink-300", text: "text-pink-900" },
+  PAID_LEAVE: { short: "有給", bg: "bg-amber-300", text: "text-amber-900" },
+  PREFERRED_NIGHT: { short: "夜希", bg: "bg-indigo-300", text: "text-indigo-900" },
+  UNAVAILABLE: { short: "不可", bg: "bg-rose-300", text: "text-rose-900" },
 };
 
 function prefTitle(p: PreferenceMark): string {
@@ -405,9 +400,7 @@ export function ShiftGrid({
               {SHIFT_PREFERENCE_TYPE_LABELS[t]}
             </span>
           ))}
-          <span className="text-slate-400">
-            （点線＝承認待ち / 配置済みのセルは右上に色ドット）
-          </span>
+          <span className="text-slate-400">（セル全体の色で表示。点線枠＝承認待ち）</span>
         </div>
       )}
 
@@ -475,8 +468,8 @@ export function ShiftGrid({
                   const w = weekdayOf(d);
                   const weekend = w === 0 || w === 6;
                   const isAuto = autoCellKeys?.has(k) ?? false;
-                  // 未配置セルに希望を背景＋ラベルで表示 (配置済みなら隅にドットで残す)。
-                  const showPrefAsCell = !pattern && pref !== null;
+                  // 申請 (希望休/有給など) があれば、配置済みかどうかに関わらずセル全体をその色で塗る。
+                  // 配置済みのセルは「色＝申請」「文字＝配置パターン名」で両方分かる。
                   return (
                     <td
                       key={d}
@@ -484,15 +477,16 @@ export function ShiftGrid({
                         "relative h-9 border-r border-slate-100 p-0 text-center align-middle",
                         readOnly ? "" : "cursor-pointer hover:ring-2 hover:ring-slate-400/50",
                         weekend && !pattern && !pref ? "bg-slate-50/60" : "",
-                        showPrefAsCell && visual ? visual.bg : "",
-                        showPrefAsCell && pref?.status === "PENDING"
-                          ? "outline-1 -outline-offset-2 outline-slate-400 outline-dashed"
+                        visual ? visual.bg : "",
+                        pref?.status === "PENDING"
+                          ? "outline-1 -outline-offset-2 outline-slate-500 outline-dashed"
                           : "",
                         isCursor && !readOnly ? "ring-2 ring-slate-900 ring-inset" : "",
                       ].join(" ")}
                       style={
-                        pattern
-                          ? { backgroundColor: pattern.color + "33" /* 20% alpha */ }
+                        // 申請があるセルはクラス側の色を優先するため inline 背景は付けない。
+                        pattern && !pref
+                          ? { backgroundColor: pattern.color + "59" /* ~35% alpha */ }
                           : undefined
                       }
                       onClick={() => {
@@ -513,9 +507,9 @@ export function ShiftGrid({
                         <span className="block truncate px-0.5 text-[11px] font-medium text-slate-900">
                           {pattern.name}
                         </span>
-                      ) : showPrefAsCell && visual ? (
+                      ) : visual ? (
                         <span
-                          className={`block truncate px-0.5 text-[11px] font-medium ${visual.text}`}
+                          className={`block truncate px-0.5 text-[11px] font-bold ${visual.text}`}
                         >
                           {visual.short}
                         </span>
@@ -530,13 +524,6 @@ export function ShiftGrid({
                         >
                           ▾
                         </span>
-                      )}
-                      {pref && pattern && visual && (
-                        <span
-                          aria-hidden
-                          title={prefTitle(pref)}
-                          className={`pointer-events-none absolute top-0.5 right-0.5 size-1.5 rounded-full ${visual.dot}`}
-                        />
                       )}
                     </td>
                   );
