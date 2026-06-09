@@ -20,6 +20,7 @@ const ROWS: ReadonlyArray<{ key: FieldKey; label: string }> = [
   { key: "pmRequired", label: "午後の必要人数" },
   { key: "counselorAmRequired", label: "うち相談員 (午前)" },
   { key: "counselorPmRequired", label: "うち相談員 (午後)" },
+  { key: "earlyAmRequired", label: "うち送迎 (8:15開始)" },
   { key: "nightInRequired", label: "夜入" },
   { key: "nightOutRequired", label: "夜明" },
 ];

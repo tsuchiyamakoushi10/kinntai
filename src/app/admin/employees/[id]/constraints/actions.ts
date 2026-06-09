@@ -15,6 +15,8 @@ export type ShiftConstraintFormValues = {
   allowNightShiftOverride: string;
   targetMonthlyWorkDays: string;
   annualIncomeCapYen: string;
+  /** 半日勤務のみ ("on" / "")。デイ自動生成で終日を割り当てない。 */
+  halfDayOnly: string;
   /** "0,1,..,6" の CSV (日=0 .. 土=6)。空文字は「制限なし」。 */
   unavailableDaysOfWeek: string;
   notes: string;
@@ -34,6 +36,7 @@ type Parsed = {
   allowNightShiftOverride: boolean;
   targetMonthlyWorkDays: number | null;
   annualIncomeCapYen: number | null;
+  halfDayOnly: boolean;
   unavailableDaysOfWeek: number[];
   notes: string;
 };
@@ -48,6 +51,7 @@ function readForm(formData: FormData): ShiftConstraintFormValues {
     allowNightShiftOverride: formData.get("allowNightShiftOverride") ? "on" : "",
     targetMonthlyWorkDays: String(formData.get("targetMonthlyWorkDays") ?? "").trim(),
     annualIncomeCapYen: String(formData.get("annualIncomeCapYen") ?? "").trim(),
+    halfDayOnly: formData.get("halfDayOnly") ? "on" : "",
     unavailableDaysOfWeek: days.join(","),
     notes: String(formData.get("notes") ?? "").trim(),
   };
@@ -124,6 +128,7 @@ function parseAndValidate(
       allowNightShiftOverride: values.allowNightShiftOverride === "on",
       targetMonthlyWorkDays: target.value,
       annualIncomeCapYen: cap.value,
+      halfDayOnly: values.halfDayOnly === "on",
       unavailableDaysOfWeek: uniqueDays,
       notes: values.notes,
     },

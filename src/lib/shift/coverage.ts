@@ -19,6 +19,8 @@ export type SymbolCoverage = {
   pmCount: number;
   /** 夜勤系 (夜入 / 夜明) か。 */
   isNight: boolean;
+  /** 送迎 (8:15 までに開始) か。デイの送迎人数チェック用。未指定は false 扱い。 */
+  isEarly?: boolean;
   /** 時間帯区分 (終日 / 午前 / 午後 / 夜勤 / 夜勤明け / 厨房 / その他 / 休)。 */
   band: string;
 };

@@ -26,6 +26,7 @@ const z: CoverageDemandValues = {
   pmRequired: 0,
   counselorAmRequired: 0,
   counselorPmRequired: 0,
+  earlyAmRequired: 0,
   nightInRequired: 0,
   nightOutRequired: 0,
 };
@@ -33,13 +34,22 @@ const z: CoverageDemandValues = {
 // 拠点コード → 日種 → 配置基準
 const PLAN: Record<string, DemandByDayKind> = {
   "DAY-CENTER": {
-    WEEKDAY: { ...z, amRequired: 7, pmRequired: 5, counselorAmRequired: 1, counselorPmRequired: 1 },
+    // 午前7のうち送迎(8:15)5名。
+    WEEKDAY: {
+      ...z,
+      amRequired: 7,
+      pmRequired: 5,
+      counselorAmRequired: 1,
+      counselorPmRequired: 1,
+      earlyAmRequired: 5,
+    },
     SATURDAY: {
       ...z,
       amRequired: 7,
       pmRequired: 5,
       counselorAmRequired: 1,
       counselorPmRequired: 1,
+      earlyAmRequired: 5,
     },
     SUNDAY_HOLIDAY: { ...z }, // 日祝 休業
   },
@@ -49,6 +59,7 @@ const PLAN: Record<string, DemandByDayKind> = {
       pmRequired: 6,
       counselorAmRequired: 1,
       counselorPmRequired: 1,
+      earlyAmRequired: 0,
       nightInRequired: 1,
       nightOutRequired: 1,
     },
@@ -57,6 +68,7 @@ const PLAN: Record<string, DemandByDayKind> = {
       pmRequired: 6,
       counselorAmRequired: 1,
       counselorPmRequired: 1,
+      earlyAmRequired: 0,
       nightInRequired: 1,
       nightOutRequired: 1,
     },
@@ -65,6 +77,7 @@ const PLAN: Record<string, DemandByDayKind> = {
       pmRequired: 5,
       counselorAmRequired: 1,
       counselorPmRequired: 1,
+      earlyAmRequired: 0,
       nightInRequired: 1,
       nightOutRequired: 1,
     },
@@ -75,6 +88,7 @@ const PLAN: Record<string, DemandByDayKind> = {
       pmRequired: 5,
       counselorAmRequired: 1,
       counselorPmRequired: 1,
+      earlyAmRequired: 0,
       nightInRequired: 1,
       nightOutRequired: 1,
     },
@@ -83,6 +97,7 @@ const PLAN: Record<string, DemandByDayKind> = {
       pmRequired: 5,
       counselorAmRequired: 1,
       counselorPmRequired: 1,
+      earlyAmRequired: 0,
       nightInRequired: 1,
       nightOutRequired: 1,
     },
@@ -91,6 +106,7 @@ const PLAN: Record<string, DemandByDayKind> = {
       pmRequired: 5,
       counselorAmRequired: 1,
       counselorPmRequired: 1,
+      earlyAmRequired: 0,
       nightInRequired: 1,
       nightOutRequired: 1,
     },

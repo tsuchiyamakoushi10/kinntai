@@ -114,6 +114,20 @@ export function ConstraintForm({ action, initial }: Props) {
             </span>
           </span>
         </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="halfDayOnly"
+            defaultChecked={v.halfDayOnly === "on"}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+          />
+          <span className="flex flex-col">
+            <span className="text-slate-700">半日勤務のみ</span>
+            <span className="text-xs text-slate-500">
+              デイの自動作成で終日(デ日/デ短)を割り当てず、午前(半日)のみにする
+            </span>
+          </span>
+        </label>
       </div>
 
       <fieldset className="rounded-xl border border-slate-200 bg-white p-5">

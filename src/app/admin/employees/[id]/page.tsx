@@ -939,6 +939,7 @@ function ConstraintsTab({
     allowNightShiftOverride: constraint ? (constraint.allowNightShiftOverride ? "on" : "") : "on",
     targetMonthlyWorkDays: constraint?.targetMonthlyWorkDays?.toString() ?? "",
     annualIncomeCapYen: constraint?.annualIncomeCapYen?.toString() ?? "",
+    halfDayOnly: constraint?.halfDayOnly ? "on" : "",
     unavailableDaysOfWeek: (constraint?.unavailableDaysOfWeek ?? []).join(","),
     notes: constraint?.notes ?? "",
   };

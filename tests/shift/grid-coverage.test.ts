@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import { computeDayShortfalls, type CoverageNeed, type GridCell } from "@/lib/shift/grid-coverage";
 
-const fullDay = (isCounselor = false): GridCell => ({
+const fullDay = (isCounselor = false, isEarly = false): GridCell => ({
   amCount: 1,
   pmCount: 1,
   isNightIn: false,
   isNightOut: false,
   isCounselor,
+  isEarly,
 });
 const am = (): GridCell => ({
   amCount: 1,
@@ -16,6 +17,7 @@ const am = (): GridCell => ({
   isNightIn: false,
   isNightOut: false,
   isCounselor: false,
+  isEarly: false,
 });
 const nightIn = (): GridCell => ({
   amCount: 0,
@@ -23,6 +25,7 @@ const nightIn = (): GridCell => ({
   isNightIn: true,
   isNightOut: false,
   isCounselor: false,
+  isEarly: false,
 });
 
 const WEEKDAY: CoverageNeed = {
@@ -30,6 +33,7 @@ const WEEKDAY: CoverageNeed = {
   pm: 2,
   counselorAm: 1,
   counselorPm: 1,
+  earlyAm: 0,
   nightIn: 0,
   nightOut: 0,
 };
@@ -57,6 +61,24 @@ describe("computeDayShortfalls", () => {
     expect(r[0]).toMatchObject({ am: 0, pm: 0, counselorAm: 1, counselorPm: 1 });
   });
 
+  it("送迎(earlyAm)が足りなければ送迎不足を返す", () => {
+    const need: Partial<Record<DayKind, CoverageNeed>> = {
+      WEEKDAY: {
+        am: 3,
+        pm: 2,
+        counselorAm: 0,
+        counselorPm: 0,
+        earlyAm: 2,
+        nightIn: 0,
+        nightOut: 0,
+      },
+    };
+    // 終日3名いるが送迎(isEarly)は1名だけ → 送迎が1名不足
+    const cells = new Map([["2026-06-01", [fullDay(false, true), fullDay(), fullDay()]]]);
+    const r = computeDayShortfalls(days, need, cells);
+    expect(r[0]).toMatchObject({ am: 0, pm: 0, earlyAm: 1 });
+  });
+
   it("休業日 (基準なし/必要数0) は対象外", () => {
     const holiday = [{ date: "2026-06-07", dayKind: "SUNDAY_HOLIDAY" as DayKind }];
     expect(computeDayShortfalls(holiday, demand, new Map())).toEqual([]);
@@ -64,7 +86,15 @@ describe("computeDayShortfalls", () => {
 
   it("夜勤の必要数も評価する", () => {
     const nightDemand: Partial<Record<DayKind, CoverageNeed>> = {
-      WEEKDAY: { am: 0, pm: 0, counselorAm: 0, counselorPm: 0, nightIn: 1, nightOut: 0 },
+      WEEKDAY: {
+        am: 0,
+        pm: 0,
+        counselorAm: 0,
+        counselorPm: 0,
+        earlyAm: 0,
+        nightIn: 1,
+        nightOut: 0,
+      },
     };
     const empty = computeDayShortfalls(days, nightDemand, new Map());
     expect(empty[0]).toMatchObject({ nightIn: 1 });

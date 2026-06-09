@@ -11,18 +11,27 @@ import {
   type GenerateDeyInput,
 } from "@/lib/shift/dey/generate";
 
-// テスト用の記号マスター (デ日/デ短A=終日, 半日A=午前, 公休=休)。
-function cov(baseSymbol: string, am: number, pm: number): [string, SymbolCoverage] {
-  return [baseSymbol, { baseSymbol, amCount: am, pmCount: pm, isNight: false, band: "" }];
+// テスト用の記号マスター。送迎(8:15)= デ日/デ短D/半日D、出勤(9:00)= デ短A/半日A。
+function cov(
+  baseSymbol: string,
+  am: number,
+  pm: number,
+  isEarly = false,
+): [string, SymbolCoverage] {
+  return [baseSymbol, { baseSymbol, amCount: am, pmCount: pm, isNight: false, isEarly, band: "" }];
 }
 const MASTER: SymbolMaster = new Map([
-  cov("デ日", 1, 1),
-  cov("デ短A", 1, 1),
-  cov("半日A", 1, 0),
+  cov("デ日", 1, 1, true),
+  cov("デ短D", 1, 1, true),
+  cov("半日D", 1, 0, true),
+  cov("デ短A", 1, 1, false),
+  cov("半日A", 1, 0, false),
   cov("公休", 0, 0),
+  cov("有休", 0, 0),
 ]);
 
-const WEEKDAY_DEMAND: DeyDemand = { am: 7, pm: 5, counselorAm: 1, counselorPm: 1 };
+// 既定は earlyAm=0 (送迎の区別なし) で、従来の挙動 (デ短A/半日A で穴埋め) を保つ。
+const WEEKDAY_DEMAND: DeyDemand = { am: 7, pm: 5, counselorAm: 1, counselorPm: 1, earlyAm: 0 };
 
 function emp(code: string, isFullTime: boolean, opts: Partial<DeyEmployee> = {}): DeyEmployee {
   return {
@@ -32,6 +41,7 @@ function emp(code: string, isFullTime: boolean, opts: Partial<DeyEmployee> = {})
     isCounselor: opts.isCounselor ?? false,
     unavailableDates: opts.unavailableDates ?? new Set(),
     paidLeaveDates: opts.paidLeaveDates ?? new Set(),
+    halfDayOnly: opts.halfDayOnly ?? false,
     targetWorkDays: opts.targetWorkDays ?? 21,
   };
 }
@@ -268,6 +278,54 @@ describe("generateDey — 相談員の確保 (Phase 0)", () => {
     expect(symbolsOn(r, "2026-06-02").get("C1")).toBe("公休");
     const d2 = r.days.find((d) => d.date === "2026-06-02")!;
     expect(d2.coverage!.counselorAmShort).toBe(true);
+  });
+});
+
+describe("generateDey — 送迎(earlyAm) / 半日のみ / 常勤の休み分散", () => {
+  const EARLY = new Set(["デ日", "デ短D", "半日D"]);
+
+  it("送迎(8:15)が必要数を満たすよう 8:15系を優先採用する", () => {
+    // 常勤2名(デ日=送迎) + 非常勤7名。am=7・earlyAm=5。
+    const employees = [
+      ...["F1", "F2"].map((c) => emp(c, true)),
+      ...["P1", "P2", "P3", "P4", "P5", "P6", "P7"].map((c) => emp(c, false)),
+    ];
+    const demand: DeyDemand = { ...WEEKDAY_DEMAND, earlyAm: 5 };
+    const r = generateDey(baseInput({ demandByDayKind: { WEEKDAY: demand }, employees }));
+    const day = symbolsOn(r, "2026-06-01");
+    const early = [...day.values()].filter((s) => EARLY.has(s)).length;
+    expect(early).toBeGreaterThanOrEqual(5);
+    // 午前7/午後5 も満たす
+    const ev = r.days[0]!.coverage!;
+    expect(ev.amShortfall).toBe(0);
+    expect(ev.pmShortfall).toBe(0);
+  });
+
+  it("半日のみ職員は終日(デ短/デ日)に入らず午前(半日)のみ", () => {
+    const employees = [
+      emp("H1", false, { halfDayOnly: true }),
+      ...["P1", "P2", "P3", "P4", "P5", "P6"].map((c) => emp(c, false)),
+      ...["F1", "F2", "F3"].map((c) => emp(c, true)),
+    ];
+    const r = generateDey(baseInput({ days: weekdays(5), employees }));
+    const allowed = new Set(["半日A", "半日D", "公休", "有休"]);
+    for (const a of r.assignments.filter((x) => x.employeeId === "H1")) {
+      expect(allowed.has(a.baseSymbol)).toBe(true);
+    }
+  });
+
+  it("常勤の公休は同日に重なりにくい (月前半は最大1人)", () => {
+    const employees = [
+      ...["F1", "F2", "F3"].map((c) => emp(c, true)),
+      ...["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"].map((c) => emp(c, false)),
+    ];
+    const r = generateDey(baseInput({ days: weekdays(26), employees }));
+    for (const day of r.days.slice(0, 20)) {
+      const resting = ["F1", "F2", "F3"].filter(
+        (f) => symbolsOn(r, day.date).get(f) === "公休",
+      ).length;
+      expect(resting).toBeLessThanOrEqual(1);
+    }
   });
 });
 

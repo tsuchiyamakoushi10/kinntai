@@ -9,7 +9,9 @@
  *   0. 相談員 (生活相談員) を必要数だけ最優先で確保 (常勤/非常勤問わず。希望休・連勤上限は
  *      守るが月目標日数は超えてよい = 相談員カバレッジ優先・負担は分散)。
  *   1. 常勤を デ日 で配置 (月目標日数を月内で均等にペース配分・連勤上限内・希望休尊重)。
- *   2. 非常勤で午前/午後の不足を平等配分で穴埋め (PM 不足=デ短A 終日 / AM だけ不足=半日A)。
+ *      営業日に常勤が 2 人以上同時に公休にならないよう調整 (強制休み重複時を除く)。
+ *   2. 非常勤等で午前/午後の不足を平等配分で穴埋め。送迎(8:15開始)が必要数に満つまで
+ *      8:15系記号を優先採用し、満ちたら 9:00系で残りを埋める。半日のみ職員は午前記号のみ。
  *   3. 有給希望日は有休、残りは公休。休業日 (必要数 0) は全員公休 (有給日は有休)。
  *
  * DB に触れない純粋関数。常勤/非常勤の判定や記号→DB パターンの対応は呼び出し側が担う。
@@ -44,28 +46,36 @@ export type DeyEmployee = {
   unavailableDates: ReadonlySet<string>;
   /** 有給の日 ("YYYY-MM-DD")。必ず休みにし、セルは有休で出す (勤務は入れない)。 */
   paidLeaveDates: ReadonlySet<string>;
+  /** 半日勤務しかしない職員か。終日(デ短/デ日)を割り当てず午前(半日)のみにする。 */
+  halfDayOnly: boolean;
   /** 月の目標出勤日数 (常勤のみ使用。既定 21)。これに達したら以降は公休。 */
   targetWorkDays: number;
 };
 
-/** 1 日種ぶんの配置基準 (午前/午後 + 相談員)。office_coverage_demands 由来 (夜勤は デイで未使用)。 */
+/** 1 日種ぶんの配置基準 (午前/午後 + 相談員 + 送迎)。office_coverage_demands 由来。 */
 export type DeyDemand = {
   am: number;
   pm: number;
   counselorAm: number;
   counselorPm: number;
+  /** 午前のうち送迎(8:15開始)で必要な人数。0 = 送迎の区別なし。 */
+  earlyAm: number;
 };
 
-/** 使用する勤務記号と上限。 */
+/** 使用する勤務記号と上限。送迎(8:15)系と出勤(9:00)系を分ける。 */
 export type DeyConfig = {
   maxConsecutiveDays: number;
   symbols: {
-    /** 常勤の終日 (例: デ日)。 */
+    /** 常勤の終日 (8:15開始・送迎。例: デ日)。 */
     fullDay: string;
-    /** 非常勤の終日 (例: デ短A)。PM 不足時に使う。 */
-    partFullDay: string;
-    /** 非常勤の午前 (例: 半日A)。AM だけ不足時に使う。 */
-    partAm: string;
+    /** 非常勤の終日・送迎 (8:15開始。例: デ短D)。 */
+    earlyPartFullDay: string;
+    /** 非常勤の午前・送迎 (8:15開始。例: 半日D)。 */
+    earlyPartAm: string;
+    /** 非常勤の終日・出勤 (9:00開始。例: デ短A)。 */
+    latePartFullDay: string;
+    /** 非常勤の午前・出勤 (9:00開始。例: 半日A)。 */
+    latePartAm: string;
     /** 公休 (例: 公休)。 */
     off: string;
     /** 有休 (例: 有休)。有給希望日に使う。 */
@@ -77,8 +87,10 @@ export const DEY_DEFAULT_CONFIG: DeyConfig = {
   maxConsecutiveDays: 6,
   symbols: {
     fullDay: "デ日",
-    partFullDay: "デ短A",
-    partAm: "半日A",
+    earlyPartFullDay: "デ短D",
+    earlyPartAm: "半日D",
+    latePartFullDay: "デ短A",
+    latePartAm: "半日A",
     off: "公休",
     paidLeave: "有休",
   },
@@ -129,8 +141,9 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
   const employees = [...input.employees].sort((a, b) =>
     a.employeeCode.localeCompare(b.employeeCode),
   );
-  const fullTimers = employees.filter((e) => e.isFullTime);
-  const partTimers = employees.filter((e) => !e.isFullTime);
+  // フル勤務する常勤 (Phase 1)。半日のみ職員は常勤でも除外し、穴埋めプールで午前のみ扱う。
+  const fullPool = employees.filter((e) => e.isFullTime && !e.halfDayOnly);
+  const fillPool = employees.filter((e) => !(e.isFullTime && !e.halfDayOnly));
   const counselorIds = new Set(employees.filter((e) => e.isCounselor).map((e) => e.id));
 
   const workDays = new Map<string, number>(employees.map((e) => [e.id, 0]));
@@ -178,41 +191,63 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
             return a.employeeCode.localeCompare(b.employeeCode);
           });
         for (const e of counselorCandidates.slice(0, counselorNeed)) {
-          today.set(e.id, e.isFullTime ? config.symbols.fullDay : config.symbols.partFullDay);
+          const sym = e.halfDayOnly
+            ? config.symbols.latePartAm
+            : e.isFullTime
+              ? config.symbols.fullDay
+              : config.symbols.latePartFullDay;
+          today.set(e.id, sym);
         }
       }
 
-      // Phase 1: 常勤を デ日 で配置 (相談員優先 → 目標残り多い順 → 累計少ない順)。
-      // Phase 0 で既に置いた相談員はスキップ。
-      // ペース配分: 「ここまでに働くべき理想累計 (目標 × 経過営業日 / 総営業日)」を超えた人は
-      // 今日は休みにする。これで休みが月内に均等分散し、月末がスカスカにならない。
+      // Phase 1: 常勤を デ日 で配置。
+      // ペース配分: 「ここまでに働くべき理想累計 (目標 × 経過営業日 / 総営業日)」に達した人は
+      // 休んでよい (休みを月内に均等分散・月末がスカスカにならない)。
+      // ただし営業日に常勤の公休は最大1人 (強制休み重複時を除く)。2人以上が休みになりそうなら
+      // ペース超過でも出勤させる。
       const idealWorkDaysBy = (e: DeyEmployee): number =>
         totalOperating > 0 ? Math.round((e.targetWorkDays * operatingSoFar) / totalOperating) : 0;
-      const ftCandidates = fullTimers
-        .filter((e) => eligible(e) && !today.has(e.id) && workDays.get(e.id)! < idealWorkDaysBy(e))
-        .sort((a, b) => {
-          if (a.isCounselor !== b.isCounselor) return a.isCounselor ? -1 : 1;
-          const remA = a.targetWorkDays - workDays.get(a.id)!;
-          const remB = b.targetWorkDays - workDays.get(b.id)!;
-          if (remA !== remB) return remB - remA;
-          const cntA = workDays.get(a.id)!;
-          const cntB = workDays.get(b.id)!;
-          if (cntA !== cntB) return cntA - cntB;
-          return a.employeeCode.localeCompare(b.employeeCode);
-        });
-      for (const e of ftCandidates) today.set(e.id, config.symbols.fullDay);
+      const ftNotPlaced = fullPool.filter((e) => !today.has(e.id));
+      const ftEligible = ftNotPlaced.filter((e) => eligible(e));
+      // 希望休/有給/連勤上限で強制的に休む常勤の数
+      const forcedRestCount = ftNotPlaced.length - ftEligible.length;
+      // 目標日数に達した常勤は休ませる (目標超過させてまで出勤はしない)。
+      const atTarget = ftEligible.filter((e) => workDays.get(e.id)! >= e.targetWorkDays);
+      const underTarget = ftEligible.filter((e) => workDays.get(e.id)! < e.targetWorkDays);
+      // 目標内でペース的に休んでよい人 (ideal 到達済)。
+      const ahead = underTarget.filter((e) => workDays.get(e.id)! >= idealWorkDaysBy(e));
+      // 営業日に休ませてよい常勤は最大1人。強制休み・目標到達休みを差し引く。
+      const allowedVoluntaryRest = Math.max(0, 1 - forcedRestCount - atTarget.length);
+      // 働きすぎ (ideal 超過大) を優先して休ませる → コード順。先頭 allowedVoluntaryRest 人だけ休み。
+      const restingAhead = new Set(
+        [...ahead]
+          .sort((a, b) => {
+            const overA = workDays.get(a.id)! - idealWorkDaysBy(a);
+            const overB = workDays.get(b.id)! - idealWorkDaysBy(b);
+            if (overA !== overB) return overB - overA;
+            return a.employeeCode.localeCompare(b.employeeCode);
+          })
+          .slice(0, allowedVoluntaryRest)
+          .map((e) => e.id),
+      );
+      // 目標未達の常勤は基本出勤 (休みは restingAhead の人だけ)。目標到達者は休み。
+      for (const e of underTarget) {
+        if (!restingAhead.has(e.id)) today.set(e.id, config.symbols.fullDay);
+      }
 
-      // Phase 2: 非常勤で午前/午後不足を平等配分で穴埋め。
-      // 累計出勤が最も少ない人から、PM 不足なら終日(デ短A)、AM だけ不足なら午前(半日A)。
+      // Phase 2: 穴埋め。送迎(8:15)が必要数に満つまで 8:15系を優先採用、満ちたら 9:00系。
+      // 半日のみ職員は午前記号のみ。午後だけ不足のときは半日のみ職員は選ばない。
       let guard = 0;
       while (guard++ < 10_000) {
         const present = countPresence(toAssignments(today), input.master);
         const amShort = present.am < demand.am;
         const pmShort = present.pm < demand.pm;
         if (!amShort && !pmShort) break;
+        const earlyShort = countEarlyAm(today, input.master) < demand.earlyAm;
+        const onlyPm = pmShort && !amShort; // 午前は足り午後だけ不足
 
-        const candidates = partTimers
-          .filter((e) => eligible(e) && !today.has(e.id))
+        const candidates = fillPool
+          .filter((e) => eligible(e) && !today.has(e.id) && !(onlyPm && e.halfDayOnly))
           .sort((a, b) => {
             const cntA = workDays.get(a.id)!;
             const cntB = workDays.get(b.id)!;
@@ -222,7 +257,15 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
         if (candidates.length === 0) break; // 人員不足。下の評価で不足として可視化される。
 
         const pick = candidates[0]!;
-        today.set(pick.id, pmShort ? config.symbols.partFullDay : config.symbols.partAm);
+        const wantFull = pmShort && !pick.halfDayOnly;
+        const sym = earlyShort
+          ? wantFull
+            ? config.symbols.earlyPartFullDay
+            : config.symbols.earlyPartAm
+          : wantFull
+            ? config.symbols.latePartFullDay
+            : config.symbols.latePartAm;
+        today.set(pick.id, sym);
       }
     }
 
@@ -269,4 +312,14 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
 
 function toAssignments(today: Map<string, string>): { employeeId: string; baseSymbol: string }[] {
   return [...today.entries()].map(([employeeId, baseSymbol]) => ({ employeeId, baseSymbol }));
+}
+
+/** その日の送迎(8:15開始)の午前在席数。isEarly かつ amCount>0 の記号を数える。 */
+function countEarlyAm(today: Map<string, string>, master: SymbolMaster): number {
+  let n = 0;
+  for (const sym of today.values()) {
+    const c = master.get(sym);
+    if (c?.isEarly && c.amCount > 0) n += 1;
+  }
+  return n;
 }

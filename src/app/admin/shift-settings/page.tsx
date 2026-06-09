@@ -71,6 +71,7 @@ export default async function AdminShiftSettingsPage({ searchParams }: Props) {
         pmRequired: true,
         counselorAmRequired: true,
         counselorPmRequired: true,
+        earlyAmRequired: true,
         nightInRequired: true,
         nightOutRequired: true,
       },
@@ -98,6 +99,7 @@ export default async function AdminShiftSettingsPage({ searchParams }: Props) {
           pmRequired: d.pmRequired,
           counselorAmRequired: d.counselorAmRequired,
           counselorPmRequired: d.counselorPmRequired,
+          earlyAmRequired: d.earlyAmRequired,
           nightInRequired: d.nightInRequired,
           nightOutRequired: d.nightOutRequired,
         }

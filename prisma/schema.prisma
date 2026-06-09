@@ -654,6 +654,8 @@ model ShiftConstraint {
   allowNightShiftOverride Boolean  @default(true) @map("allow_night_shift_override")
   targetMonthlyWorkDays   Int?     @map("target_monthly_work_days")
   annualIncomeCapYen      Int?     @map("annual_income_cap_yen")
+  // 半日勤務しかしない職員 (デイ自動生成で終日勤務を割り当てない)。
+  halfDayOnly             Boolean  @default(false) @map("half_day_only")
   unavailableDaysOfWeek   Int[]    @map("unavailable_days_of_week")
   notes                   String?
   createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -726,6 +728,8 @@ model OfficeCoverageDemand {
   pmRequired          Int      @default(0) @map("pm_required")
   counselorAmRequired Int      @default(0) @map("counselor_am_required")
   counselorPmRequired Int      @default(0) @map("counselor_pm_required")
+  // 午前のうち送迎 (8:15 開始) で必要な人数。デイの送迎ロジック用。0 = チェックしない。
+  earlyAmRequired     Int      @default(0) @map("early_am_required")
   nightInRequired     Int      @default(0) @map("night_in_required")
   nightOutRequired    Int      @default(0) @map("night_out_required")
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

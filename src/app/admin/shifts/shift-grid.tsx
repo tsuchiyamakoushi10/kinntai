@@ -52,6 +52,7 @@ function shortfallText(s: DayShortfall): string {
   const parts: string[] = [];
   if (s.am) parts.push(`午前-${s.am}`);
   if (s.pm) parts.push(`午後-${s.pm}`);
+  if (s.earlyAm) parts.push(`送迎-${s.earlyAm}`);
   if (s.nightIn) parts.push(`夜入-${s.nightIn}`);
   if (s.nightOut) parts.push(`夜明-${s.nightOut}`);
   if (s.counselorAm) parts.push("相談員(午前)");
@@ -85,6 +86,8 @@ export type PatternOption = {
   /** 午前/午後の在席カウント (不足アラート計算用)。 */
   amCount: number;
   pmCount: number;
+  /** 送迎 (8:15開始) か (送迎不足アラート用)。 */
+  isEarly: boolean;
 };
 
 type Props = {
@@ -200,6 +203,7 @@ export function ShiftGrid({
         isNightIn: pattern.shiftKind === "NIGHT_IN",
         isNightOut: pattern.shiftKind === "NIGHT_OUT",
         isCounselor: counselorEmployeeIds?.has(c.employeeId) ?? false,
+        isEarly: pattern.isEarly,
       });
       cellsByDate.set(c.workDate, arr);
     }

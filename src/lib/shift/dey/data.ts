@@ -70,7 +70,7 @@ export async function loadDeyGenerateInput(
         jobCategory: true,
         joinedAt: true,
         retiredAt: true,
-        shiftConstraint: { select: { targetMonthlyWorkDays: true } },
+        shiftConstraint: { select: { targetMonthlyWorkDays: true, halfDayOnly: true } },
       },
     }),
     prisma.officeCoverageDemand.findMany({
@@ -81,11 +81,12 @@ export async function loadDeyGenerateInput(
         pmRequired: true,
         counselorAmRequired: true,
         counselorPmRequired: true,
+        earlyAmRequired: true,
       },
     }),
     prisma.shiftPattern.findMany({
       where: { isActive: true, OR: [{ officeId }, { officeId: null }] },
-      select: { name: true, amCount: true, pmCount: true, shiftKind: true },
+      select: { name: true, amCount: true, pmCount: true, shiftKind: true, startTime: true },
     }),
     prisma.shiftPreference.findMany({
       where: {
@@ -124,6 +125,7 @@ export async function loadDeyGenerateInput(
       isCounselor: e.jobCategory === "LIFE_COUNSELOR",
       unavailableDates: unavailable,
       paidLeaveDates: paidLeave,
+      halfDayOnly: e.shiftConstraint?.halfDayOnly ?? false,
       targetWorkDays: e.shiftConstraint?.targetMonthlyWorkDays ?? DEY_DEFAULT_TARGET_WORK_DAYS,
     };
   });
@@ -135,6 +137,7 @@ export async function loadDeyGenerateInput(
       pm: d.pmRequired,
       counselorAm: d.counselorAmRequired,
       counselorPm: d.counselorPmRequired,
+      earlyAm: d.earlyAmRequired,
     };
   }
 
@@ -146,6 +149,11 @@ export async function loadDeyGenerateInput(
         amCount: p.amCount,
         pmCount: p.pmCount,
         isNight: p.shiftKind === "NIGHT_IN" || p.shiftKind === "NIGHT_OUT",
+        // 送迎 = 8:15 までに開始 かつ 午前在席あり。Time 列は UTC の時刻として返る。
+        isEarly:
+          p.startTime !== null &&
+          p.startTime.getUTCHours() * 60 + p.startTime.getUTCMinutes() <= 8 * 60 + 15 &&
+          p.amCount > 0,
         band: "",
       },
     ]),

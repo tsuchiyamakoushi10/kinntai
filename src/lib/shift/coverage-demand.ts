@@ -13,6 +13,8 @@ export type CoverageDemandValues = {
   pmRequired: number;
   counselorAmRequired: number;
   counselorPmRequired: number;
+  /** 午前のうち送迎(8:15開始)で必要な人数。デイの送迎ロジック用。 */
+  earlyAmRequired: number;
   nightInRequired: number;
   nightOutRequired: number;
 };
@@ -32,6 +34,7 @@ export const COVERAGE_DEMAND_BOUNDS = {
   pmRequired: { min: 0, max: 50 },
   counselorAmRequired: { min: 0, max: 10 },
   counselorPmRequired: { min: 0, max: 10 },
+  earlyAmRequired: { min: 0, max: 50 },
   nightInRequired: { min: 0, max: 10 },
   nightOutRequired: { min: 0, max: 10 },
 } as const;
@@ -41,6 +44,7 @@ const FIELD_LABELS: Record<keyof CoverageDemandValues, string> = {
   pmRequired: "午後の必要人数",
   counselorAmRequired: "午前の相談員人数",
   counselorPmRequired: "午後の相談員人数",
+  earlyAmRequired: "うち送迎(8:15)の人数",
   nightInRequired: "夜入の必要数",
   nightOutRequired: "夜明の必要数",
 };
@@ -50,6 +54,7 @@ export const EMPTY_COVERAGE_DEMAND: CoverageDemandValues = {
   pmRequired: 0,
   counselorAmRequired: 0,
   counselorPmRequired: 0,
+  earlyAmRequired: 0,
   nightInRequired: 0,
   nightOutRequired: 0,
 };
@@ -96,6 +101,9 @@ export function validateCoverageDemand(input: unknown): ValidateResult {
   }
   if (out.counselorPmRequired > out.pmRequired) {
     return { ok: false, error: "午後の相談員人数は午後の必要人数を超えられません。" };
+  }
+  if (out.earlyAmRequired > out.amRequired) {
+    return { ok: false, error: "送迎(8:15)の人数は午前の必要人数を超えられません。" };
   }
 
   return { ok: true, values: out };

@@ -33,6 +33,12 @@ function dateToYmd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** 送迎(8:15開始)パターンか。Time 列は UTC の時刻として返る。 */
+function isEarlyPattern(startTime: Date | null, amCount: number): boolean {
+  if (startTime === null || amCount <= 0) return false;
+  return startTime.getUTCHours() * 60 + startTime.getUTCMinutes() <= 8 * 60 + 15;
+}
+
 export default async function AdminShiftsPage({ searchParams }: Props) {
   await requireAdmin();
   const sp = await searchParams;
@@ -118,6 +124,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
         paidLeaveUnits: true,
         amCount: true,
         pmCount: true,
+        startTime: true,
       },
     }),
     prisma.shift.findMany({
@@ -155,6 +162,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
         pmRequired: true,
         counselorAmRequired: true,
         counselorPmRequired: true,
+        earlyAmRequired: true,
         nightInRequired: true,
         nightOutRequired: true,
       },
@@ -186,6 +194,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     paidLeaveUnits: p.paidLeaveUnits.toNumber(),
     amCount: p.amCount,
     pmCount: p.pmCount,
+    isEarly: isEarlyPattern(p.startTime, p.amCount),
   }));
 
   // 不足アラート用の配置基準・日種・相談員集合
@@ -196,6 +205,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
       pm: d.pmRequired,
       counselorAm: d.counselorAmRequired,
       counselorPm: d.counselorPmRequired,
+      earlyAm: d.earlyAmRequired,
       nightIn: d.nightInRequired,
       nightOut: d.nightOutRequired,
     };
@@ -372,6 +382,7 @@ async function AllOfficesView({
         paidLeaveUnits: true,
         amCount: true,
         pmCount: true,
+        startTime: true,
       },
     }),
     prisma.shift.findMany({
@@ -470,6 +481,7 @@ async function AllOfficesView({
           paidLeaveUnits: p.paidLeaveUnits.toNumber(),
           amCount: p.amCount,
           pmCount: p.pmCount,
+          isEarly: isEarlyPattern(p.startTime, p.amCount),
         }));
         const initialCells: ShiftCell[] = sf.map((s) => ({
           employeeId: s.employeeId,
