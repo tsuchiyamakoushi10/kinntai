@@ -8,7 +8,7 @@
  * 方針 (完璧な解は狙わない。8 割組む→過不足を色で見る→人が直す):
  *   0. 相談員 (生活相談員) を必要数だけ最優先で確保 (常勤/非常勤問わず。希望休・連勤上限は
  *      守るが月目標日数は超えてよい = 相談員カバレッジ優先・負担は分散)。
- *   1. 常勤を デ日 で配置 (月目標日数まで・連勤上限内・希望休尊重)。
+ *   1. 常勤を デ日 で配置 (月目標日数を月内で均等にペース配分・連勤上限内・希望休尊重)。
  *   2. 非常勤で午前/午後の不足を平等配分で穴埋め (PM 不足=デ短A 終日 / AM だけ不足=半日A)。
  *   3. 残りは公休。休業日 (必要数 0) は全員公休。
  *
@@ -126,6 +126,13 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
   const workDays = new Map<string, number>(employees.map((e) => [e.id, 0]));
   const consecutive = new Map<string, number>(employees.map((e) => [e.id, 0]));
 
+  // ペース配分用: 当月の総営業日数と、ここまでの経過営業日数。
+  const totalOperating = input.days.reduce(
+    (n, d) => n + (isOperating(input.demandByDayKind[d.dayKind]) ? 1 : 0),
+    0,
+  );
+  let operatingSoFar = 0;
+
   const assignments: DeyAssignment[] = [];
   const dayResults: DeyDayResult[] = [];
 
@@ -135,6 +142,7 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
     const today = new Map<string, string>(); // employeeId -> 勤務記号
 
     if (operating) {
+      operatingSoFar++;
       const eligible = (e: DeyEmployee): boolean =>
         !e.unavailableDates.has(day.date) && consecutive.get(e.id)! < config.maxConsecutiveDays;
 
@@ -164,8 +172,12 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
 
       // Phase 1: 常勤を デ日 で配置 (相談員優先 → 目標残り多い順 → 累計少ない順)。
       // Phase 0 で既に置いた相談員はスキップ。
+      // ペース配分: 「ここまでに働くべき理想累計 (目標 × 経過営業日 / 総営業日)」を超えた人は
+      // 今日は休みにする。これで休みが月内に均等分散し、月末がスカスカにならない。
+      const idealWorkDaysBy = (e: DeyEmployee): number =>
+        totalOperating > 0 ? Math.round((e.targetWorkDays * operatingSoFar) / totalOperating) : 0;
       const ftCandidates = fullTimers
-        .filter((e) => eligible(e) && !today.has(e.id) && workDays.get(e.id)! < e.targetWorkDays)
+        .filter((e) => eligible(e) && !today.has(e.id) && workDays.get(e.id)! < idealWorkDaysBy(e))
         .sort((a, b) => {
           if (a.isCounselor !== b.isCounselor) return a.isCounselor ? -1 : 1;
           const remA = a.targetWorkDays - workDays.get(a.id)!;

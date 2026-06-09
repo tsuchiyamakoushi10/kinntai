@@ -156,6 +156,34 @@ describe("generateDey — 制約", () => {
     expect(Math.max(...partCounts) - Math.min(...partCounts)).toBeLessThanOrEqual(1);
   });
 
+  it("常勤の出勤が月内で均等に分散する (月末がスカスカにならない)", () => {
+    // 26 営業日・目標 21 日。素朴に前詰めすると 21 日到達後の月末 5 日が全休になる。
+    const employees = [
+      emp("F1", true, { targetWorkDays: 21 }),
+      ...["P1", "P2", "P3", "P4", "P5", "P6"].map((c) => emp(c, false)),
+    ];
+    const r = generateDey(baseInput({ days: weekdays(26), employees }));
+
+    // 月末 5 営業日 (22〜26 日) にも出勤が残っている
+    const lastFive = ["22", "23", "24", "25", "26"].map(
+      (dd) => symbolsOn(r, `2026-06-${dd}`).get("F1") ?? "公休",
+    );
+    expect(lastFive.some((s) => s !== "公休")).toBe(true);
+
+    // 前半 13 日と後半 13 日の出勤数が大きく偏らない
+    const workIn = (from: number, to: number) =>
+      r.assignments.filter(
+        (a) =>
+          a.employeeId === "F1" &&
+          a.baseSymbol !== "公休" &&
+          Number(a.date.slice(8)) >= from &&
+          Number(a.date.slice(8)) <= to,
+      ).length;
+    const firstHalf = workIn(1, 13);
+    const secondHalf = workIn(14, 26);
+    expect(Math.abs(firstHalf - secondHalf)).toBeLessThanOrEqual(3);
+  });
+
   it("常勤は目標出勤日数で頭打ちになる", () => {
     const employees = [
       ...["F1", "F2", "F3"].map((c) => emp(c, true, { targetWorkDays: 3 })),
