@@ -9,14 +9,19 @@ import { generateMonthlyShifts } from "@/lib/shift/auto-generator";
 import { loadDeyGenerateInput } from "@/lib/shift/dey/data";
 import { generateDey } from "@/lib/shift/dey/generate";
 import { summarizeDeyCoverage, toDeyProposals } from "@/lib/shift/dey/proposals";
+import { loadShortGenerateInput } from "@/lib/shift/short/data";
+import { generateShort } from "@/lib/shift/short/generate";
+import { summarizeShortCoverage, toShortProposals } from "@/lib/shift/short/proposals";
 
 import { loadGenerateInput } from "./data";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const YM = /^\d{4}-(0[1-9]|1[0-2])$/;
 const ALGORITHM_VERSION = "greedy-v1";
-/** デイ専用生成 (generateDey) を使う拠点コード。今後 SHORT / RIKA を足す際はここを拡張。 */
+/** デイ専用生成 (generateDey) を使う拠点コード。今後 RIKA を足す際はここを拡張。 */
 const DEY_OFFICE_CODE = "DAY-CENTER";
+/** ショート専用生成 (generateShort: 夜勤先取り) を使う拠点コード。 */
+const SHORT_OFFICE_CODE = "SHO-CENTER";
 
 /** 拠点ごとに生成器を切り替え、保存形 (proposedShifts) と stats を返す。 */
 type BuiltRun = {
@@ -40,6 +45,9 @@ async function buildRun(
   });
   if (office?.code === DEY_OFFICE_CODE) {
     return buildDeyRun(officeId, ym, existingRun);
+  }
+  if (office?.code === SHORT_OFFICE_CODE) {
+    return buildShortRun(officeId, ym, existingRun);
   }
   const genInput = await loadGenerateInput(officeId, ym, seed, ALGORITHM_VERSION);
   const result = generateMonthlyShifts(genInput);
@@ -85,6 +93,47 @@ async function buildDeyRun(
     },
     algorithmVersion: "dey-v1",
     warningCount: summary.amPmShortfallDays.length + summary.counselorShortDays.length,
+  };
+}
+
+/**
+ * ショート (案A + 夜勤先取り) の生成。generateShort → 記号を shiftPatternId に解決 →
+ * 手修正セルを除外。手修正保護はデイと同じ仕組み (loadProtectedCells)。
+ */
+async function buildShortRun(
+  officeId: string,
+  ym: string,
+  existingRun: ExistingRunMeta,
+): Promise<BuiltRun> {
+  const input = await loadShortGenerateInput(prisma, officeId, ym);
+  const result = generateShort(input);
+  const summary = summarizeShortCoverage(result);
+
+  const patterns = await prisma.shiftPattern.findMany({ select: { id: true, name: true } });
+  const patternIdByName = new Map(patterns.map((p) => [p.name, p.id]));
+  const { proposedShifts } = toShortProposals(result, patternIdByName);
+
+  const protectedCells = await loadProtectedCells(officeId, ym, existingRun);
+  const filtered = proposedShifts.filter(
+    (p) => !protectedCells.has(`${p.employeeId}|${p.workDate}`),
+  );
+
+  return {
+    proposedShifts: filtered,
+    stats: {
+      algorithm: "short-v1",
+      employees: input.employees.length,
+      operatingDays: summary.operatingDays,
+      filledDays: summary.filledDays,
+      amPmShortfallDays: summary.amPmShortfallDays,
+      counselorShortDays: summary.counselorShortDays,
+      unfilledNightDays: summary.unfilledNightDays,
+    },
+    algorithmVersion: "short-v1",
+    warningCount:
+      summary.amPmShortfallDays.length +
+      summary.counselorShortDays.length +
+      summary.unfilledNightDays.length,
   };
 }
 
