@@ -429,6 +429,18 @@ async function AllOfficesView({
     shiftsByOffice.set(s.officeId, arr);
   }
 
+  // 応援対応: 所属が別拠点でも、その拠点の officeId でシフトが保存されている職員は
+  // その拠点欄に行を出す (例: 梨花に応援で入る結いの心所属の職員)。所属でグルーピング
+  // するだけだと、梨花専用画面 (氏名突合で全員表示) と食い違い、応援者のシフトが
+  // どの拠点欄にも出ず消えて見えるため、保存先拠点に基づく行をここで補う。
+  const empById = new Map(employees.map((e) => [e.id, e] as const));
+  const shiftEmpIdsByOffice = new Map<string, Set<string>>();
+  for (const s of currentShifts) {
+    const set = shiftEmpIdsByOffice.get(s.officeId) ?? new Set<string>();
+    set.add(s.employeeId);
+    shiftEmpIdsByOffice.set(s.officeId, set);
+  }
+
   const runByOffice = new Map(generationRuns.map((r) => [r.officeId, r] as const));
 
   return (
@@ -468,7 +480,14 @@ async function AllOfficesView({
       </p>
 
       {offices.map((office) => {
-        const emps = empByOffice.get(office.id) ?? [];
+        // 所属職員 + その拠点に保存されたシフトを持つ応援者 を行に出す。
+        const empMap = new Map((empByOffice.get(office.id) ?? []).map((e) => [e.id, e] as const));
+        for (const id of shiftEmpIdsByOffice.get(office.id) ?? []) {
+          if (empMap.has(id)) continue;
+          const e = empById.get(id);
+          if (e) empMap.set(id, e);
+        }
+        const emps = [...empMap.values()];
         const sf = shiftsByOffice.get(office.id) ?? [];
         const run = runByOffice.get(office.id);
         if (emps.length === 0) return null;

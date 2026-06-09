@@ -46,6 +46,8 @@ type Props = {
   nextYm: string;
   days: ReadonlyArray<RikaDay>;
   members: ReadonlyArray<Member>;
+  /** DB から読み込んだ保存済みシフト。再訪問時の初期表示に使う。 */
+  initialCells?: ReadonlyArray<RikaCell>;
 };
 
 /** 勤務記号 → セルの色 (設計書: 終日緑 / 午前薄緑 / 午後橙 / 公灰 / 有青 / 希望ピンク)。 */
@@ -73,9 +75,9 @@ function dowClass(day: RikaDay): string {
   return "text-slate-600";
 }
 
-export function RikaGrid({ ym, prevYm, nextYm, days, members }: Props) {
-  // 配置データ。自動生成・手修正でここを更新する。
-  const [cells, setCells] = useState<ReadonlyArray<RikaCell>>([]);
+export function RikaGrid({ ym, prevYm, nextYm, days, members, initialCells }: Props) {
+  // 配置データ。DB の保存済みシフトを初期値にし、自動生成・手修正でここを更新する。
+  const [cells, setCells] = useState<ReadonlyArray<RikaCell>>(initialCells ?? []);
   const [warnings, setWarnings] = useState<ReadonlyArray<RikaWarning>>([]);
 
   // 希望休まとめ入力 (設計書 §5)。
@@ -114,6 +116,8 @@ export function RikaGrid({ ym, prevYm, nextYm, days, members }: Props) {
     const result = generateRikaShifts(ym, genMembers, requestOff);
     setCells(result.cells);
     setWarnings(result.warnings);
+    // 自動生成と同時に DB へ保存する (「保存し忘れ」でページを移ると消える事故を防ぐ)。
+    persist(result.cells);
   }
 
   function clearKeepRequests(): void {
@@ -156,13 +160,13 @@ export function RikaGrid({ ym, prevYm, nextYm, days, members }: Props) {
 
   // ---- 保存 / 出力 (設計書 §6) ----
 
-  /** 現在のグリッドを DB (Shift) に保存する。 */
-  function saveToDb(): void {
+  /** 指定したセル一覧を DB (Shift) に保存する。自動生成・手動保存の共通処理。 */
+  function persist(target: ReadonlyArray<RikaCell>): void {
     setSaveResult(null);
     startSaving(async () => {
       const result = await saveRikaShifts({
         ym,
-        cells: cells.map((c) => ({
+        cells: target.map((c) => ({
           memberId: c.memberId,
           date: c.date,
           symbol: c.symbol,
@@ -170,6 +174,11 @@ export function RikaGrid({ ym, prevYm, nextYm, days, members }: Props) {
       });
       setSaveResult(result);
     });
+  }
+
+  /** 現在のグリッド (手修正含む) を DB (Shift) に保存する。 */
+  function saveToDb(): void {
+    persist(cells);
   }
 
   /** グリッドを CSV (Excel で開ける) でダウンロードする。 */
