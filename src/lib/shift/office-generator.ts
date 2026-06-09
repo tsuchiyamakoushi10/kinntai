@@ -30,20 +30,39 @@ export const KITCHEN_OFFICE_CODES: ReadonlyArray<string> = ["KITCHEN"];
 export const RIKA_OFFICE_CODES: ReadonlyArray<string> = [RIKA_OFFICE_CODE];
 
 /**
- * ナーシングホーム用のショート系設定。ショートと同じ夜勤サイクル + 午前/午後フィルだが、
- * 終日記号が「日勤」(共通, 1/1)。NRS には ショ短A 等の拠点専用記号が無いため、
- * 非常勤の終日埋めも「日勤」を使う。
+ * ナーシングホーム (NH) 用のショート系設定。ショートと同じ夜勤サイクル + 午前/午後フィルに、
+ * NH 固有の (1) 終日記号=有日勤、(2) 固定配置 (田中/中里=有日勤・木下=日勤)、
+ * (3) 夜勤可者の限定 (6名のみ正の nightCap・他は 0) を roster で持たせる
+ * (設計書 / memory: project_nh_shift_2026_06_09)。氏名は Employee.lastName と突合。
  */
 export const NRS_SHORT_CONFIG: ShortConfig = {
   maxConsecutiveDays: 6,
   symbols: {
-    fullDay: "日勤",
-    partFullDay: "日勤",
-    partAm: "半日A",
+    fullDay: "有日勤",
+    partFullDay: "有日勤",
+    partAm: "有早",
     off: "公休",
     paidLeave: "有休",
   },
   night: DEFAULT_NIGHT_CYCLE_CONFIG,
+  roster: {
+    // 夜勤可者 (6月実績の回数を上限の目安に)。
+    新井和也: { nightCap: 8 },
+    関口千恵子: { nightCap: 6 },
+    石田美里: { nightCap: 6 },
+    中村直子: { nightCap: 5 },
+    大川理恵: { nightCap: 3 },
+    高橋紋美: { nightCap: 2, isCounselor: true },
+    // 固定配置 (毎営業日その記号・夜勤なし)。田中は日中メイン相談員。
+    田中綾華: { fixedSymbol: "有日勤", nightCap: 0, isCounselor: true },
+    中里薫: { fixedSymbol: "有日勤", nightCap: 0 },
+    木下潤平: { fixedSymbol: "日勤", nightCap: 0 },
+    // 日中フィル (夜勤なし)。續橋は DB 上 旧字。
+    須賀みどり: { nightCap: 0 },
+    今井一子: { nightCap: 0 },
+    中田久美子: { nightCap: 0 },
+    續橋ののか: { nightCap: 0 },
+  },
 };
 
 /** ショート系生成 (generateShort) を使う拠点コード → 記号設定。 */

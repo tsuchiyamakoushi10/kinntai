@@ -4,7 +4,7 @@
  * 値はオーナー提供の実数 (2026-06-08):
  *   デイ      : 月〜土 午前7/午後5 (相談員 午前午後各1)・日祝 休業。夜勤なし
  *   ショート  : 平日/土 午前6/午後6 (相談員各1)・日祝 午前5/午後5。夜入1/夜明1 (毎日)
- *   ナーシング: 全日 午前5/午後5 (相談員各1)。夜入1/夜明1 (毎日)
+ *   ナーシング: 平日/土 午前6/午後6 (相談員各1)・日祝 午前5/午後5。夜入1/夜明1 (毎日)
  *   梨花      : 専用ロジックのため対象外 (参考: 3名/相談員1)
  *
  * upsert なので複数回流しても安全。本番反映はユーザー確認のうえ実施 (CLAUDE.md §5)。
@@ -90,25 +90,27 @@ const PLAN: Record<string, DemandByDayKind> = {
       nightOutRequired: 1,
     },
   },
+  // ナーシング: 平日/土 午前6/午後6 (相談員各1)・日祝 午前5/午後5。夜入1/夜明1 (毎日)。
+  // 相談員のみ必須 (設計書の日中カウントは相談1名)。看護師の必須配置は設けない。
   "NRS-CENTER": {
     WEEKDAY: {
-      amRequired: 5,
-      pmRequired: 5,
+      amRequired: 6,
+      pmRequired: 6,
       counselorAmRequired: 1,
       counselorPmRequired: 1,
-      nurseAmRequired: 1,
-      nursePmRequired: 1,
+      nurseAmRequired: 0,
+      nursePmRequired: 0,
       earlyAmRequired: 0,
       nightInRequired: 1,
       nightOutRequired: 1,
     },
     SATURDAY: {
-      amRequired: 5,
-      pmRequired: 5,
+      amRequired: 6,
+      pmRequired: 6,
       counselorAmRequired: 1,
       counselorPmRequired: 1,
-      nurseAmRequired: 1,
-      nursePmRequired: 1,
+      nurseAmRequired: 0,
+      nursePmRequired: 0,
       earlyAmRequired: 0,
       nightInRequired: 1,
       nightOutRequired: 1,
@@ -118,8 +120,8 @@ const PLAN: Record<string, DemandByDayKind> = {
       pmRequired: 5,
       counselorAmRequired: 1,
       counselorPmRequired: 1,
-      nurseAmRequired: 1,
-      nursePmRequired: 1,
+      nurseAmRequired: 0,
+      nursePmRequired: 0,
       earlyAmRequired: 0,
       nightInRequired: 1,
       nightOutRequired: 1,

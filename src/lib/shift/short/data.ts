@@ -84,6 +84,7 @@ export async function loadShortGenerateInput(
         select: {
           id: true,
           employeeCode: true,
+          lastName: true,
           employmentType: true,
           jobCategory: true,
           joinedAt: true,
@@ -165,10 +166,20 @@ export async function loadShortGenerateInput(
     paidByEmp.set(p.employeeId, set);
   }
 
+  // 拠点固有の職員別上書き (氏名キー)。NH の固定配置・夜勤上限・相談員指定など。
+  const roster = config.roster ?? {};
   const employees: ShortEmployee[] = employeesRaw
-    // 清掃/事務など介護配置に入らない職種は配置人数に数えない (生成対象から外す)。
-    .filter((e) => e.jobCategory !== "OFFICE_STAFF" && e.jobCategory !== "OTHER")
+    .filter((e) => {
+      // 清掃/事務・その他職種は配置人数に数えない (生成対象から外す)。
+      // ただし固定配置を持つ人 (NH の柔整師=木下など) は配置に必要なので残す。
+      const ov = roster[e.lastName];
+      if ((e.jobCategory === "OFFICE_STAFF" || e.jobCategory === "OTHER") && !ov?.fixedSymbol) {
+        return false;
+      }
+      return true;
+    })
     .map((e) => {
+      const ov = roster[e.lastName];
       const unavailable = new Set(offByEmp.get(e.id) ?? []);
       // 雇用期間外 (入社前・退職後) も不可日に
       const joined = e.joinedAt ? ymd(e.joinedAt) : null;
@@ -180,14 +191,18 @@ export async function loadShortGenerateInput(
         id: e.id,
         employeeCode: e.employeeCode,
         isFullTime: isRegularEmployment(e.employmentType),
-        isCounselor: e.jobCategory === "LIFE_COUNSELOR",
+        // 相談員: roster 指定を優先 (DB の職種が未整備でも相談員として扱える)。
+        isCounselor: ov?.isCounselor ?? e.jobCategory === "LIFE_COUNSELOR",
         isNurse: e.jobCategory === "NURSE",
         unavailableDates: unavailable,
         targetWorkDays: e.shiftConstraint?.targetMonthlyWorkDays ?? SHORT_DEFAULT_TARGET_WORK_DAYS,
-        // 夜勤上限: 明示設定を優先、未設定は既定5 (正社員は全員夜勤・パートは夜勤しない人を0に)。
-        nightCap: e.shiftConstraint?.maxNightShiftsPerMonth ?? SHORT_DEFAULT_NIGHT_CAP,
+        // 夜勤上限: roster 指定 > DB 設定 > 既定5。NH は夜勤可者だけ正の値、他は 0。
+        nightCap:
+          ov?.nightCap ?? e.shiftConstraint?.maxNightShiftsPerMonth ?? SHORT_DEFAULT_NIGHT_CAP,
         preferredNightDates: new Set(nightByEmp.get(e.id) ?? []),
         paidLeaveDates: new Set(paidByEmp.get(e.id) ?? []),
+        // 固定配置 (NH の固定番)。指定が無ければ null。
+        fixedSymbol: ov?.fixedSymbol ?? null,
       };
     });
 

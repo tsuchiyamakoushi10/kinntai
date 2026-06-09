@@ -372,6 +372,41 @@ const KT: PatternSeed[] = [
   },
 ];
 
+// ナーシングホーム (NRS-CENTER) 固有の勤務記号。
+const NH: PatternSeed[] = [
+  {
+    code: "NRS_DAY",
+    name: "有日勤",
+    shiftKind: "WORK",
+    start: "08:30",
+    end: "17:30",
+    breakMinutes: 60,
+    officeCode: "NRS-CENTER",
+    color: "#86efac",
+    sortOrder: 700,
+  },
+  {
+    code: "NRS_EARLY",
+    name: "有早",
+    shiftKind: "WORK",
+    start: "07:00",
+    end: "16:00",
+    breakMinutes: 60,
+    officeCode: "NRS-CENTER",
+    color: "#86efac",
+    sortOrder: 710,
+  },
+  {
+    // 併設デイ兼務分 (續橋)。NH の配置基準には数えない (午前/午後カウント 0)。
+    code: "NRS_DEY",
+    name: "のデ日そ",
+    shiftKind: "WORK",
+    officeCode: "NRS-CENTER",
+    color: "#7dd3fc",
+    sortOrder: 720,
+  },
+];
+
 const OFF_LIKE: PatternSeed[] = [
   { code: "OFF", name: "公休", shiftKind: "OFF", color: "#2dd4bf", sortOrder: 900 },
   {
@@ -423,6 +458,7 @@ export const PATTERNS: PatternSeed[] = [
   ...SC,
   ...RK,
   ...KT,
+  ...NH,
   ...OFF_LIKE,
   ...COMPOSITE,
 ];

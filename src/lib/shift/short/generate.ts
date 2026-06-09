@@ -63,6 +63,11 @@ export type ShortEmployee = {
   preferredNightDates: ReadonlySet<string>;
   /** 有給の日 ("YYYY-MM-DD")。必ず休みにし、セルは有休で出す (勤務・夜勤を入れない)。 */
   paidLeaveDates: ReadonlySet<string>;
+  /**
+   * 固定配置の勤務記号 (毎営業日この記号で置く。null/未指定=固定なし)。
+   * NH の固定番 (田中=有日勤・木下=日勤 等) に使う。固定配置者は夜勤・通常フェーズから外す。
+   */
+  fixedSymbol?: string | null;
 };
 
 /** 1 日種ぶんの配置基準 (午前/午後 + 相談員 + 夜入)。office_coverage_demands 由来。 */
@@ -76,6 +81,16 @@ export type ShortDemand = {
   nursePm: number;
   /** その日に必要な夜入の数 (ショートは 1)。 */
   nightIn: number;
+};
+
+/** 拠点固有の職員別上書き (氏名キー)。NH の固定配置・夜勤上限・相談員指定など。 */
+export type ShortRosterOverride = {
+  /** 固定配置の勤務記号 (毎営業日この記号で置く)。 */
+  fixedSymbol?: string;
+  /** 月の夜勤上限 (0 = 夜勤しない)。DB の shift_constraint より優先する。 */
+  nightCap?: number;
+  /** 生活相談員として扱う (DB の job_category が未設定でも)。 */
+  isCounselor?: boolean;
 };
 
 /** 使用する勤務記号と上限。 */
@@ -94,6 +109,11 @@ export type ShortConfig = {
     paidLeave: string;
   };
   night: NightCycleConfig;
+  /**
+   * 職員別の拠点固有上書き (氏名 = Employee.lastName キー)。data 層が解決に使う。
+   * 例: NH は固定配置 (fixedSymbol) と夜勤可否 (nightCap) をここで持つ。
+   */
+  roster?: Readonly<Record<string, ShortRosterOverride>>;
 };
 
 export const SHORT_DEFAULT_CONFIG: ShortConfig = {
@@ -213,14 +233,6 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
 
     if (operating) {
       operatingSoFar++;
-      // 夜勤で塞がっている / 連勤上限 / 不可日 / 夜明の翌日 (公休が望ましい) は日中に置かない。
-      const eligible = (e: ShortEmployee): boolean =>
-        !occupiedByNight.has(e.id) &&
-        !today.has(e.id) &&
-        !e.unavailableDates.has(day.date) &&
-        !e.paidLeaveDates.has(day.date) &&
-        !night.preferredOff.has(`${e.id}|${day.date}`) &&
-        consecutive.get(e.id)! < config.maxConsecutiveDays;
 
       // 日勤(日中)の在席上限。必要午前人数を上限にする (MAX。これを超えて日中に置かない)。
       const dayCap = demand.am;
@@ -229,6 +241,35 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
         today.set(e.id, sym);
         dayCount += 1;
       };
+
+      // 月内ペース配分の理想累計 (目標×経過/総営業日)。固定配置・常勤の休み分散に使う。
+      const idealWorkDaysBy = (e: ShortEmployee): number =>
+        totalOperating > 0 ? Math.round((e.targetWorkDays * operatingSoFar) / totalOperating) : 0;
+
+      // Phase 1: 固定配置 (fixedSymbol を持つ職員。NH の固定番など)。毎営業日その記号で置くが、
+      // 目標日数までペース配分して公休を月内に分散し、連勤上限・不可日・希望休・有給は尊重する。
+      // 夜勤は持たない前提 (roster で nightCap 0)。通常フェーズ (Phase0/3/4) からは eligible で除外。
+      for (const e of employees) {
+        if (!e.fixedSymbol || today.has(e.id)) continue;
+        const blocked =
+          e.unavailableDates.has(day.date) ||
+          e.paidLeaveDates.has(day.date) ||
+          consecutive.get(e.id)! >= config.maxConsecutiveDays ||
+          workDays.get(e.id)! >= idealWorkDaysBy(e);
+        if (blocked) continue; // 今日は休み (下のセル出力で公休/有休になる)
+        placeDay(e, e.fixedSymbol);
+      }
+
+      // 夜勤で塞がっている / 連勤上限 / 不可日 / 夜明の翌日 (公休が望ましい) は日中に置かない。
+      // 固定配置者 (fixedSymbol) は Phase 1 のみで扱い、通常の日中フェーズには出さない。
+      const eligible = (e: ShortEmployee): boolean =>
+        !e.fixedSymbol &&
+        !occupiedByNight.has(e.id) &&
+        !today.has(e.id) &&
+        !e.unavailableDates.has(day.date) &&
+        !e.paidLeaveDates.has(day.date) &&
+        !night.preferredOff.has(`${e.id}|${day.date}`) &&
+        consecutive.get(e.id)! < config.maxConsecutiveDays;
 
       // Phase 0: 相談員・看護師を必要数だけ最優先で確保 (上限内・常勤/非常勤問わず)。
       const guarantee = (need: number, pred: (e: ShortEmployee) => boolean): void => {
@@ -258,8 +299,6 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
       // Phase 3: 常勤を ショ日 で配置。月内ペース配分 (目標×経過/総営業日) を超えた人は今日は
       // 休ませる (デイと同じ)。これで休みが月内に均等分散し、月末 (6/30 等) に目標到達で
       // 一斉に休んでスカスカになるのを防ぐ。日勤上限 (dayCap) も守る。
-      const idealWorkDaysBy = (e: ShortEmployee): number =>
-        totalOperating > 0 ? Math.round((e.targetWorkDays * operatingSoFar) / totalOperating) : 0;
       const ftCandidates = fullTimers
         .filter((e) => eligible(e) && !today.has(e.id) && workDays.get(e.id)! < idealWorkDaysBy(e))
         .sort((a, b) => {
