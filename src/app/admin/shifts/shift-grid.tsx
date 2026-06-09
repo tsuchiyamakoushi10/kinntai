@@ -545,8 +545,10 @@ export function ShiftGrid({
                   const w = weekdayOf(d);
                   const weekend = w === 0 || w === 6;
                   const isAuto = autoCellKeys?.has(k) ?? false;
-                  // 申請 (希望休/有給など) があれば、配置済みかどうかに関わらずセル全体をその色で塗る。
-                  // 配置済みのセルは「色＝申請」「文字＝配置パターン名」で両方分かる。
+                  // 出勤=色付き+太字で目立たせ、公休=淡いグレーで引っ込めて、休/出勤を一目で分ける。
+                  const kind = pattern?.shiftKind;
+                  const isOff = kind === "OFF";
+                  const isWork = kind === "WORK" || kind === "NIGHT_IN" || kind === "NIGHT_OUT";
                   return (
                     <td
                       key={d}
@@ -554,6 +556,8 @@ export function ShiftGrid({
                         "relative h-9 border-r border-slate-100 p-0 text-center align-middle",
                         readOnly ? "" : "cursor-pointer hover:ring-2 hover:ring-slate-400/50",
                         weekend && !pattern && !pref ? "bg-slate-50/60" : "",
+                        // 公休は淡いグレー (引っ込ませる)。申請セルはクラス側の色を優先。
+                        !pref && isOff ? "bg-slate-100" : "",
                         visual ? visual.bg : "",
                         pref?.status === "PENDING"
                           ? "outline-1 -outline-offset-2 outline-slate-500 outline-dashed"
@@ -561,9 +565,9 @@ export function ShiftGrid({
                         isCursor && !readOnly ? "ring-2 ring-slate-900 ring-inset" : "",
                       ].join(" ")}
                       style={
-                        // 申請があるセルはクラス側の色を優先するため inline 背景は付けない。
-                        pattern && !pref
-                          ? { backgroundColor: pattern.color + "59" /* ~35% alpha */ }
+                        // 申請・公休はクラス側で色付け。出勤は濃いめ(50%)、その他の休(有休等)は淡め(35%)。
+                        pattern && !pref && !isOff
+                          ? { backgroundColor: pattern.color + (isWork ? "80" : "59") }
                           : undefined
                       }
                       onClick={() => {
@@ -581,7 +585,16 @@ export function ShiftGrid({
                         .join(" / ")}
                     >
                       {pattern ? (
-                        <span className="block truncate px-0.5 text-[11px] font-medium text-slate-900">
+                        <span
+                          className={[
+                            "block truncate px-0.5 text-[11px]",
+                            isOff
+                              ? "font-normal text-slate-400"
+                              : isWork
+                                ? "font-bold text-slate-900"
+                                : "font-medium text-slate-900",
+                          ].join(" ")}
+                        >
                           {pattern.name}
                         </span>
                       ) : visual ? (
