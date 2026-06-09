@@ -70,6 +70,16 @@ describe("assignNightCycle", () => {
     expect(nightInEmp).toBe("B");
   });
 
+  it("夜勤希望を出した人は希望日にしか夜入しない (他の日は対象外)", () => {
+    // B は 6/01 のみ夜勤希望 → 夜勤は 6/01 だけ。他の日は希望を出していない A が担当。
+    const members = [emp("A", 30), emp("B", 30, [], ["2026-06-01"])];
+    const r = assignNightCycle(days(10), members);
+    const bNightDates = r.assignments
+      .filter((a) => a.employeeId === "B" && a.baseSymbol === "夜入")
+      .map((a) => a.date);
+    expect(bNightDates).toEqual(["2026-06-01"]);
+  });
+
   it("夜勤不可 (cap 0) は割り当てない", () => {
     const r = assignNightCycle(days(10), [emp("A", 5), emp("X", 0), emp("Y", 0)]);
     const usedX = r.assignments.some((a) => a.employeeId === "X");
