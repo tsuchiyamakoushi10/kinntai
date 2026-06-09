@@ -6,7 +6,9 @@
  * (勤務記号マスター由来)。
  *
  * 方針 (完璧な解は狙わない。8 割組む→過不足を色で見る→人が直す):
- *   1. 常勤を デ日 で先に配置 (月目標日数まで・連勤上限内・希望休尊重)。
+ *   0. 相談員 (生活相談員) を必要数だけ最優先で確保 (常勤/非常勤問わず。希望休・連勤上限は
+ *      守るが月目標日数は超えてよい = 相談員カバレッジ優先・負担は分散)。
+ *   1. 常勤を デ日 で配置 (月目標日数まで・連勤上限内・希望休尊重)。
  *   2. 非常勤で午前/午後の不足を平等配分で穴埋め (PM 不足=デ短A 終日 / AM だけ不足=半日A)。
  *   3. 残りは公休。休業日 (必要数 0) は全員公休。
  *
@@ -36,7 +38,7 @@ export type DeyEmployee = {
   employeeCode: string;
   /** 常勤か (v1 は雇用形態由来。正社員/契約=常勤)。 */
   isFullTime: boolean;
-  /** 生活相談員か (午前/午後 各 N 名の充足チェック用。配置は強制しない)。 */
+  /** 生活相談員か。各営業日に必要数だけ最優先で配置する (Phase 0)。 */
   isCounselor: boolean;
   /** 入れない日 ("YYYY-MM-DD")。希望休 / 勤務不可 / 雇用期間外をまとめて渡す。 */
   unavailableDates: ReadonlySet<string>;
@@ -136,9 +138,34 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
       const eligible = (e: DeyEmployee): boolean =>
         !e.unavailableDates.has(day.date) && consecutive.get(e.id)! < config.maxConsecutiveDays;
 
+      // Phase 0: 相談員の充足を最優先で確保する。
+      // 職種で判定し、常勤/非常勤を問わず、その日の必要数 (counselorAm/Pm の多い方) まで先に置く。
+      // availability と連勤上限は守るが、月目標日数は超えてもよい (相談員カバレッジを優先)。
+      // 全相談員が希望休/連勤上限の日は確保できず、下の評価で不足として残る。
+      const counselorNeed = Math.max(demand.counselorAm, demand.counselorPm);
+      if (counselorNeed > 0) {
+        const counselorCandidates = employees
+          .filter((e) => e.isCounselor && eligible(e))
+          .sort((a, b) => {
+            // 目標未達を優先 (なるべく超過させない) → 累計少ない順 (負担分散) → 常勤優先 → コード順。
+            const overA = workDays.get(a.id)! >= a.targetWorkDays ? 1 : 0;
+            const overB = workDays.get(b.id)! >= b.targetWorkDays ? 1 : 0;
+            if (overA !== overB) return overA - overB;
+            const cntA = workDays.get(a.id)!;
+            const cntB = workDays.get(b.id)!;
+            if (cntA !== cntB) return cntA - cntB;
+            if (a.isFullTime !== b.isFullTime) return a.isFullTime ? -1 : 1;
+            return a.employeeCode.localeCompare(b.employeeCode);
+          });
+        for (const e of counselorCandidates.slice(0, counselorNeed)) {
+          today.set(e.id, e.isFullTime ? config.symbols.fullDay : config.symbols.partFullDay);
+        }
+      }
+
       // Phase 1: 常勤を デ日 で配置 (相談員優先 → 目標残り多い順 → 累計少ない順)。
+      // Phase 0 で既に置いた相談員はスキップ。
       const ftCandidates = fullTimers
-        .filter((e) => eligible(e) && workDays.get(e.id)! < e.targetWorkDays)
+        .filter((e) => eligible(e) && !today.has(e.id) && workDays.get(e.id)! < e.targetWorkDays)
         .sort((a, b) => {
           if (a.isCounselor !== b.isCounselor) return a.isCounselor ? -1 : 1;
           const remA = a.targetWorkDays - workDays.get(a.id)!;

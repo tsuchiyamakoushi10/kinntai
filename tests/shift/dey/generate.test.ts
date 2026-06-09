@@ -167,6 +167,57 @@ describe("generateDey — 制約", () => {
   });
 });
 
+describe("generateDey — 相談員の確保 (Phase 0)", () => {
+  it("非常勤の相談員でも毎営業日に確保される (連勤上限内)", () => {
+    const employees = [
+      ...["F1", "F2", "F3"].map((c) => emp(c, true)),
+      emp("C1", false, { isCounselor: true }),
+      ...["P1", "P2", "P3", "P4", "P5"].map((c) => emp(c, false)),
+    ];
+    const r = generateDey(baseInput({ days: weekdays(5), employees }));
+    for (const day of r.days) {
+      expect(day.coverage!.counselorAmShort).toBe(false);
+      expect(day.coverage!.counselorPmShort).toBe(false);
+    }
+    // 非常勤相談員は終日 (デ短A) で配置され、5 日とも出勤
+    expect(symbolsOn(r, "2026-06-01").get("C1")).toBe("デ短A");
+    expect(r.workDaysByEmployee["C1"]).toBe(5);
+  });
+
+  it("相談員は月目標日数を超えても確保される (カバレッジ優先)", () => {
+    const employees = [
+      emp("C1", false, { isCounselor: true, targetWorkDays: 2 }),
+      ...["P1", "P2", "P3", "P4", "P5", "P6"].map((c) => emp(c, false)),
+    ];
+    const r = generateDey(baseInput({ days: weekdays(5), employees }));
+    expect(r.workDaysByEmployee["C1"]).toBe(5); // 目標 2 を超えて 5 日確保
+    for (const day of r.days) expect(day.coverage!.counselorAmShort).toBe(false);
+  });
+
+  it("複数相談員がいれば必要数だけ置き、負担を分散する", () => {
+    const employees = [
+      ...["C1", "C2"].map((c) => emp(c, true, { isCounselor: true })),
+      ...["P1", "P2", "P3", "P4", "P5", "P6"].map((c) => emp(c, false)),
+    ];
+    // counselorAm/Pm=1 なので 1 日 1 名だけ確保 → 負担が分散する
+    const r = generateDey(baseInput({ days: weekdays(6), employees }));
+    const diff = Math.abs((r.workDaysByEmployee["C1"] ?? 0) - (r.workDaysByEmployee["C2"] ?? 0));
+    expect(diff).toBeLessThanOrEqual(1);
+    for (const day of r.days) expect(day.coverage!.counselorAmShort).toBe(false);
+  });
+
+  it("相談員が希望休の日は確保されず不足が残る", () => {
+    const employees = [
+      emp("C1", false, { isCounselor: true, unavailableDates: new Set(["2026-06-02"]) }),
+      ...["P1", "P2", "P3", "P4", "P5", "P6"].map((c) => emp(c, false)),
+    ];
+    const r = generateDey(baseInput({ days: weekdays(3), employees }));
+    expect(symbolsOn(r, "2026-06-02").get("C1")).toBe("公休");
+    const d2 = r.days.find((d) => d.date === "2026-06-02")!;
+    expect(d2.coverage!.counselorAmShort).toBe(true);
+  });
+});
+
 describe("generateDey — 決定論", () => {
   it("同じ入力なら同じ結果", () => {
     const a = generateDey(baseInput({ days: weekdays(10) }));
