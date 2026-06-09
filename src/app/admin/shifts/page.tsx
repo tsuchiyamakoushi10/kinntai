@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import type { DayKind } from "@prisma/client";
+
 import { currentJstYm, monthRange } from "@/lib/attendance/business-date";
 import { requireAdmin } from "@/lib/auth-guard";
+import { dayKindFor } from "@/lib/calendar/holidays";
 import { prisma } from "@/lib/db";
 import { sortForRoster } from "@/lib/employee-order";
+import type { CoverageNeed } from "@/lib/shift/grid-coverage";
 import { RIKA_OFFICE_CODE } from "@/lib/shift/rika/config";
 import type { ShiftCell } from "@/lib/shifts/diff";
 
@@ -69,70 +73,93 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
   const range = monthRange(ym);
   const prevRange = monthRange(range.prevYm);
 
-  const [office, employees, patterns, currentShifts, prevShifts, generationRun, shiftPreferences] =
-    await Promise.all([
-      prisma.office.findUnique({ where: { id: officeId }, select: { name: true } }),
-      prisma.employee.findMany({
-        where: {
-          officeId,
-          OR: [{ retiredAt: null }, { retiredAt: { gte: range.start } }],
-        },
-        // 並び順は雇用形態 + 手動 display_order を JS 側 (sortForRoster) で決めるため、
-        // ここでは取得順は問わない。
-        select: {
-          id: true,
-          employeeCode: true,
-          lastName: true,
-          firstName: true,
-          lastNameKana: true,
-          firstNameKana: true,
-          employmentType: true,
-          displayOrder: true,
-        },
-      }),
-      prisma.shiftPattern.findMany({
-        where: {
-          isActive: true,
-          OR: [{ officeId }, { officeId: null }],
-        },
-        orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          shiftKind: true,
-          color: true,
-          paidLeaveUnits: true,
-        },
-      }),
-      prisma.shift.findMany({
-        where: { officeId, workDate: { gte: range.start, lt: range.end } },
-        select: {
-          employeeId: true,
-          workDate: true,
-          shiftPatternId: true,
-          note: true,
-          generationRunId: true,
-        },
-      }),
-      prisma.shift.findMany({
-        where: { officeId, workDate: { gte: prevRange.start, lt: prevRange.end } },
-        select: { employeeId: true, workDate: true, shiftPatternId: true, note: true },
-      }),
-      prisma.shiftGenerationRun.findUnique({
-        where: { officeId_targetMonth: { officeId, targetMonth: range.start } },
-        select: { status: true, confirmedAt: true, generatedAt: true },
-      }),
-      // 当月・当拠点の従業員が出した希望 (却下分を除く)。勤務表に重ねて表示する。
-      prisma.shiftPreference.findMany({
-        where: {
-          targetDate: { gte: range.start, lt: range.end },
-          employee: { officeId },
-          status: { not: "REJECTED" },
-        },
-        select: { employeeId: true, targetDate: true, preferenceType: true, status: true },
-      }),
-    ]);
+  const [
+    office,
+    employees,
+    patterns,
+    currentShifts,
+    prevShifts,
+    generationRun,
+    shiftPreferences,
+    coverageDemandRows,
+  ] = await Promise.all([
+    prisma.office.findUnique({ where: { id: officeId }, select: { name: true } }),
+    prisma.employee.findMany({
+      where: {
+        officeId,
+        OR: [{ retiredAt: null }, { retiredAt: { gte: range.start } }],
+      },
+      // 並び順は雇用形態 + 手動 display_order を JS 側 (sortForRoster) で決めるため、
+      // ここでは取得順は問わない。
+      select: {
+        id: true,
+        employeeCode: true,
+        lastName: true,
+        firstName: true,
+        lastNameKana: true,
+        firstNameKana: true,
+        employmentType: true,
+        jobCategory: true,
+        displayOrder: true,
+      },
+    }),
+    prisma.shiftPattern.findMany({
+      where: {
+        isActive: true,
+        OR: [{ officeId }, { officeId: null }],
+      },
+      orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        shiftKind: true,
+        color: true,
+        paidLeaveUnits: true,
+        amCount: true,
+        pmCount: true,
+      },
+    }),
+    prisma.shift.findMany({
+      where: { officeId, workDate: { gte: range.start, lt: range.end } },
+      select: {
+        employeeId: true,
+        workDate: true,
+        shiftPatternId: true,
+        note: true,
+        generationRunId: true,
+      },
+    }),
+    prisma.shift.findMany({
+      where: { officeId, workDate: { gte: prevRange.start, lt: prevRange.end } },
+      select: { employeeId: true, workDate: true, shiftPatternId: true, note: true },
+    }),
+    prisma.shiftGenerationRun.findUnique({
+      where: { officeId_targetMonth: { officeId, targetMonth: range.start } },
+      select: { status: true, confirmedAt: true, generatedAt: true },
+    }),
+    // 当月・当拠点の従業員が出した希望 (却下分を除く)。勤務表に重ねて表示する。
+    prisma.shiftPreference.findMany({
+      where: {
+        targetDate: { gte: range.start, lt: range.end },
+        employee: { officeId },
+        status: { not: "REJECTED" },
+      },
+      select: { employeeId: true, targetDate: true, preferenceType: true, status: true },
+    }),
+    prisma.officeCoverageDemand.findMany({
+      where: { officeId },
+      select: {
+        dayKind: true,
+        amRequired: true,
+        pmRequired: true,
+        counselorAmRequired: true,
+        counselorPmRequired: true,
+        nightInRequired: true,
+        nightOutRequired: true,
+      },
+    }),
+  ]);
 
   if (!office) {
     return (
@@ -157,7 +184,27 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     shiftKind: p.shiftKind,
     color: p.color,
     paidLeaveUnits: p.paidLeaveUnits.toNumber(),
+    amCount: p.amCount,
+    pmCount: p.pmCount,
   }));
+
+  // 不足アラート用の配置基準・日種・相談員集合
+  const coverageDemands: Partial<Record<DayKind, CoverageNeed>> = {};
+  for (const d of coverageDemandRows) {
+    coverageDemands[d.dayKind] = {
+      am: d.amRequired,
+      pm: d.pmRequired,
+      counselorAm: d.counselorAmRequired,
+      counselorPm: d.counselorPmRequired,
+      nightIn: d.nightInRequired,
+      nightOut: d.nightOutRequired,
+    };
+  }
+  const dayKinds: DayKind[] = range.days.map((d) => dayKindFor(d));
+  const counselorEmployeeIds = new Set(
+    employees.filter((e) => e.jobCategory === "LIFE_COUNSELOR").map((e) => e.id),
+  );
+  const hasDemands = coverageDemandRows.length > 0;
 
   const initialCells: ShiftCell[] = currentShifts.map((s) => ({
     employeeId: s.employeeId,
@@ -272,6 +319,9 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
             prevMonthCells={prevCells}
             autoCellKeys={autoCellKeys}
             preferences={preferenceMarks}
+            coverageDemands={hasDemands ? coverageDemands : undefined}
+            dayKinds={dayKinds}
+            counselorEmployeeIds={counselorEmployeeIds}
           />
         </>
       )}
@@ -320,6 +370,8 @@ async function AllOfficesView({
         shiftKind: true,
         color: true,
         paidLeaveUnits: true,
+        amCount: true,
+        pmCount: true,
       },
     }),
     prisma.shift.findMany({
@@ -416,6 +468,8 @@ async function AllOfficesView({
           shiftKind: p.shiftKind,
           color: p.color,
           paidLeaveUnits: p.paidLeaveUnits.toNumber(),
+          amCount: p.amCount,
+          pmCount: p.pmCount,
         }));
         const initialCells: ShiftCell[] = sf.map((s) => ({
           employeeId: s.employeeId,

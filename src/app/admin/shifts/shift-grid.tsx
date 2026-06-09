@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  DayKind,
   EmploymentType,
   ShiftKind,
   ShiftPreferenceStatus,
@@ -12,6 +13,12 @@ import {
   SHIFT_PREFERENCE_STATUS_LABELS,
   SHIFT_PREFERENCE_TYPE_LABELS,
 } from "@/lib/employee-labels";
+import {
+  computeDayShortfalls,
+  type CoverageNeed,
+  type DayShortfall,
+  type GridCell,
+} from "@/lib/shift/grid-coverage";
 import type { ShiftCell } from "@/lib/shifts/diff";
 
 import { saveShifts } from "./actions";
@@ -40,6 +47,25 @@ function prefTitle(p: PreferenceMark): string {
   return `${SHIFT_PREFERENCE_TYPE_LABELS[p.preferenceType]}（${SHIFT_PREFERENCE_STATUS_LABELS[p.status]}）の申請`;
 }
 
+/** 不足の内訳を「午前-1・午後-2・相談員(午前)」のような短い文にする。 */
+function shortfallText(s: DayShortfall): string {
+  const parts: string[] = [];
+  if (s.am) parts.push(`午前-${s.am}`);
+  if (s.pm) parts.push(`午後-${s.pm}`);
+  if (s.nightIn) parts.push(`夜入-${s.nightIn}`);
+  if (s.nightOut) parts.push(`夜明-${s.nightOut}`);
+  if (s.counselorAm) parts.push("相談員(午前)");
+  if (s.counselorPm) parts.push("相談員(午後)");
+  return parts.join("・");
+}
+
+/** "2026-06-03" → "6/3(火)"。 */
+function shortDateWithWeekday(ymd: string): string {
+  const d = new Date(`${ymd}T00:00:00.000Z`);
+  const w = d.getUTCDay();
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${WEEKDAY[w]})`;
+}
+
 export type EmployeeRow = {
   id: string;
   code: string;
@@ -56,6 +82,9 @@ export type PatternOption = {
   shiftKind: ShiftKind;
   color: string;
   paidLeaveUnits: number;
+  /** 午前/午後の在席カウント (不足アラート計算用)。 */
+  amCount: number;
+  pmCount: number;
 };
 
 type Props = {
@@ -72,6 +101,12 @@ type Props = {
   autoCellKeys?: ReadonlySet<string>;
   /** 従業員が出した希望 (希望休 / 有給 など)。勤務表に色とラベルで重ねて表示する。 */
   preferences?: ReadonlyArray<PreferenceMark>;
+  /** 日種ごとの配置基準 (午前/午後/相談員/夜勤の必要数)。渡すと下部に不足アラートを出す。 */
+  coverageDemands?: Partial<Record<DayKind, CoverageNeed>>;
+  /** days と同じ並びの日種。不足計算に使う。 */
+  dayKinds?: ReadonlyArray<DayKind>;
+  /** 生活相談員の従業員 ID。相談員不足の判定に使う。 */
+  counselorEmployeeIds?: ReadonlySet<string>;
   /** 閲覧専用モード (ALL 閲覧で使う)。パレット / 保存 / 編集 UI を全部隠す。 */
   readOnly?: boolean;
 };
@@ -115,6 +150,9 @@ export function ShiftGrid({
   prevMonthCells,
   autoCellKeys,
   preferences,
+  coverageDemands,
+  dayKinds,
+  counselorEmployeeIds,
   readOnly = false,
 }: Props) {
   const [cells, setCells] = useState<CellMap>(() => toCellMap(initialCells));
@@ -146,6 +184,27 @@ export function ShiftGrid({
     for (const p of preferences ?? []) m.set(cellKey(p.employeeId, p.workDate), p);
     return m;
   }, [preferences]);
+
+  // 現在の配置から日ごとのスタッフ不足を計算 (セル編集のたびに再計算)。
+  const shortfalls = useMemo(() => {
+    if (!coverageDemands || !dayKinds) return [];
+    const daysWithKind = days.map((date, i) => ({ date, dayKind: dayKinds[i] ?? "WEEKDAY" }));
+    const cellsByDate = new Map<string, GridCell[]>();
+    for (const c of cells.values()) {
+      const pattern = patternsById.get(c.shiftPatternId);
+      if (!pattern) continue;
+      const arr = cellsByDate.get(c.workDate) ?? [];
+      arr.push({
+        amCount: pattern.amCount,
+        pmCount: pattern.pmCount,
+        isNightIn: pattern.shiftKind === "NIGHT_IN",
+        isNightOut: pattern.shiftKind === "NIGHT_OUT",
+        isCounselor: counselorEmployeeIds?.has(c.employeeId) ?? false,
+      });
+      cellsByDate.set(c.workDate, arr);
+    }
+    return computeDayShortfalls(daysWithKind, coverageDemands, cellsByDate);
+  }, [cells, coverageDemands, dayKinds, days, patternsById, counselorEmployeeIds]);
 
   function paintCell(employeeIdx: number, dayIdx: number): void {
     const emp = employees[employeeIdx];
@@ -533,6 +592,34 @@ export function ShiftGrid({
           </tbody>
         </table>
       </div>
+
+      {/* スタッフ不足アラート (配置基準が渡されたときだけ表示)。セル編集に追従。 */}
+      {coverageDemands &&
+        (shortfalls.length === 0 ? (
+          <div className="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            スタッフの不足はありません ✓
+          </div>
+        ) : (
+          <div
+            role="alert"
+            className="rounded-md border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900"
+          >
+            <p className="font-semibold">
+              スタッフが足りない日があります（{shortfalls.length} 日）
+            </p>
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {shortfalls.map((s) => (
+                <li key={s.date}>
+                  <span className="font-medium">{shortDateWithWeekday(s.date)}</span>{" "}
+                  <span className="text-rose-700">{shortfallText(s)}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-xs text-rose-700">
+              （−N＝その時間帯の在席が N 名不足。相談員は午前/午後それぞれ必要数に届かない日）
+            </p>
+          </div>
+        ))}
 
       {!readOnly && (
         <p className="text-xs text-slate-500">
