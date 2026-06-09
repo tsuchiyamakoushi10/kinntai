@@ -4,10 +4,10 @@ import { useActionState, useMemo, useState } from "react";
 
 import type { BulkOffFormState } from "./actions";
 
-/** カレンダーで扱う希望種別 (休系)。 */
-type OffType = "REQUESTED_OFF" | "PAID_LEAVE";
+/** カレンダーで扱う希望種別 (希望休 / 有給 / 夜勤希望)。 */
+type PrefType = "REQUESTED_OFF" | "PAID_LEAVE" | "PREFERRED_NIGHT";
 
-type Mark = { date: string; type: OffType };
+type Mark = { date: string; type: PrefType };
 
 type Props = {
   action: (state: BulkOffFormState, formData: FormData) => Promise<BulkOffFormState>;
@@ -17,18 +17,21 @@ type Props = {
   days: ReadonlyArray<string>;
   /** 月の 1 日が JST で何曜日か (0=日 .. 6=土) */
   firstWeekday: number;
-  /** 既存の希望休 / 有給 (日付 + 種別)。 */
+  /** 既存の希望休 / 有給 / 夜勤希望 (日付 + 種別)。 */
   initialMarks: ReadonlyArray<Mark>;
+  /** 夜勤のある拠点 (ショート/NRS) のとき true。夜勤希望の種別を出す。 */
+  allowNight?: boolean;
 };
 
 const WEEK_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
-const TYPE_LABEL: Record<OffType, string> = {
+const TYPE_LABEL: Record<PrefType, string> = {
   REQUESTED_OFF: "希望休",
   PAID_LEAVE: "有給",
+  PREFERRED_NIGHT: "夜勤希望",
 };
-// 勤務表の凡例と色を統一 (希望休=ピンク / 有給=アンバー)。
-const TYPE_STYLE: Record<OffType, { sel: string; chip: string }> = {
+// 勤務表の凡例と色を統一 (希望休=ピンク / 有給=アンバー / 夜勤希望=藍)。
+const TYPE_STYLE: Record<PrefType, { sel: string; chip: string }> = {
   REQUESTED_OFF: {
     sel: "bg-pink-200 font-bold text-pink-900 ring-2 ring-pink-500",
     chip: "bg-pink-200 text-pink-900",
@@ -36,6 +39,10 @@ const TYPE_STYLE: Record<OffType, { sel: string; chip: string }> = {
   PAID_LEAVE: {
     sel: "bg-amber-200 font-bold text-amber-900 ring-2 ring-amber-500",
     chip: "bg-amber-200 text-amber-900",
+  },
+  PREFERRED_NIGHT: {
+    sel: "bg-indigo-200 font-bold text-indigo-900 ring-2 ring-indigo-500",
+    chip: "bg-indigo-200 text-indigo-900",
   },
 };
 
@@ -52,12 +59,18 @@ export function BulkOffCalendar({
   days,
   firstWeekday,
   initialMarks,
+  allowNight = false,
 }: Props) {
-  const [marks, setMarks] = useState<Map<string, OffType>>(
+  const [marks, setMarks] = useState<Map<string, PrefType>>(
     () => new Map(initialMarks.map((m) => [m.date, m.type])),
   );
-  const [paintType, setPaintType] = useState<OffType>("REQUESTED_OFF");
+  const [paintType, setPaintType] = useState<PrefType>("REQUESTED_OFF");
   const [state, formAction, pending] = useActionState<BulkOffFormState, FormData>(action, {});
+
+  // 表示する種別 (夜勤希望は夜勤のある拠点だけ)。
+  const visibleTypes: PrefType[] = allowNight
+    ? ["REQUESTED_OFF", "PAID_LEAVE", "PREFERRED_NIGHT"]
+    : ["REQUESTED_OFF", "PAID_LEAVE"];
 
   const toggle = (date: string) => {
     setMarks((prev) => {
@@ -97,6 +110,19 @@ export function BulkOffCalendar({
         .join(","),
     [marks],
   );
+  const preferredNightCsv = useMemo(
+    () =>
+      [...marks.entries()]
+        .filter(([, t]) => t === "PREFERRED_NIGHT")
+        .map(([d]) => d)
+        .sort()
+        .join(","),
+    [marks],
+  );
+  const nightCount = useMemo(
+    () => [...marks.values()].filter((t) => t === "PREFERRED_NIGHT").length,
+    [marks],
+  );
 
   // 月初の曜日に合わせて空セルを差し込む
   const leadEmpty = Array.from({ length: firstWeekday });
@@ -110,12 +136,16 @@ export function BulkOffCalendar({
       <input type="hidden" name="ym" value={ym} />
       <input type="hidden" name="requestedOff" value={requestedOffCsv} />
       <input type="hidden" name="paidLeave" value={paidLeaveCsv} />
+      <input type="hidden" name="preferredNight" value={preferredNightCsv} />
 
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-slate-900">{employeeName} さんの希望休 / 有給</p>
+          <p className="text-sm font-semibold text-slate-900">
+            {employeeName} さんの希望休 / 有給{allowNight ? " / 夜勤希望" : ""}
+          </p>
           <p className="text-xs text-slate-500">
             {formatYm(ym)} ／ 希望休 {offCount} 日・有給 {paidCount} 日
+            {allowNight ? `・夜勤希望 ${nightCount} 日` : ""}
           </p>
         </div>
         <div className="flex gap-2">
@@ -140,7 +170,7 @@ export function BulkOffCalendar({
       {/* 塗る種別の切替 */}
       <div className="flex items-center gap-2">
         <span className="text-xs text-slate-600">クリックで付ける種別:</span>
-        {(Object.keys(TYPE_LABEL) as OffType[]).map((t) => {
+        {visibleTypes.map((t) => {
           const active = paintType === t;
           return (
             <button
@@ -210,7 +240,8 @@ export function BulkOffCalendar({
 
       <p className="text-xs text-slate-500">
         上で種別を選んでから日付をクリックすると付与/解除できます (1 日 1 種別)。保存すると{" "}
-        {formatYm(ym)} の希望休・有給が上書きされます (希望夜勤や勤務不可は影響しません)。
+        {formatYm(ym)} の希望休・有給{allowNight ? "・夜勤希望" : ""}が上書きされます
+        (勤務不可は影響しません)。
       </p>
     </form>
   );

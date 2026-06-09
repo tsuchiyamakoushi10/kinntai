@@ -130,10 +130,10 @@ export type BulkOffFormState = {
 /**
  * カレンダー一括入力。
  *
- * 指定従業員 × 指定月の 希望休 (REQUESTED_OFF) と 有給 (PAID_LEAVE) を、フォーム送信時の
- * 選択状態で「上書き」する (両種別とも当月分を消して入れ直し)。希望夜勤・勤務不可は触らない。
+ * 指定従業員 × 指定月の 希望休 (REQUESTED_OFF) / 有給 (PAID_LEAVE) / 夜勤希望 (PREFERRED_NIGHT) を、
+ * フォーム送信時の選択状態で「上書き」する (これら3種別とも当月分を消して入れ直し)。勤務不可は触らない。
  *
- * formData: "requestedOff" / "paidLeave" に YYYY-MM-DD カンマ区切りで入る前提 (1 日 1 種別)。
+ * formData: "requestedOff" / "paidLeave" / "preferredNight" に YYYY-MM-DD カンマ区切り (1 日 1 種別)。
  */
 export async function bulkSetMonthlyOffPreferences(
   _prev: BulkOffFormState,
@@ -156,6 +156,7 @@ export async function bulkSetMonthlyOffPreferences(
 
   const offDates = parseDates(String(formData.get("requestedOff") ?? ""));
   const paidDates = parseDates(String(formData.get("paidLeave") ?? ""));
+  const nightDates = parseDates(String(formData.get("preferredNight") ?? ""));
 
   // 月境界
   const [yStr, mStr] = ym.split("-");
@@ -175,13 +176,20 @@ export async function bulkSetMonthlyOffPreferences(
   const rows = [
     ...offDates.map((d) => ({ date: d, type: ShiftPreferenceType.REQUESTED_OFF })),
     ...paidDates.map((d) => ({ date: d, type: ShiftPreferenceType.PAID_LEAVE })),
+    ...nightDates.map((d) => ({ date: d, type: ShiftPreferenceType.PREFERRED_NIGHT })),
   ];
 
   await prisma.$transaction(async (tx) => {
     await tx.shiftPreference.deleteMany({
       where: {
         employeeId,
-        preferenceType: { in: [ShiftPreferenceType.REQUESTED_OFF, ShiftPreferenceType.PAID_LEAVE] },
+        preferenceType: {
+          in: [
+            ShiftPreferenceType.REQUESTED_OFF,
+            ShiftPreferenceType.PAID_LEAVE,
+            ShiftPreferenceType.PREFERRED_NIGHT,
+          ],
+        },
         targetDate: { gte: monthStart, lt: monthEnd },
       },
     });

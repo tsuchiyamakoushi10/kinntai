@@ -63,7 +63,7 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
         employeeCode: true,
         lastName: true,
         firstName: true,
-        office: { select: { name: true } },
+        office: { select: { name: true, code: true } },
       },
     }),
     prisma.shiftPreference.findMany({
@@ -93,11 +93,15 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
     rejected: preferences.filter((p) => p.status === "REJECTED").length,
   };
 
+  // 夜勤のある拠点 (夜勤希望をカレンダーで出す対象)。
+  const NIGHT_OFFICE_CODES = new Set(["SHO-CENTER", "NRS-CENTER"]);
+
   const employeeOptions = employees.map((e) => ({
     id: e.id,
     employeeCode: e.employeeCode,
     name: `${e.lastName} ${e.firstName}`,
     officeName: e.office?.name ?? "—",
+    allowNight: e.office?.code != null && NIGHT_OFFICE_CODES.has(e.office.code),
   }));
 
   // 月絞り込みと連動した既定の対象日 (当月の 1 日)。
@@ -116,14 +120,14 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
         await prisma.shiftPreference.findMany({
           where: {
             employeeId: bulkEmployee.id,
-            preferenceType: { in: ["REQUESTED_OFF", "PAID_LEAVE"] },
+            preferenceType: { in: ["REQUESTED_OFF", "PAID_LEAVE", "PREFERRED_NIGHT"] },
             targetDate: { gte: month.start, lt: month.end },
           },
           select: { targetDate: true, preferenceType: true },
         })
       ).map((p) => ({
         date: toDateInputValue(p.targetDate),
-        type: p.preferenceType as "REQUESTED_OFF" | "PAID_LEAVE",
+        type: p.preferenceType as "REQUESTED_OFF" | "PAID_LEAVE" | "PREFERRED_NIGHT",
       }))
     : [];
 
@@ -238,6 +242,7 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
             days={month.days}
             firstWeekday={firstWeekday}
             initialMarks={bulkInitialMarks}
+            allowNight={bulkEmployee.allowNight}
           />
         ) : null}
       </section>
