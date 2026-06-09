@@ -11,7 +11,15 @@ import { summarizeDeyCoverage, toDeyProposals } from "@/lib/shift/dey/proposals"
 import { loadKitchenGenerateInput } from "@/lib/shift/kitchen/data";
 import { generateKitchen } from "@/lib/shift/kitchen/generate";
 import { summarizeKitchenCoverage, toKitchenProposals } from "@/lib/shift/kitchen/proposals";
-import { isDeyOffice, isKitchenOffice, shortConfigForOffice } from "@/lib/shift/office-generator";
+import {
+  isDeyOffice,
+  isKitchenOffice,
+  isRikaOffice,
+  shortConfigForOffice,
+} from "@/lib/shift/office-generator";
+import { loadRikaGenerateInput } from "@/lib/shift/rika/data";
+import { generateRikaShifts } from "@/lib/shift/rika/generate";
+import { summarizeRikaCoverage, toRikaProposals } from "@/lib/shift/rika/proposals";
 import { loadShortGenerateInput } from "@/lib/shift/short/data";
 import { generateShort, type ShortConfig } from "@/lib/shift/short/generate";
 import { summarizeShortCoverage, toShortProposals } from "@/lib/shift/short/proposals";
@@ -53,7 +61,52 @@ async function buildRun(
   if (isKitchenOffice(code)) {
     return buildKitchenRun(officeId, ym, existingRun);
   }
+  if (isRikaOffice(code)) {
+    return buildRikaRun(officeId, ym, existingRun);
+  }
   return null;
+}
+
+/**
+ * 梨花 (午前/午後 + gain最大化) の生成。generateRikaShifts → 記号 (code) を shiftPatternId に
+ * 解決 → 手修正セルを除外。手修正保護はデイ/ショートと同じ仕組み (loadProtectedCells)。
+ * 記号は CODE 基準なので name ではなく code で対応表を引く点だけが他と異なる。
+ */
+async function buildRikaRun(
+  officeId: string,
+  ym: string,
+  existingRun: ExistingRunMeta,
+): Promise<BuiltRun> {
+  const input = await loadRikaGenerateInput(prisma, ym);
+  const result = generateRikaShifts(ym, input.members, input.requestOff);
+  const summary = summarizeRikaCoverage(result, ym);
+
+  const patterns = await prisma.shiftPattern.findMany({ select: { id: true, code: true } });
+  const patternIdByCode = new Map(patterns.map((p) => [p.code, p.id]));
+  const { proposedShifts, missingSymbols } = toRikaProposals(result, patternIdByCode);
+
+  const protectedCells = await loadProtectedCells(officeId, ym, existingRun);
+  const filtered = proposedShifts.filter(
+    (p) => !protectedCells.has(`${p.employeeId}|${p.workDate}`),
+  );
+
+  return {
+    proposedShifts: filtered,
+    stats: {
+      algorithm: "rika-v1",
+      employees: input.members.length,
+      operatingDays: summary.operatingDays,
+      filledDays: summary.filledDays,
+      understaffedDays: summary.understaffedDays,
+      counselorMissingDays: summary.counselorMissingDays,
+      targetUnreachedCount: summary.targetUnreachedCount,
+      skipped: input.skipped,
+      missingSymbols,
+    },
+    algorithmVersion: "rika-v1",
+    warningCount:
+      summary.understaffedDays.length + summary.counselorMissingDays.length + input.skipped.length,
+  };
 }
 
 /**

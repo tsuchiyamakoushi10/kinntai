@@ -10,7 +10,15 @@ import { summarizeDeyCoverage } from "@/lib/shift/dey/proposals";
 import { loadKitchenGenerateInput } from "@/lib/shift/kitchen/data";
 import { generateKitchen } from "@/lib/shift/kitchen/generate";
 import { summarizeKitchenCoverage } from "@/lib/shift/kitchen/proposals";
-import { isDeyOffice, isKitchenOffice, shortConfigForOffice } from "@/lib/shift/office-generator";
+import {
+  isDeyOffice,
+  isKitchenOffice,
+  isRikaOffice,
+  shortConfigForOffice,
+} from "@/lib/shift/office-generator";
+import { loadRikaGenerateInput } from "@/lib/shift/rika/data";
+import { generateRikaShifts } from "@/lib/shift/rika/generate";
+import { summarizeRikaCoverage } from "@/lib/shift/rika/proposals";
 import { loadShortGenerateInput } from "@/lib/shift/short/data";
 import { generateShort } from "@/lib/shift/short/generate";
 import { summarizeShortCoverage } from "@/lib/shift/short/proposals";
@@ -18,6 +26,7 @@ import { summarizeShortCoverage } from "@/lib/shift/short/proposals";
 import { AutoRunner } from "./auto-runner";
 import { DeyPreview } from "./dey-preview";
 import { KitchenPreview } from "./kitchen-preview";
+import { RikaPreview } from "./rika-preview";
 import { ShortPreview } from "./short-preview";
 
 export const dynamic = "force-dynamic";
@@ -127,8 +136,15 @@ export default async function AdminShiftsAutoPage({ searchParams }: Props) {
     employeeCount = input.employees.length;
     proposedCount = result.assignments.length;
     preview = <ShortPreview days={result.days} summary={summary} />;
+  } else if (isRikaOffice(office.code)) {
+    const input = await loadRikaGenerateInput(prisma, ym);
+    const result = generateRikaShifts(ym, input.members, input.requestOff);
+    const summary = summarizeRikaCoverage(result, ym);
+    employeeCount = input.members.length;
+    proposedCount = result.cells.length;
+    preview = <RikaPreview summary={summary} skipped={input.skipped.map((s) => s.name)} />;
   } else {
-    // 専用生成を持たない拠点 (梨花は専用画面、それ以外は未対応)。
+    // 専用生成を持たない拠点 (未対応)。
     preview = (
       <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
         <p className="text-sm text-amber-900">この拠点は月次シフトの自動作成に対応していません。</p>

@@ -10,10 +10,13 @@
  *     NRS(ナーシングホーム)はショートと同じ構造(夜勤あり)なので生成器を流用し、記号だけ差し替える
  *     (ショ日→日勤、ショ短A→日勤、ショ短Aの代わりも日勤。半日A/公休/夜入/夜明は共通)。
  *   - 厨房 (generateKitchen): 固定ロスター。厨房記号(0/0)は配置基準モデルに乗らないため専用。
- *   - 梨花: 専用画面 (/admin/shifts/rika) のため本配線の対象外。
+ *   - 梨花 (generateRikaShifts): 午前/午後 + gain最大化。営業日固定(月火木金)・記号(梨2〜5)が
+ *     特殊なため専用生成。ただし画面・保存・表示はデイ/ショートと同じパイプラインに乗せる
+ *     (2026-06-09 統合)。旧 専用画面 /admin/shifts/rika は統合までのつなぎとして残す。
  *   - それ以外: 専用生成を持たないため自動作成 未対応 (呼び出し側で null 扱い)。
  *     旧 v1 汎用生成 (シフト枠ベース) は全拠点を専用パスへ移行したため撤去済み (2026-06-09)。
  */
+import { RIKA_OFFICE_CODE } from "./rika/config";
 import { SHORT_DEFAULT_CONFIG, type ShortConfig } from "./short/generate";
 import { DEFAULT_NIGHT_CYCLE_CONFIG } from "./short/night-cycle";
 
@@ -22,6 +25,9 @@ export const DEY_OFFICE_CODES: ReadonlyArray<string> = ["DAY-CENTER"];
 
 /** 厨房専用生成 (generateKitchen: 固定ロスター) を使う拠点コード。 */
 export const KITCHEN_OFFICE_CODES: ReadonlyArray<string> = ["KITCHEN"];
+
+/** 梨花専用生成 (generateRikaShifts: 午前/午後 + gain最大化) を使う拠点コード。 */
+export const RIKA_OFFICE_CODES: ReadonlyArray<string> = [RIKA_OFFICE_CODE];
 
 /**
  * ナーシングホーム用のショート系設定。ショートと同じ夜勤サイクル + 午前/午後フィルだが、
@@ -54,6 +60,11 @@ export function isDeyOffice(officeCode: string): boolean {
 /** 厨房専用生成 (固定ロスター) を使う拠点か。 */
 export function isKitchenOffice(officeCode: string): boolean {
   return KITCHEN_OFFICE_CODES.includes(officeCode);
+}
+
+/** 梨花専用生成を使う拠点か。 */
+export function isRikaOffice(officeCode: string): boolean {
+  return RIKA_OFFICE_CODES.includes(officeCode);
 }
 
 /**

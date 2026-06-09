@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import type { DayKind } from "@prisma/client";
 
@@ -9,7 +8,6 @@ import { dayKindFor } from "@/lib/calendar/holidays";
 import { prisma } from "@/lib/db";
 import { sortForRoster } from "@/lib/employee-order";
 import type { CoverageNeed } from "@/lib/shift/grid-coverage";
-import { RIKA_OFFICE_CODE } from "@/lib/shift/rika/config";
 import type { ShiftCell } from "@/lib/shifts/diff";
 
 import { AutoGenerateButton } from "./auto-generate-button";
@@ -51,12 +49,9 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     select: { id: true, name: true, code: true },
   });
 
-  // 梨花は専用画面 (午前/午後の頭数・専用ロスター・専用自動生成) を使う。
-  // 勤務表で梨花を選んだら専用画面へ送る (メニューは勤務表に一本化)。
-  const selected = offices.find((o) => o.id === officeId);
-  if (selected?.code === RIKA_OFFICE_CODE) {
-    redirect(`/admin/shifts/rika?ym=${ym}`);
-  }
+  // 梨花もデイ/ショートと同じ標準パイプライン (この勤務表 + 自動作成画面) で扱う
+  // (2026-06-09 統合)。専用画面 /admin/shifts/rika は統合までのつなぎとして残すが、
+  // 勤務表で梨花を選んでも標準グリッドで表示・編集できる。
 
   // 拠点未選択ならフィルタだけ表示してリターン
   if (!officeId) {
