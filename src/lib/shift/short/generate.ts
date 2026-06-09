@@ -57,6 +57,8 @@ export type ShortEmployee = {
   targetWorkDays: number;
   /** 月の夜勤上限 (0 = 夜勤不可)。shift_constraints.max_night_shifts_per_month 由来。 */
   nightCap: number;
+  /** 夜勤希望の日 ("YYYY-MM-DD")。夜勤割当でその日を優先する。 */
+  preferredNightDates: ReadonlySet<string>;
 };
 
 /** 1 日種ぶんの配置基準 (午前/午後 + 相談員 + 夜入)。office_coverage_demands 由来。 */
@@ -152,6 +154,7 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
     nightInRequired: input.demandByDayKind[d.dayKind]?.nightIn ?? 0,
   }));
   const nightEmployees: NightEmployee[] = employees.map((e) => ({
+    preferredNightDates: e.preferredNightDates,
     id: e.id,
     employeeCode: e.employeeCode,
     nightCap: e.nightCap,

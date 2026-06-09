@@ -40,6 +40,7 @@ function emp(
     unavailableDates: opts.unavailableDates ?? new Set(),
     targetWorkDays: opts.targetWorkDays ?? 21,
     nightCap: opts.nightCap ?? 5,
+    preferredNightDates: opts.preferredNightDates ?? new Set(),
   };
 }
 

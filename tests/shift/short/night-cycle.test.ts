@@ -9,8 +9,19 @@ function days(n: number, nightInRequired = 1): NightDay[] {
   }));
 }
 
-function emp(code: string, nightCap: number, unavailable: string[] = []): NightEmployee {
-  return { id: code, employeeCode: code, nightCap, unavailableDates: new Set(unavailable) };
+function emp(
+  code: string,
+  nightCap: number,
+  unavailable: string[] = [],
+  preferredNight: string[] = [],
+): NightEmployee {
+  return {
+    id: code,
+    employeeCode: code,
+    nightCap,
+    unavailableDates: new Set(unavailable),
+    preferredNightDates: new Set(preferredNight),
+  };
 }
 
 /** date -> (employeeId -> baseSymbol) */
@@ -46,6 +57,17 @@ describe("assignNightCycle", () => {
       expect(nightInEmp).toBeDefined();
       expect(m.get(all[i + 1]!.date)!.get(nightInEmp!)).toBe("夜明");
     }
+  });
+
+  it("夜勤希望の日はその人を優先して夜入に割り当てる", () => {
+    // 初日(6/01)は通常コード順で A が選ばれるが、B が 6/01 を夜勤希望 → B 優先。
+    const members = [emp("A", 5), emp("B", 5, [], ["2026-06-01"])];
+    const r = assignNightCycle(days(4), members);
+    const m = byDate(r);
+    const nightInEmp = [...(m.get("2026-06-01")?.entries() ?? [])].find(
+      ([, s]) => s === "夜入",
+    )?.[0];
+    expect(nightInEmp).toBe("B");
   });
 
   it("夜勤不可 (cap 0) は割り当てない", () => {

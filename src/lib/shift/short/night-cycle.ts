@@ -26,6 +26,8 @@ export type NightEmployee = {
   nightCap: number;
   /** 入れない日 ("YYYY-MM-DD")。希望休 / 勤務不可 / 雇用期間外。 */
   unavailableDates: ReadonlySet<string>;
+  /** 夜勤希望の日 ("YYYY-MM-DD")。その日は優先的に夜入を割り当てる。 */
+  preferredNightDates: ReadonlySet<string>;
 };
 
 export type NightCycleConfig = {
@@ -100,8 +102,11 @@ export function assignNightCycle(
         unfilledNightDays.push(day.date);
         break;
       }
-      // 夜勤回数が少ない人を優先 (偏り防止)。同点は employeeCode。
+      // その日を夜勤希望に出している人を最優先 → 夜勤回数が少ない人 → employeeCode。
       candidates.sort((a, b) => {
+        const wantA = a.preferredNightDates.has(day.date) ? 1 : 0;
+        const wantB = b.preferredNightDates.has(day.date) ? 1 : 0;
+        if (wantA !== wantB) return wantB - wantA;
         const ca = nightCount.get(a.id) ?? 0;
         const cb = nightCount.get(b.id) ?? 0;
         if (ca !== cb) return ca - cb;

@@ -77,7 +77,7 @@ export async function loadShortGenerateInput(
   const rangeEnd = new Date(`${lastDate}T00:00:00.000Z`);
   rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
 
-  const [employeesRaw, demandsRaw, patternsRaw, prefsRaw] = await Promise.all([
+  const [employeesRaw, demandsRaw, patternsRaw, prefsRaw, nightPrefsRaw] = await Promise.all([
     prisma.employee.findMany({
       where: { officeId, employmentStatus: "ACTIVE", employmentType: { not: null } },
       select: {
@@ -116,6 +116,16 @@ export async function loadShortGenerateInput(
       },
       select: { employeeId: true, targetDate: true },
     }),
+    // 夜勤希望 (却下以外)。夜勤割当でその日を優先する。
+    prisma.shiftPreference.findMany({
+      where: {
+        status: { not: "REJECTED" },
+        preferenceType: "PREFERRED_NIGHT",
+        targetDate: { gte: rangeStart, lt: rangeEnd },
+        employee: { officeId },
+      },
+      select: { employeeId: true, targetDate: true },
+    }),
   ]);
 
   // 希望休 / 勤務不可 を従業員ごとの不可日に
@@ -124,6 +134,14 @@ export async function loadShortGenerateInput(
     const set = offByEmp.get(p.employeeId) ?? new Set<string>();
     set.add(ymd(p.targetDate));
     offByEmp.set(p.employeeId, set);
+  }
+
+  // 夜勤希望日を従業員ごとに。
+  const nightByEmp = new Map<string, Set<string>>();
+  for (const p of nightPrefsRaw) {
+    const set = nightByEmp.get(p.employeeId) ?? new Set<string>();
+    set.add(ymd(p.targetDate));
+    nightByEmp.set(p.employeeId, set);
   }
 
   const employees: ShortEmployee[] = employeesRaw.map((e) => {
@@ -142,6 +160,7 @@ export async function loadShortGenerateInput(
       unavailableDates: unavailable,
       targetWorkDays: e.shiftConstraint?.targetMonthlyWorkDays ?? SHORT_DEFAULT_TARGET_WORK_DAYS,
       nightCap: e.shiftConstraint?.maxNightShiftsPerMonth ?? SHORT_DEFAULT_NIGHT_CAP,
+      preferredNightDates: new Set(nightByEmp.get(e.id) ?? []),
     };
   });
 
