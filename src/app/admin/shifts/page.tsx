@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { RIKA_OFFICE_CODE } from "@/lib/shift/rika/config";
 import type { ShiftCell } from "@/lib/shifts/diff";
 
+import { AutoGenerateButton } from "./auto-generate-button";
 import { ShiftFilters } from "./shift-filters";
 import { ShiftGrid, type EmployeeRow, type PatternOption } from "./shift-grid";
 
@@ -177,12 +178,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href={`/admin/shifts/auto?officeId=${officeId}&ym=${ym}`}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700"
-          >
-            シフト自動生成
-          </Link>
+          <AutoGenerateButton officeId={officeId} ym={ym} />
           <span className="mx-1 h-5 w-px bg-slate-200" />
           <Link
             href={`/admin/shifts?officeId=${officeId}&ym=${range.prevYm}`}
@@ -242,6 +238,10 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
         </div>
       ) : (
         <ShiftGrid
+          // 自動生成 (router.refresh) 後にグリッド内部状態を初期化し直すため、
+          // 生成時刻を key に含めて再マウントさせる。手修正の保存では generatedAt は
+          // 変わらないので再マウントは起きない。
+          key={`${ym}-${generationRun?.generatedAt?.getTime() ?? "none"}`}
           officeId={officeId}
           ym={ym}
           days={range.days}
