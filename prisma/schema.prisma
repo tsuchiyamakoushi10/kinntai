@@ -227,7 +227,6 @@ model Office {
   shiftPatterns       ShiftPattern[]
   shifts              Shift[]
   attendanceRecords   AttendanceRecord[]
-  shiftQuotas         OfficeShiftQuota[]
   shiftGenerationRuns ShiftGenerationRun[]
   shiftSetting        OfficeShiftSetting?
   coverageDemands     OfficeCoverageDemand[]
@@ -237,20 +236,20 @@ model Office {
 
 // ログインアカウント。employee_id は管理者でも従業員情報を持つ場合があるため nullable。
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
-  email        String    @unique
-  passwordHash String    @map("password_hash")
-  role         UserRole
-  employeeId   String?   @unique @map("employee_id") @db.Uuid
-  pinCodeHash  String?   @map("pin_code_hash")
-  isActive     Boolean   @default(true) @map("is_active")
+  id                 String    @id @default(uuid()) @db.Uuid
+  email              String    @unique
+  passwordHash       String    @map("password_hash")
+  role               UserRole
+  employeeId         String?   @unique @map("employee_id") @db.Uuid
+  pinCodeHash        String?   @map("pin_code_hash")
+  isActive           Boolean   @default(true) @map("is_active")
   // 初期パスワード (kinntai0000 等) のまま運用に出さないためのフラグ。
   // true の間は layout ガードで /password-change に強制誘導する。
   // 本人が changeMyPassword / confirmPasswordReset で新 PW を設定すると false。
-  mustChangePassword Boolean @default(true) @map("must_change_password")
-  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  mustChangePassword Boolean   @default(true) @map("must_change_password")
+  lastLoginAt        DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   employee            Employee?            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   createdShifts       Shift[]              @relation("ShiftCreatedBy")
@@ -295,37 +294,37 @@ model PasswordResetToken {
 //   lastNameKana, firstNameKana, birthDate, officeId, jobCategory, employmentType,
 //   joinedAt, hiredAt, weeklyWorkDays, dailyWorkHours, baseWageType, baseWageAmount
 model Employee {
-  id                       String           @id @default(uuid()) @db.Uuid
-  employeeCode             String           @unique @map("employee_code")
-  lastName                 String           @map("last_name")
-  firstName                String           @map("first_name")
-  lastNameKana             String?          @map("last_name_kana")
-  firstNameKana            String?          @map("first_name_kana")
-  birthDate                DateTime?        @map("birth_date") @db.Date
-  gender                   Gender?
-  phone                    String?
-  address                  String?
-  officeId                 String?          @map("office_id") @db.Uuid
-  jobCategory              JobCategory?     @map("job_category")
-  employmentType           EmploymentType?  @map("employment_type")
-  joinedAt                 DateTime?        @map("joined_at") @db.Date
-  hiredAt                  DateTime?        @map("hired_at") @db.Date
-  employmentStatus         EmploymentStatus @default(ACTIVE) @map("employment_status")
-  retiredAt                DateTime?        @map("retired_at") @db.Date
-  retirementReason         String?          @map("retirement_reason")
-  emergencyContactName     String?          @map("emergency_contact_name")
-  emergencyContactRelation String?          @map("emergency_contact_relation")
-  emergencyContactPhone    String?          @map("emergency_contact_phone")
-  weeklyWorkDays           Decimal?         @map("weekly_work_days") @db.Decimal(3, 1)
-  dailyWorkHours           Decimal?         @map("daily_work_hours") @db.Decimal(4, 2)
-  baseWageType             WageType?        @map("base_wage_type")
-  baseWageAmount           Int?             @map("base_wage_amount")
+  id                         String           @id @default(uuid()) @db.Uuid
+  employeeCode               String           @unique @map("employee_code")
+  lastName                   String           @map("last_name")
+  firstName                  String           @map("first_name")
+  lastNameKana               String?          @map("last_name_kana")
+  firstNameKana              String?          @map("first_name_kana")
+  birthDate                  DateTime?        @map("birth_date") @db.Date
+  gender                     Gender?
+  phone                      String?
+  address                    String?
+  officeId                   String?          @map("office_id") @db.Uuid
+  jobCategory                JobCategory?     @map("job_category")
+  employmentType             EmploymentType?  @map("employment_type")
+  joinedAt                   DateTime?        @map("joined_at") @db.Date
+  hiredAt                    DateTime?        @map("hired_at") @db.Date
+  employmentStatus           EmploymentStatus @default(ACTIVE) @map("employment_status")
+  retiredAt                  DateTime?        @map("retired_at") @db.Date
+  retirementReason           String?          @map("retirement_reason")
+  emergencyContactName       String?          @map("emergency_contact_name")
+  emergencyContactRelation   String?          @map("emergency_contact_relation")
+  emergencyContactPhone      String?          @map("emergency_contact_phone")
+  weeklyWorkDays             Decimal?         @map("weekly_work_days") @db.Decimal(3, 1)
+  dailyWorkHours             Decimal?         @map("daily_work_hours") @db.Decimal(4, 2)
+  baseWageType               WageType?        @map("base_wage_type")
+  baseWageAmount             Int?             @map("base_wage_amount")
   // 月の夜勤希望回数 (自動作成 v2 Phase 2 で優先配置に使用)。null = 希望なし(0 扱い)。
   // shift_constraints.max_night_shifts_per_month (上限) とは別軸 (希望 ≤ 上限 が通常)。
-  desiredNightShiftsPerMonth Int?           @map("desired_night_shifts_per_month")
-  notes                    String?
-  createdAt                DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  desiredNightShiftsPerMonth Int?             @map("desired_night_shifts_per_month")
+  notes                      String?
+  createdAt                  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   office                Office?                @relation(fields: [officeId], references: [id], onDelete: Restrict)
   user                  User?
@@ -445,7 +444,6 @@ model ShiftPattern {
   office            Office?            @relation(fields: [officeId], references: [id], onDelete: Restrict)
   shifts            Shift[]
   attendanceRecords AttendanceRecord[]
-  shiftQuotas       OfficeShiftQuota[]
 
   @@map("shift_patterns")
 }
@@ -689,33 +687,11 @@ model ShiftPreference {
   @@map("shift_preferences")
 }
 
-// 拠点別 シフト必要人員数。
-// 日種 (weekday / saturday / sunday_holiday) × シフトパターンごとに必要人数を保持する。
-// docs/database-design.md §2.11 / docs/auto-shift-design.md §3.1 参照。
-//   - 休み系パターン (off / paid_leave / absence / requested_off) は対象外 (UI で除外)
-//   - required_count は 0 以上の整数。空欄 = 0 として扱う
-//   - shift_pattern_id は (office_id 一致) または (shift_patterns.office_id IS NULL の共通パターン)
-model OfficeShiftQuota {
-  id             String   @id @default(uuid()) @db.Uuid
-  officeId       String   @map("office_id") @db.Uuid
-  shiftPatternId String   @map("shift_pattern_id") @db.Uuid
-  dayKind        DayKind  @map("day_kind")
-  requiredCount  Int      @map("required_count")
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  office       Office       @relation(fields: [officeId], references: [id], onDelete: Cascade)
-  shiftPattern ShiftPattern @relation(fields: [shiftPatternId], references: [id], onDelete: Cascade)
-
-  @@unique([officeId, shiftPatternId, dayKind])
-  @@map("office_shift_quotas")
-}
-
 // 拠点別 シフト自動作成 設定 (自動作成 v2)。office と 1:1。
 // docs/database-design.md §2.22 / docs/auto-shift-design-v2.md §4.1・§8② 参照。
 //   - これまでハードコードしていた調整値を拠点別に外出しする
-//   - 行が無い拠点は DEFAULT_SHIFT_GEN_SETTING (auto-generator/types.ts) で扱う
-//   - 各列は純粋関数の ShiftGenSetting と 1:1 対応。既定値もそれに合わせる
+//   - 行が無い拠点は OFFICE_SHIFT_SETTING_DEFAULTS (shift/office-setting.ts) で扱う
+//   - 各列は純粋関数の OfficeShiftSettingValues と 1:1 対応。既定値もそれに合わせる
 model OfficeShiftSetting {
   id                            String   @id @default(uuid()) @db.Uuid
   officeId                      String   @unique @map("office_id") @db.Uuid
