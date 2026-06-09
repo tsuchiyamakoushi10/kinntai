@@ -93,6 +93,8 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     prisma.employee.findMany({
       where: {
         officeId,
+        // 休職中 (産休等) は勤務表に表示しない。
+        employmentStatus: { not: "ON_LEAVE" },
         OR: [{ retiredAt: null }, { retiredAt: { gte: range.start } }],
       },
       // 並び順は雇用形態 + 手動 display_order を JS 側 (sortForRoster) で決めるため、
@@ -362,6 +364,7 @@ async function AllOfficesView({
     prisma.employee.findMany({
       where: {
         officeId: { in: officeIds },
+        employmentStatus: { not: "ON_LEAVE" },
         OR: [{ retiredAt: null }, { retiredAt: { gte: range.start } }],
       },
       // 拠点ごとに sortForRoster で並べ替えるため取得順は問わない。

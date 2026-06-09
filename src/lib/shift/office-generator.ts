@@ -30,7 +30,13 @@ export const KITCHEN_OFFICE_CODES: ReadonlyArray<string> = ["KITCHEN"];
  */
 export const NRS_SHORT_CONFIG: ShortConfig = {
   maxConsecutiveDays: 6,
-  symbols: { fullDay: "日勤", partFullDay: "日勤", partAm: "半日A", off: "公休" },
+  symbols: {
+    fullDay: "日勤",
+    partFullDay: "日勤",
+    partAm: "半日A",
+    off: "公休",
+    paidLeave: "有休",
+  },
   night: DEFAULT_NIGHT_CYCLE_CONFIG,
 };
 

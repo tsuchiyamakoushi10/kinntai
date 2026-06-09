@@ -42,6 +42,7 @@ function emp(
     targetWorkDays: opts.targetWorkDays ?? 21,
     nightCap: opts.nightCap ?? 5,
     preferredNightDates: opts.preferredNightDates ?? new Set(),
+    paidLeaveDates: opts.paidLeaveDates ?? new Set(),
   };
 }
 
@@ -193,6 +194,24 @@ describe("generateShort", () => {
     const noNurse = [emp("P1", { isFullTime: false }), emp("P2", { isFullTime: false })];
     const r2 = generateShort(input(d, noNurse, demand));
     expect(r2.days.some((x) => x.coverage!.nurseAmShort)).toBe(true);
+  });
+
+  it("有給希望の日は必ず有休になり勤務・夜勤に入らない", () => {
+    const d = days(5);
+    const emps = [
+      emp("A"),
+      emp("B", { paidLeaveDates: new Set(["2026-06-02"]) }),
+      emp("C"),
+      emp("P1", { isFullTime: false }),
+    ];
+    const r = generateShort(input(d, emps));
+    const m = byDate(r);
+    expect(m.get("2026-06-02")!.get("B")).toBe("有休");
+    // B は有給日に夜勤(夜入/夜明)にも入らない
+    for (const day of d) {
+      const sym = m.get(day.date)!.get("B");
+      if (day.date === "2026-06-02") expect(sym).toBe("有休");
+    }
   });
 
   it("休業日 (配置基準なし) は全員公休、夜勤も置かない", () => {

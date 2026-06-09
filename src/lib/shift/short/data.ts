@@ -77,58 +77,69 @@ export async function loadShortGenerateInput(
   const rangeEnd = new Date(`${lastDate}T00:00:00.000Z`);
   rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
 
-  const [employeesRaw, demandsRaw, patternsRaw, prefsRaw, nightPrefsRaw] = await Promise.all([
-    prisma.employee.findMany({
-      where: { officeId, employmentStatus: "ACTIVE", employmentType: { not: null } },
-      select: {
-        id: true,
-        employeeCode: true,
-        employmentType: true,
-        jobCategory: true,
-        joinedAt: true,
-        retiredAt: true,
-        shiftConstraint: {
-          select: { targetMonthlyWorkDays: true, maxNightShiftsPerMonth: true },
+  const [employeesRaw, demandsRaw, patternsRaw, prefsRaw, nightPrefsRaw, paidPrefsRaw] =
+    await Promise.all([
+      prisma.employee.findMany({
+        where: { officeId, employmentStatus: "ACTIVE", employmentType: { not: null } },
+        select: {
+          id: true,
+          employeeCode: true,
+          employmentType: true,
+          jobCategory: true,
+          joinedAt: true,
+          retiredAt: true,
+          shiftConstraint: {
+            select: { targetMonthlyWorkDays: true, maxNightShiftsPerMonth: true },
+          },
         },
-      },
-    }),
-    prisma.officeCoverageDemand.findMany({
-      where: { officeId },
-      select: {
-        dayKind: true,
-        amRequired: true,
-        pmRequired: true,
-        counselorAmRequired: true,
-        counselorPmRequired: true,
-        nurseAmRequired: true,
-        nursePmRequired: true,
-        nightInRequired: true,
-      },
-    }),
-    prisma.shiftPattern.findMany({
-      where: { isActive: true, OR: [{ officeId }, { officeId: null }] },
-      select: { name: true, amCount: true, pmCount: true, shiftKind: true },
-    }),
-    prisma.shiftPreference.findMany({
-      where: {
-        status: "ACCEPTED",
-        preferenceType: { in: ["REQUESTED_OFF", "UNAVAILABLE"] },
-        targetDate: { gte: rangeStart, lt: rangeEnd },
-        employee: { officeId },
-      },
-      select: { employeeId: true, targetDate: true },
-    }),
-    // 夜勤希望 (却下以外)。夜勤割当でその日を優先する。
-    prisma.shiftPreference.findMany({
-      where: {
-        status: { not: "REJECTED" },
-        preferenceType: "PREFERRED_NIGHT",
-        targetDate: { gte: rangeStart, lt: rangeEnd },
-        employee: { officeId },
-      },
-      select: { employeeId: true, targetDate: true },
-    }),
-  ]);
+      }),
+      prisma.officeCoverageDemand.findMany({
+        where: { officeId },
+        select: {
+          dayKind: true,
+          amRequired: true,
+          pmRequired: true,
+          counselorAmRequired: true,
+          counselorPmRequired: true,
+          nurseAmRequired: true,
+          nursePmRequired: true,
+          nightInRequired: true,
+        },
+      }),
+      prisma.shiftPattern.findMany({
+        where: { isActive: true, OR: [{ officeId }, { officeId: null }] },
+        select: { name: true, amCount: true, pmCount: true, shiftKind: true },
+      }),
+      prisma.shiftPreference.findMany({
+        where: {
+          status: "ACCEPTED",
+          preferenceType: { in: ["REQUESTED_OFF", "UNAVAILABLE"] },
+          targetDate: { gte: rangeStart, lt: rangeEnd },
+          employee: { officeId },
+        },
+        select: { employeeId: true, targetDate: true },
+      }),
+      // 夜勤希望 (却下以外)。夜勤割当でその日を優先する。
+      prisma.shiftPreference.findMany({
+        where: {
+          status: { not: "REJECTED" },
+          preferenceType: "PREFERRED_NIGHT",
+          targetDate: { gte: rangeStart, lt: rangeEnd },
+          employee: { officeId },
+        },
+        select: { employeeId: true, targetDate: true },
+      }),
+      // 有給 (却下以外)。必ず休みにし有休で出す。
+      prisma.shiftPreference.findMany({
+        where: {
+          status: { not: "REJECTED" },
+          preferenceType: "PAID_LEAVE",
+          targetDate: { gte: rangeStart, lt: rangeEnd },
+          employee: { officeId },
+        },
+        select: { employeeId: true, targetDate: true },
+      }),
+    ]);
 
   // 希望休 / 勤務不可 を従業員ごとの不可日に
   const offByEmp = new Map<string, Set<string>>();
@@ -144,6 +155,14 @@ export async function loadShortGenerateInput(
     const set = nightByEmp.get(p.employeeId) ?? new Set<string>();
     set.add(ymd(p.targetDate));
     nightByEmp.set(p.employeeId, set);
+  }
+
+  // 有給日を従業員ごとに。
+  const paidByEmp = new Map<string, Set<string>>();
+  for (const p of paidPrefsRaw) {
+    const set = paidByEmp.get(p.employeeId) ?? new Set<string>();
+    set.add(ymd(p.targetDate));
+    paidByEmp.set(p.employeeId, set);
   }
 
   const employees: ShortEmployee[] = employeesRaw.map((e) => {
@@ -164,6 +183,7 @@ export async function loadShortGenerateInput(
       targetWorkDays: e.shiftConstraint?.targetMonthlyWorkDays ?? SHORT_DEFAULT_TARGET_WORK_DAYS,
       nightCap: e.shiftConstraint?.maxNightShiftsPerMonth ?? SHORT_DEFAULT_NIGHT_CAP,
       preferredNightDates: new Set(nightByEmp.get(e.id) ?? []),
+      paidLeaveDates: new Set(paidByEmp.get(e.id) ?? []),
     };
   });
 

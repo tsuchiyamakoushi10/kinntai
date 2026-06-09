@@ -57,6 +57,7 @@ describe("generateShort × NRS設定 — 記号が差し替わる", () => {
     targetWorkDays: 21,
     nightCap: 0, // 夜勤は無効化してこのテストでは日中配置だけ見る
     preferredNightDates: new Set(),
+    paidLeaveDates: new Set(),
   };
 
   const input: GenerateShortInput = {

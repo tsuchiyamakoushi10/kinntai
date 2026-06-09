@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { SHIFT_KIND_LABELS } from "@/lib/shift-labels";
 
+import { PatternReorderPanel } from "./pattern-reorder-panel";
 import { ShiftPatternFilters, type ShiftPatternFilterValues } from "./shift-pattern-filters";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,16 @@ export default async function ShiftPatternListPage({ searchParams }: Props) {
       </header>
 
       <ShiftPatternFilters offices={offices} values={filters} />
+
+      <PatternReorderPanel
+        patterns={patterns.map((p) => ({
+          id: p.id,
+          name: p.name,
+          code: p.code,
+          color: p.color,
+          officeName: p.office?.name ?? "全拠点共通",
+        }))}
+      />
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="min-w-full text-sm">

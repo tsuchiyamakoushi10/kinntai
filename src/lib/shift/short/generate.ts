@@ -61,6 +61,8 @@ export type ShortEmployee = {
   nightCap: number;
   /** 夜勤希望の日 ("YYYY-MM-DD")。夜勤割当でその日を優先する。 */
   preferredNightDates: ReadonlySet<string>;
+  /** 有給の日 ("YYYY-MM-DD")。必ず休みにし、セルは有休で出す (勤務・夜勤を入れない)。 */
+  paidLeaveDates: ReadonlySet<string>;
 };
 
 /** 1 日種ぶんの配置基準 (午前/午後 + 相談員 + 夜入)。office_coverage_demands 由来。 */
@@ -88,13 +90,21 @@ export type ShortConfig = {
     partAm: string;
     /** 公休 (例: 公休)。 */
     off: string;
+    /** 有休 (例: 有休)。有給希望日に使う。 */
+    paidLeave: string;
   };
   night: NightCycleConfig;
 };
 
 export const SHORT_DEFAULT_CONFIG: ShortConfig = {
   maxConsecutiveDays: 6,
-  symbols: { fullDay: "ショ日", partFullDay: "ショ短A", partAm: "半日A", off: "公休" },
+  symbols: {
+    fullDay: "ショ日",
+    partFullDay: "ショ短A",
+    partAm: "半日A",
+    off: "公休",
+    paidLeave: "有休",
+  },
   night: DEFAULT_NIGHT_CYCLE_CONFIG,
 };
 
@@ -171,7 +181,8 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
     id: e.id,
     employeeCode: e.employeeCode,
     nightCap: e.nightCap,
-    unavailableDates: e.unavailableDates,
+    // 有給日も夜勤に入れない (希望休/勤務不可と合わせて夜勤の不可日に)。
+    unavailableDates: new Set([...e.unavailableDates, ...e.paidLeaveDates]),
   }));
   const night = assignNightCycle(nightDays, nightEmployees, config.night);
 
@@ -207,6 +218,7 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
         !occupiedByNight.has(e.id) &&
         !today.has(e.id) &&
         !e.unavailableDates.has(day.date) &&
+        !e.paidLeaveDates.has(day.date) &&
         !night.preferredOff.has(`${e.id}|${day.date}`) &&
         consecutive.get(e.id)! < config.maxConsecutiveDays;
 
@@ -296,7 +308,11 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
         workDays.set(e.id, workDays.get(e.id)! + 1);
         consecutive.set(e.id, consecutive.get(e.id)! + 1);
       } else {
-        assignments.push({ employeeId: e.id, date: day.date, baseSymbol: config.symbols.off });
+        // 有給希望日は有休、それ以外 (希望休/勤務不可/休業日/配置なし) は公休。
+        const symbol = e.paidLeaveDates.has(day.date)
+          ? config.symbols.paidLeave
+          : config.symbols.off;
+        assignments.push({ employeeId: e.id, date: day.date, baseSymbol: symbol });
         consecutive.set(e.id, 0);
       }
     }

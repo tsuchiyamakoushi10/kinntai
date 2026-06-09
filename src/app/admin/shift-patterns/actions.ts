@@ -228,3 +228,38 @@ export async function toggleShiftPatternActive(id: string, isActive: boolean): P
   revalidatePath("/admin/shift-patterns");
   redirect("/admin/shift-patterns");
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type PatternReorderResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * シフトパターンの表示順 (sortOrder) を手動並べ替えで保存する。
+ * 並べ替え後の id 配列を受け取り、その順で sortOrder = (index+1)*10 を振る。
+ * 勤務表のパレット/凡例・一覧の並びに反映される。
+ */
+export async function saveShiftPatternOrder(orderedIds: string[]): Promise<PatternReorderResult> {
+  await requireAdmin();
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    return { ok: false, error: "並び順の指定が空です。" };
+  }
+  if (orderedIds.some((id) => !UUID.test(id))) {
+    return { ok: false, error: "ID の形式が不正です。" };
+  }
+  const found = await prisma.shiftPattern.findMany({
+    where: { id: { in: orderedIds } },
+    select: { id: true },
+  });
+  const valid = new Set(found.map((p) => p.id));
+  if (orderedIds.some((id) => !valid.has(id))) {
+    return { ok: false, error: "存在しないパターンが含まれています。" };
+  }
+  await prisma.$transaction(
+    orderedIds.map((id, index) =>
+      prisma.shiftPattern.update({ where: { id }, data: { sortOrder: (index + 1) * 10 } }),
+    ),
+  );
+  revalidatePath("/admin/shift-patterns");
+  revalidatePath("/admin/shifts");
+  return { ok: true };
+}
