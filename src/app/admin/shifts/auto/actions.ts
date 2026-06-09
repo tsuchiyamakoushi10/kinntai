@@ -283,22 +283,14 @@ export async function saveDraftRun(input: {
       });
     }
 
-    // 3) 新規 proposedShifts を upsert
-    for (const p of result.proposedShifts) {
-      await tx.shift.upsert({
-        where: {
-          employeeId_workDate: {
-            employeeId: p.employeeId,
-            workDate: fromJstYmd(p.workDate),
-          },
-        },
-        update: {
-          shiftPatternId: p.shiftPatternId,
-          generationRunId: run.id,
-          updatedBy: userId,
-          officeId: input.officeId,
-        },
-        create: {
+    // 3) 新規 proposedShifts を一括作成。
+    // 手修正セルは buildRun で proposedShifts から除外済み、自動配置の未編集分は
+    // 上の deleteMany で削除済みなので、残るのは新規作成のみ。1 件ずつ upsert すると
+    // Supabase への往復が数百〜千回になりトランザクションがタイムアウトする (P2028) ため、
+    // createMany で 1 往復にまとめる。skipDuplicates は手修正セルとの衝突を上書きしない安全網。
+    if (result.proposedShifts.length > 0) {
+      await tx.shift.createMany({
+        data: result.proposedShifts.map((p) => ({
           employeeId: p.employeeId,
           officeId: input.officeId,
           workDate: fromJstYmd(p.workDate),
@@ -306,7 +298,8 @@ export async function saveDraftRun(input: {
           generationRunId: run.id,
           createdBy: userId,
           updatedBy: userId,
-        },
+        })),
+        skipDuplicates: true,
       });
     }
   });
