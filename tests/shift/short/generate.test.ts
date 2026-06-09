@@ -147,6 +147,20 @@ describe("generateShort", () => {
     }
   });
 
+  it("不足日があるのに常勤を休ませない (ペース到達でも不足なら出す)", () => {
+    const d = days(10);
+    const demand: Partial<Record<DayKind, ShortDemand>> = {
+      WEEKDAY: { am: 3, pm: 3, counselorAm: 0, counselorPm: 0, nurseAm: 0, nursePm: 0, nightIn: 0 },
+    };
+    // 目標を低め(3日)に設定。ペース配分だけだと数日で全員が目標到達 → 不足日に常勤が休む。
+    // 安全フィルにより、不足が残る日はペースを無視して常勤を出すので毎日 AM3 を満たす。
+    const emps = ["A", "B", "C", "D"].map((c) => emp(c, { targetWorkDays: 3 }));
+    const r = generateShort(input(d, emps, demand));
+    for (const day of r.days) {
+      expect(day.coverage!.presence.am).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   it("常勤の出勤が月内で均等に分散する (月末がスカスカにならない)", () => {
     // 実データ相当: 正社員7名・目標21日・営業30日・午前午後6。前詰めだと月末(30日)に
     // 全員が目標到達で休みスカスカになる。ペース配分で月末まで散らす。

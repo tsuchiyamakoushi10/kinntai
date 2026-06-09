@@ -276,6 +276,28 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
         placeDay(e, config.symbols.fullDay);
       }
 
+      // Phase 3b: ペース配分で控えた常勤でも、まだ午前/午後が不足するなら出す。
+      // 「不足日があるのに常勤が休んでいる」状態を防ぐ (不足の解消をペース分散より優先)。
+      // 連勤上限・夜勤・希望休・有給・日勤上限は引き続き厳守 (eligible / dayCap)。
+      {
+        let guard = 0;
+        while (guard++ < 10_000) {
+          if (dayCount >= dayCap) break;
+          const present = countPresence(toAssignments(today), input.master);
+          if (present.am >= demand.am && present.pm >= demand.pm) break;
+          const cands = fullTimers
+            .filter((e) => eligible(e) && !today.has(e.id))
+            .sort((a, b) => {
+              const cntA = workDays.get(a.id)!;
+              const cntB = workDays.get(b.id)!;
+              if (cntA !== cntB) return cntA - cntB; // 出勤の少ない人から (公平に埋める)
+              return a.employeeCode.localeCompare(b.employeeCode);
+            });
+          if (cands.length === 0) break; // 出せる常勤が居ない → 非常勤/不足表示に委ねる
+          placeDay(cands[0]!, config.symbols.fullDay);
+        }
+      }
+
       // Phase 4: 非常勤で午前/午後不足を穴埋め (日勤上限内)。
       let guard = 0;
       while (guard++ < 10_000) {
