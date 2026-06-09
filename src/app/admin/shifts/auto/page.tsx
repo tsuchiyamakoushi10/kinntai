@@ -8,13 +8,17 @@ import { generateMonthlyShifts } from "@/lib/shift/auto-generator";
 import { loadDeyGenerateInput } from "@/lib/shift/dey/data";
 import { generateDey } from "@/lib/shift/dey/generate";
 import { summarizeDeyCoverage } from "@/lib/shift/dey/proposals";
-import { isDeyOffice, shortConfigForOffice } from "@/lib/shift/office-generator";
+import { loadKitchenGenerateInput } from "@/lib/shift/kitchen/data";
+import { generateKitchen } from "@/lib/shift/kitchen/generate";
+import { summarizeKitchenCoverage } from "@/lib/shift/kitchen/proposals";
+import { isDeyOffice, isKitchenOffice, shortConfigForOffice } from "@/lib/shift/office-generator";
 import { loadShortGenerateInput } from "@/lib/shift/short/data";
 import { generateShort } from "@/lib/shift/short/generate";
 import { summarizeShortCoverage } from "@/lib/shift/short/proposals";
 
 import { AutoRunner } from "./auto-runner";
 import { DeyPreview } from "./dey-preview";
+import { KitchenPreview } from "./kitchen-preview";
 import { ShortPreview } from "./short-preview";
 import { loadGenerateInput } from "./data";
 
@@ -112,6 +116,13 @@ export default async function AdminShiftsAutoPage({ searchParams }: Props) {
     employeeCount = input.employees.length;
     proposedCount = result.assignments.length;
     preview = <DeyPreview days={result.days} summary={summary} />;
+  } else if (isKitchenOffice(office.code)) {
+    const input = await loadKitchenGenerateInput(prisma, officeId, ym);
+    const result = generateKitchen(input);
+    const summary = summarizeKitchenCoverage(result);
+    employeeCount = input.employees.length;
+    proposedCount = result.assignments.length;
+    preview = <KitchenPreview days={result.days} summary={summary} />;
   } else if (shortConfig) {
     const input = await loadShortGenerateInput(prisma, officeId, ym, shortConfig);
     const result = generateShort(input);

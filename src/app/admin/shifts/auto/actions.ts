@@ -9,7 +9,10 @@ import { generateMonthlyShifts } from "@/lib/shift/auto-generator";
 import { loadDeyGenerateInput } from "@/lib/shift/dey/data";
 import { generateDey } from "@/lib/shift/dey/generate";
 import { summarizeDeyCoverage, toDeyProposals } from "@/lib/shift/dey/proposals";
-import { isDeyOffice, shortConfigForOffice } from "@/lib/shift/office-generator";
+import { loadKitchenGenerateInput } from "@/lib/shift/kitchen/data";
+import { generateKitchen } from "@/lib/shift/kitchen/generate";
+import { summarizeKitchenCoverage, toKitchenProposals } from "@/lib/shift/kitchen/proposals";
+import { isDeyOffice, isKitchenOffice, shortConfigForOffice } from "@/lib/shift/office-generator";
 import { loadShortGenerateInput } from "@/lib/shift/short/data";
 import { generateShort, type ShortConfig } from "@/lib/shift/short/generate";
 import { summarizeShortCoverage, toShortProposals } from "@/lib/shift/short/proposals";
@@ -47,6 +50,9 @@ async function buildRun(
   const shortConfig = shortConfigForOffice(code);
   if (shortConfig) {
     return buildShortRun(officeId, ym, existingRun, shortConfig);
+  }
+  if (isKitchenOffice(code)) {
+    return buildKitchenRun(officeId, ym, existingRun);
   }
   const genInput = await loadGenerateInput(officeId, ym, seed, ALGORITHM_VERSION);
   const result = generateMonthlyShifts(genInput);
@@ -134,6 +140,42 @@ async function buildShortRun(
       summary.amPmShortfallDays.length +
       summary.counselorShortDays.length +
       summary.unfilledNightDays.length,
+  };
+}
+
+/**
+ * 厨房 (固定ロスター) の生成。generateKitchen → 記号を shiftPatternId に解決 → 手修正セルを除外。
+ * 手修正保護はデイ/ショートと同じ仕組み (loadProtectedCells)。
+ */
+async function buildKitchenRun(
+  officeId: string,
+  ym: string,
+  existingRun: ExistingRunMeta,
+): Promise<BuiltRun> {
+  const input = await loadKitchenGenerateInput(prisma, officeId, ym);
+  const result = generateKitchen(input);
+  const summary = summarizeKitchenCoverage(result);
+
+  const patterns = await prisma.shiftPattern.findMany({ select: { id: true, name: true } });
+  const patternIdByName = new Map(patterns.map((p) => [p.name, p.id]));
+  const { proposedShifts } = toKitchenProposals(result, patternIdByName);
+
+  const protectedCells = await loadProtectedCells(officeId, ym, existingRun);
+  const filtered = proposedShifts.filter(
+    (p) => !protectedCells.has(`${p.employeeId}|${p.workDate}`),
+  );
+
+  return {
+    proposedShifts: filtered,
+    stats: {
+      algorithm: "kitchen-v1",
+      employees: input.employees.length,
+      operatingDays: summary.operatingDays,
+      filledDays: summary.filledDays,
+      shortfallDays: summary.shortfallDays,
+    },
+    algorithmVersion: "kitchen-v1",
+    warningCount: summary.shortfallDays.length,
   };
 }
 

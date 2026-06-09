@@ -9,6 +9,7 @@
  *   - ショート系 (generateShort): 夜勤先取り + 午前/午後フィル。例: ショートステイ、ナーシングホーム。
  *     NRS(ナーシングホーム)はショートと同じ構造(夜勤あり)なので生成器を流用し、記号だけ差し替える
  *     (ショ日→日勤、ショ短A→日勤、ショ短Aの代わりも日勤。半日A/公休/夜入/夜明は共通)。
+ *   - 厨房 (generateKitchen): 固定ロスター。厨房記号(0/0)は配置基準モデルに乗らないため専用。
  *   - それ以外: 当面 v1 の汎用生成 (シフト枠ベース)。梨花は専用画面のため対象外。
  */
 import { SHORT_DEFAULT_CONFIG, type ShortConfig } from "./short/generate";
@@ -16,6 +17,9 @@ import { DEFAULT_NIGHT_CYCLE_CONFIG } from "./short/night-cycle";
 
 /** デイ専用生成 (generateDey) を使う拠点コード。 */
 export const DEY_OFFICE_CODES: ReadonlyArray<string> = ["DAY-CENTER"];
+
+/** 厨房専用生成 (generateKitchen: 固定ロスター) を使う拠点コード。 */
+export const KITCHEN_OFFICE_CODES: ReadonlyArray<string> = ["KITCHEN"];
 
 /**
  * ナーシングホーム用のショート系設定。ショートと同じ夜勤サイクル + 午前/午後フィルだが、
@@ -37,6 +41,11 @@ export const SHORT_OFFICE_CONFIGS: Readonly<Record<string, ShortConfig>> = {
 /** デイ専用生成を使う拠点か。 */
 export function isDeyOffice(officeCode: string): boolean {
   return DEY_OFFICE_CODES.includes(officeCode);
+}
+
+/** 厨房専用生成 (固定ロスター) を使う拠点か。 */
+export function isKitchenOffice(officeCode: string): boolean {
+  return KITCHEN_OFFICE_CODES.includes(officeCode);
 }
 
 /**
