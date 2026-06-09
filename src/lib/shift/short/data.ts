@@ -173,15 +173,20 @@ export async function loadShortGenerateInput(
     for (const date of monthDates) {
       if ((joined && date < joined) || (retired && date > retired)) unavailable.add(date);
     }
+    // 夜勤上限: 明示設定があればそれを使う。未設定なら 相談員/看護師 は夜勤なし(0)、
+    // それ以外 (介護等) は既定 5。相談員・看護師に夜勤させたい場合は個人別に上限を設定する。
+    const isCounselor = e.jobCategory === "LIFE_COUNSELOR";
+    const isNurse = e.jobCategory === "NURSE";
+    const defaultNightCap = isCounselor || isNurse ? 0 : SHORT_DEFAULT_NIGHT_CAP;
     return {
       id: e.id,
       employeeCode: e.employeeCode,
       isFullTime: isRegularEmployment(e.employmentType),
-      isCounselor: e.jobCategory === "LIFE_COUNSELOR",
-      isNurse: e.jobCategory === "NURSE",
+      isCounselor,
+      isNurse,
       unavailableDates: unavailable,
       targetWorkDays: e.shiftConstraint?.targetMonthlyWorkDays ?? SHORT_DEFAULT_TARGET_WORK_DAYS,
-      nightCap: e.shiftConstraint?.maxNightShiftsPerMonth ?? SHORT_DEFAULT_NIGHT_CAP,
+      nightCap: e.shiftConstraint?.maxNightShiftsPerMonth ?? defaultNightCap,
       preferredNightDates: new Set(nightByEmp.get(e.id) ?? []),
       paidLeaveDates: new Set(paidByEmp.get(e.id) ?? []),
     };
