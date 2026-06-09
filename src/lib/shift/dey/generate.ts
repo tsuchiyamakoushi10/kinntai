@@ -10,7 +10,7 @@
  *      守るが月目標日数は超えてよい = 相談員カバレッジ優先・負担は分散)。
  *   1. 常勤を デ日 で配置 (月目標日数を月内で均等にペース配分・連勤上限内・希望休尊重)。
  *   2. 非常勤で午前/午後の不足を平等配分で穴埋め (PM 不足=デ短A 終日 / AM だけ不足=半日A)。
- *   3. 残りは公休。休業日 (必要数 0) は全員公休。
+ *   3. 有給希望日は有休、残りは公休。休業日 (必要数 0) は全員公休 (有給日は有休)。
  *
  * DB に触れない純粋関数。常勤/非常勤の判定や記号→DB パターンの対応は呼び出し側が担う。
  * 決定論: 同じ入力なら同じ結果 (employeeCode で安定ソート、乱数は使わない)。
@@ -40,8 +40,10 @@ export type DeyEmployee = {
   isFullTime: boolean;
   /** 生活相談員か。各営業日に必要数だけ最優先で配置する (Phase 0)。 */
   isCounselor: boolean;
-  /** 入れない日 ("YYYY-MM-DD")。希望休 / 勤務不可 / 雇用期間外をまとめて渡す。 */
+  /** 入れない日 ("YYYY-MM-DD")。希望休 / 勤務不可 / 雇用期間外をまとめて渡す (→ 公休)。 */
   unavailableDates: ReadonlySet<string>;
+  /** 有給の日 ("YYYY-MM-DD")。必ず休みにし、セルは有休で出す (勤務は入れない)。 */
+  paidLeaveDates: ReadonlySet<string>;
   /** 月の目標出勤日数 (常勤のみ使用。既定 21)。これに達したら以降は公休。 */
   targetWorkDays: number;
 };
@@ -66,12 +68,20 @@ export type DeyConfig = {
     partAm: string;
     /** 公休 (例: 公休)。 */
     off: string;
+    /** 有休 (例: 有休)。有給希望日に使う。 */
+    paidLeave: string;
   };
 };
 
 export const DEY_DEFAULT_CONFIG: DeyConfig = {
   maxConsecutiveDays: 6,
-  symbols: { fullDay: "デ日", partFullDay: "デ短A", partAm: "半日A", off: "公休" },
+  symbols: {
+    fullDay: "デ日",
+    partFullDay: "デ短A",
+    partAm: "半日A",
+    off: "公休",
+    paidLeave: "有休",
+  },
 };
 
 export const DEY_DEFAULT_TARGET_WORK_DAYS = 21;
@@ -144,7 +154,9 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
     if (operating) {
       operatingSoFar++;
       const eligible = (e: DeyEmployee): boolean =>
-        !e.unavailableDates.has(day.date) && consecutive.get(e.id)! < config.maxConsecutiveDays;
+        !e.unavailableDates.has(day.date) &&
+        !e.paidLeaveDates.has(day.date) &&
+        consecutive.get(e.id)! < config.maxConsecutiveDays;
 
       // Phase 0: 相談員の充足を最優先で確保する。
       // 職種で判定し、常勤/非常勤を問わず、その日の必要数 (counselorAm/Pm の多い方) まで先に置く。
@@ -214,7 +226,7 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
       }
     }
 
-    // セル出力 + 状態更新。勤務した人は出勤+連勤++、それ以外は公休で連勤リセット。
+    // セル出力 + 状態更新。勤務した人は出勤+連勤++、有給日は有休、それ以外は公休で連勤リセット。
     for (const e of employees) {
       const work = today.get(e.id);
       if (work) {
@@ -222,7 +234,11 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
         workDays.set(e.id, workDays.get(e.id)! + 1);
         consecutive.set(e.id, consecutive.get(e.id)! + 1);
       } else {
-        assignments.push({ employeeId: e.id, date: day.date, baseSymbol: config.symbols.off });
+        // 有給希望日は有休、それ以外 (希望休/勤務不可/休業日/配置なし) は公休。
+        const symbol = e.paidLeaveDates.has(day.date)
+          ? config.symbols.paidLeave
+          : config.symbols.off;
+        assignments.push({ employeeId: e.id, date: day.date, baseSymbol: symbol });
         consecutive.set(e.id, 0);
       }
     }

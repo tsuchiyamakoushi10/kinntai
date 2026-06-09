@@ -31,6 +31,7 @@ function emp(code: string, isFullTime: boolean, opts: Partial<DeyEmployee> = {})
     isFullTime,
     isCounselor: opts.isCounselor ?? false,
     unavailableDates: opts.unavailableDates ?? new Set(),
+    paidLeaveDates: opts.paidLeaveDates ?? new Set(),
     targetWorkDays: opts.targetWorkDays ?? 21,
   };
 }
@@ -119,6 +120,30 @@ describe("generateDey — 平日の配置", () => {
 });
 
 describe("generateDey — 制約", () => {
+  it("有給希望の日は必ず有休になり勤務しない", () => {
+    const employees = [
+      ...["F1", "F2", "F3"].map((c) => emp(c, true)),
+      emp("F4", true, { paidLeaveDates: new Set(["2026-06-01"]) }),
+      ...["P1", "P2", "P3", "P4", "P5"].map((c) => emp(c, false)),
+    ];
+    const r = generateDey(baseInput({ employees }));
+    // 有給日は勤務(デ日)ではなく有休
+    expect(symbolsOn(r, "2026-06-01").get("F4")).toBe("有休");
+    // 出勤日数にはカウントされない
+    expect(r.workDaysByEmployee["F4"]).toBe(0);
+  });
+
+  it("相談員でも有給の日は配置されない (有休が優先)", () => {
+    const employees = [
+      emp("C1", true, { isCounselor: true, paidLeaveDates: new Set(["2026-06-01"]) }),
+      ...["P1", "P2", "P3", "P4", "P5", "P6"].map((c) => emp(c, false)),
+    ];
+    const r = generateDey(baseInput({ employees }));
+    expect(symbolsOn(r, "2026-06-01").get("C1")).toBe("有休");
+    // 相談員が有給で居ないので相談員不足が警告される
+    expect(r.days[0]!.coverage!.counselorAmShort).toBe(true);
+  });
+
   it("希望休の人はその日に勤務しない (公休)", () => {
     const employees = [
       ...["F1", "F2", "F3"].map((c) => emp(c, true)),

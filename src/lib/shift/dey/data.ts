@@ -41,9 +41,10 @@ function ymd(d: Date): string {
 /**
  * 指定拠点・対象月の GenerateDeyInput を組み立てる。
  *
- * - 常勤: employment_type が FULL_TIME / CONTRACT。
+ * - 常勤: employment_type が FULL_TIME / PART_TIME_INSURED (社保あり)。
  * - 相談員: job_category = LIFE_COUNSELOR。
- * - 入れない日: 受理済みの希望休 / 勤務不可 + 雇用期間外。
+ * - 入れない日: 希望休 / 勤務不可 (却下以外) + 雇用期間外 → 公休。
+ * - 有給日: 有給希望 (却下以外) → 必ず休み (有休) で出す。
  * - 目標日数: shift_constraint.target_monthly_work_days、無ければ既定 21。
  */
 export async function loadDeyGenerateInput(
@@ -88,25 +89,28 @@ export async function loadDeyGenerateInput(
     }),
     prisma.shiftPreference.findMany({
       where: {
-        status: "ACCEPTED",
-        preferenceType: { in: ["REQUESTED_OFF", "UNAVAILABLE"] },
+        status: { not: "REJECTED" },
+        preferenceType: { in: ["REQUESTED_OFF", "UNAVAILABLE", "PAID_LEAVE"] },
         targetDate: { gte: rangeStart, lt: rangeEnd },
         employee: { officeId },
       },
-      select: { employeeId: true, targetDate: true },
+      select: { employeeId: true, targetDate: true, preferenceType: true },
     }),
   ]);
 
-  // 希望休 / 勤務不可 を従業員ごとの不可日に
+  // 希望休 / 勤務不可 → 公休 (不可日)、有給 → 有休 (paidLeaveDates) に振り分け。
   const offByEmp = new Map<string, Set<string>>();
+  const paidByEmp = new Map<string, Set<string>>();
   for (const p of prefsRaw) {
-    const set = offByEmp.get(p.employeeId) ?? new Set<string>();
+    const target = p.preferenceType === "PAID_LEAVE" ? paidByEmp : offByEmp;
+    const set = target.get(p.employeeId) ?? new Set<string>();
     set.add(ymd(p.targetDate));
-    offByEmp.set(p.employeeId, set);
+    target.set(p.employeeId, set);
   }
 
   const employees: DeyEmployee[] = employeesRaw.map((e) => {
     const unavailable = new Set(offByEmp.get(e.id) ?? []);
+    const paidLeave = new Set(paidByEmp.get(e.id) ?? []);
     // 雇用期間外 (入社前・退職後) も不可日に
     const joined = e.joinedAt ? ymd(e.joinedAt) : null;
     const retired = e.retiredAt ? ymd(e.retiredAt) : null;
@@ -119,6 +123,7 @@ export async function loadDeyGenerateInput(
       isFullTime: isRegularEmployment(e.employmentType),
       isCounselor: e.jobCategory === "LIFE_COUNSELOR",
       unavailableDates: unavailable,
+      paidLeaveDates: paidLeave,
       targetWorkDays: e.shiftConstraint?.targetMonthlyWorkDays ?? DEY_DEFAULT_TARGET_WORK_DAYS,
     };
   });
