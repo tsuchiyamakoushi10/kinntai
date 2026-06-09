@@ -27,12 +27,12 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+    // 日常的に使うシフト操作だけを上に置く。マスター系 (パターン・自動作成の設定) は
+    // 普段触らないため「設定」へ寄せ、メニューを浅く保つ (CLAUDE.md §3.1)。
     title: "シフト",
     items: [
       { label: "勤務表", href: "/admin/shifts" },
       { label: "シフト希望", href: "/admin/shift-preferences" },
-      { label: "シフトパターン", href: "/admin/shift-patterns" },
-      { label: "自動作成の設定", href: "/admin/shift-settings" },
       { label: "相談員チェック", href: "/admin/counselor-check" },
     ],
   },
@@ -48,6 +48,8 @@ const SECTIONS: Section[] = [
     items: [
       { label: "会社情報", href: "/admin/company-profile" },
       { label: "拠点", href: "/admin/offices" },
+      { label: "シフトパターン", href: "/admin/shift-patterns" },
+      { label: "自動作成の設定", href: "/admin/shift-settings" },
     ],
   },
 ];
