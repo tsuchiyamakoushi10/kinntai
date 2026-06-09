@@ -165,32 +165,31 @@ export async function loadShortGenerateInput(
     paidByEmp.set(p.employeeId, set);
   }
 
-  const employees: ShortEmployee[] = employeesRaw.map((e) => {
-    const unavailable = new Set(offByEmp.get(e.id) ?? []);
-    // 雇用期間外 (入社前・退職後) も不可日に
-    const joined = e.joinedAt ? ymd(e.joinedAt) : null;
-    const retired = e.retiredAt ? ymd(e.retiredAt) : null;
-    for (const date of monthDates) {
-      if ((joined && date < joined) || (retired && date > retired)) unavailable.add(date);
-    }
-    // 夜勤上限: 明示設定があればそれを使う。未設定なら 相談員/看護師 は夜勤なし(0)、
-    // それ以外 (介護等) は既定 5。相談員・看護師に夜勤させたい場合は個人別に上限を設定する。
-    const isCounselor = e.jobCategory === "LIFE_COUNSELOR";
-    const isNurse = e.jobCategory === "NURSE";
-    const defaultNightCap = isCounselor || isNurse ? 0 : SHORT_DEFAULT_NIGHT_CAP;
-    return {
-      id: e.id,
-      employeeCode: e.employeeCode,
-      isFullTime: isRegularEmployment(e.employmentType),
-      isCounselor,
-      isNurse,
-      unavailableDates: unavailable,
-      targetWorkDays: e.shiftConstraint?.targetMonthlyWorkDays ?? SHORT_DEFAULT_TARGET_WORK_DAYS,
-      nightCap: e.shiftConstraint?.maxNightShiftsPerMonth ?? defaultNightCap,
-      preferredNightDates: new Set(nightByEmp.get(e.id) ?? []),
-      paidLeaveDates: new Set(paidByEmp.get(e.id) ?? []),
-    };
-  });
+  const employees: ShortEmployee[] = employeesRaw
+    // 清掃/事務など介護配置に入らない職種は配置人数に数えない (生成対象から外す)。
+    .filter((e) => e.jobCategory !== "OFFICE_STAFF" && e.jobCategory !== "OTHER")
+    .map((e) => {
+      const unavailable = new Set(offByEmp.get(e.id) ?? []);
+      // 雇用期間外 (入社前・退職後) も不可日に
+      const joined = e.joinedAt ? ymd(e.joinedAt) : null;
+      const retired = e.retiredAt ? ymd(e.retiredAt) : null;
+      for (const date of monthDates) {
+        if ((joined && date < joined) || (retired && date > retired)) unavailable.add(date);
+      }
+      return {
+        id: e.id,
+        employeeCode: e.employeeCode,
+        isFullTime: isRegularEmployment(e.employmentType),
+        isCounselor: e.jobCategory === "LIFE_COUNSELOR",
+        isNurse: e.jobCategory === "NURSE",
+        unavailableDates: unavailable,
+        targetWorkDays: e.shiftConstraint?.targetMonthlyWorkDays ?? SHORT_DEFAULT_TARGET_WORK_DAYS,
+        // 夜勤上限: 明示設定を優先、未設定は既定5 (正社員は全員夜勤・パートは夜勤しない人を0に)。
+        nightCap: e.shiftConstraint?.maxNightShiftsPerMonth ?? SHORT_DEFAULT_NIGHT_CAP,
+        preferredNightDates: new Set(nightByEmp.get(e.id) ?? []),
+        paidLeaveDates: new Set(paidByEmp.get(e.id) ?? []),
+      };
+    });
 
   const demandByDayKind: Partial<Record<DayKind, ShortDemand>> = {};
   for (const d of demandsRaw) {
