@@ -60,8 +60,10 @@ function normalizeName(name: string): string {
 /** 設計書の勤務形態 ↔ CSV の雇用形態 を比較できる形に正規化する。 */
 function classFromEmploymentType(employmentType: string): RikaEmploymentClass | null {
   const v = employmentType.trim().toUpperCase();
-  if (v === "FULL_TIME" || v === "CONTRACT") return "full";
-  if (v === "PART_TIME") return "part";
+  // 旧表記 (CONTRACT / PART_TIME) と新表記 (PART_TIME_INSURED / PART_TIME_UNINSURED) を両対応。
+  // 社保あり = 常勤(full) 扱い、社保なし = part 扱い。
+  if (v === "FULL_TIME" || v === "CONTRACT" || v === "PART_TIME_INSURED") return "full";
+  if (v === "PART_TIME" || v === "PART_TIME_UNINSURED") return "part";
   return null;
 }
 

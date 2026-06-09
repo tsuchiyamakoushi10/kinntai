@@ -211,3 +211,57 @@ export async function saveShifts(input: SaveShiftsInput): Promise<SaveShiftsResu
 
   return { ok: true, upserted: diff.upserts.length, deleted: diff.deletes.length };
 }
+
+export type ReorderResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * 勤務表の従業員並び順を保存する。並べ替え後の employeeId 配列を受け取り、
+ * その順で display_order = index*10 を振る (拠点内の在籍者のみ)。
+ * 0 は「未設定 (雇用形態順)」の意味なので 10 始まりにする。
+ */
+export async function saveEmployeeOrder(input: {
+  officeId: string;
+  orderedEmployeeIds: string[];
+}): Promise<ReorderResult> {
+  await requireAdmin();
+  if (!UUID.test(input.officeId)) return { ok: false, error: "拠点 ID の形式が不正です。" };
+  if (!Array.isArray(input.orderedEmployeeIds) || input.orderedEmployeeIds.length === 0) {
+    return { ok: false, error: "並び順の指定が空です。" };
+  }
+  if (input.orderedEmployeeIds.some((id) => !UUID.test(id))) {
+    return { ok: false, error: "従業員 ID の形式が不正です。" };
+  }
+
+  // 改竄対策: 指定 ID が当該拠点の従業員かチェック
+  const employees = await prisma.employee.findMany({
+    where: { officeId: input.officeId, id: { in: input.orderedEmployeeIds } },
+    select: { id: true },
+  });
+  const validIds = new Set(employees.map((e) => e.id));
+  if (input.orderedEmployeeIds.some((id) => !validIds.has(id))) {
+    return { ok: false, error: "対象拠点の従業員ではない ID が含まれています。" };
+  }
+
+  await prisma.$transaction(
+    input.orderedEmployeeIds.map((id, index) =>
+      prisma.employee.update({ where: { id }, data: { displayOrder: (index + 1) * 10 } }),
+    ),
+  );
+
+  revalidatePath("/admin/shifts");
+  return { ok: true };
+}
+
+/** 拠点内の従業員の手動並び順をクリア (display_order=0 → 雇用形態順に復帰)。 */
+export async function resetEmployeeOrder(input: { officeId: string }): Promise<ReorderResult> {
+  await requireAdmin();
+  if (!UUID.test(input.officeId)) return { ok: false, error: "拠点 ID の形式が不正です。" };
+
+  await prisma.employee.updateMany({
+    where: { officeId: input.officeId },
+    data: { displayOrder: 0 },
+  });
+
+  revalidatePath("/admin/shifts");
+  return { ok: true };
+}

@@ -91,7 +91,7 @@ function splitCsvLine(line: string): string[] {
 // 2. 変換ロジック
 // ============================================================================
 
-type EmploymentType = "FULL_TIME" | "CONTRACT" | "PART_TIME";
+type EmploymentType = "FULL_TIME" | "PART_TIME_INSURED" | "PART_TIME_UNINSURED";
 type JobCategory =
   | "CARE_WORKER"
   | "NURSE"
@@ -125,11 +125,18 @@ const OFFICE_CODE_BY_CSV: Record<string, string> = {
   // CARE_PLAN (居宅介護支援) は DB 拠点未登録。docs/employee-master.md §2 TODO。
 };
 
-function mapEmploymentType(v: string): { value: EmploymentType | null; note?: string } {
+function mapEmploymentType(
+  v: string,
+  hasSocialInsurance: boolean | null,
+): { value: EmploymentType | null; note?: string } {
   const s = v.trim().toUpperCase();
   if (s === "FULL_TIME") return { value: "FULL_TIME" };
-  if (s === "PART_TIME") return { value: "PART_TIME" };
-  if (s === "CONTRACT") return { value: "CONTRACT" };
+  // 契約社員は廃止。常勤(正社員)へ寄せる。
+  if (s === "CONTRACT") return { value: "FULL_TIME" };
+  // パートは社保加入の有無で「社保あり/なし」に振り分ける。
+  if (s === "PART_TIME") {
+    return { value: hasSocialInsurance ? "PART_TIME_INSURED" : "PART_TIME_UNINSURED" };
+  }
   if (s === "") return { value: null };
   return { value: null, note: `未対応の雇用形態値: ${v}` };
 }
@@ -317,7 +324,7 @@ function transformRow(row: RawRow, idx: number): RowResult {
   if (!job.value) review.push(`職種 未設定 (職種(推定)=${row["職種(推定)"] || "空欄"})`);
   if (job.note) review.push(job.note);
 
-  const emp = mapEmploymentType(row.雇用形態);
+  const emp = mapEmploymentType(row.雇用形態, parseBool(row.社保加入).value);
   if (!emp.value) review.push(`雇用形態 不明 (${row.雇用形態 || "空欄"})`);
   if (emp.note) review.push(emp.note);
 

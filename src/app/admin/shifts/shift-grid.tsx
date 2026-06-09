@@ -62,8 +62,8 @@ function weekdayOf(ymd: string): number {
 
 const EMPLOYMENT_LABEL: Record<EmploymentType, string> = {
   FULL_TIME: "正",
-  CONTRACT: "契",
-  PART_TIME: "パ",
+  PART_TIME_INSURED: "パ保",
+  PART_TIME_UNINSURED: "パ",
 };
 
 /**

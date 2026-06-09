@@ -56,9 +56,9 @@ enum JobCategory {
 }
 
 enum EmploymentType {
-  FULL_TIME @map("full_time")
-  CONTRACT  @map("contract")
-  PART_TIME @map("part_time")
+  FULL_TIME           @map("full_time")
+  PART_TIME_INSURED   @map("part_time_insured") // パート（社保あり）。所定時間が長く社会保険加入。
+  PART_TIME_UNINSURED @map("part_time_uninsured") // パート（社保なし）。短時間勤務。
 
   @@map("employment_type")
 }
@@ -322,6 +322,8 @@ model Employee {
   // 月の夜勤希望回数 (自動作成 v2 Phase 2 で優先配置に使用)。null = 希望なし(0 扱い)。
   // shift_constraints.max_night_shifts_per_month (上限) とは別軸 (希望 ≤ 上限 が通常)。
   desiredNightShiftsPerMonth Int?             @map("desired_night_shifts_per_month")
+  // 勤務表の手動並び順 (拠点内)。0 = 未設定で、雇用形態順 → 社員コード順にフォールバックする。
+  displayOrder               Int              @default(0) @map("display_order")
   notes                      String?
   createdAt                  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                  DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)

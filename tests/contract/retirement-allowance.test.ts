@@ -53,17 +53,17 @@ describe("judgeRetirementAllowance", () => {
     expect(result.daysUntilEligible).toBe(0);
   });
 
-  it("contract / part_time だけだと正社員通算 0 日のまま", () => {
+  it("パート (社保あり/なし) だけだと正社員通算 0 日のまま", () => {
     const result = judgeRetirementAllowance(
       [
         {
-          employmentType: "CONTRACT",
+          employmentType: "PART_TIME_INSURED",
           contractStartOn: d("2020-01-01"),
           contractEndOn: d("2025-12-31"),
           retirementAllowanceEligible: null,
         },
         {
-          employmentType: "PART_TIME",
+          employmentType: "PART_TIME_UNINSURED",
           contractStartOn: d("2018-01-01"),
           contractEndOn: null,
           retirementAllowanceEligible: null,
@@ -86,7 +86,7 @@ describe("judgeRetirementAllowance", () => {
           retirementAllowanceEligible: null,
         },
         {
-          employmentType: "PART_TIME",
+          employmentType: "PART_TIME_UNINSURED",
           contractStartOn: d("2022-01-01"),
           contractEndOn: d("2022-12-31"),
           retirementAllowanceEligible: null,

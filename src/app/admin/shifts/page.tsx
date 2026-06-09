@@ -4,10 +4,12 @@ import { redirect } from "next/navigation";
 import { currentJstYm, monthRange } from "@/lib/attendance/business-date";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
+import { sortForRoster } from "@/lib/employee-order";
 import { RIKA_OFFICE_CODE } from "@/lib/shift/rika/config";
 import type { ShiftCell } from "@/lib/shifts/diff";
 
 import { AutoGenerateButton } from "./auto-generate-button";
+import { ReorderPanel } from "./reorder-panel";
 import { ShiftFilters } from "./shift-filters";
 import { ShiftGrid, type EmployeeRow, type PatternOption } from "./shift-grid";
 
@@ -75,7 +77,8 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
           officeId,
           OR: [{ retiredAt: null }, { retiredAt: { gte: range.start } }],
         },
-        orderBy: [{ employeeCode: "asc" }],
+        // 並び順は雇用形態 + 手動 display_order を JS 側 (sortForRoster) で決めるため、
+        // ここでは取得順は問わない。
         select: {
           id: true,
           employeeCode: true,
@@ -84,6 +87,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
           lastNameKana: true,
           firstNameKana: true,
           employmentType: true,
+          displayOrder: true,
         },
       }),
       prisma.shiftPattern.findMany({
@@ -130,7 +134,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     );
   }
 
-  const employeeRows: EmployeeRow[] = employees.map((e) => ({
+  const employeeRows: EmployeeRow[] = sortForRoster(employees).map((e) => ({
     id: e.id,
     code: e.employeeCode,
     name: `${e.lastName} ${e.firstName}`,
@@ -237,20 +241,23 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
           この拠点に在籍中の従業員がいません。
         </div>
       ) : (
-        <ShiftGrid
-          // 自動生成 (router.refresh) 後にグリッド内部状態を初期化し直すため、
-          // 生成時刻を key に含めて再マウントさせる。手修正の保存では generatedAt は
-          // 変わらないので再マウントは起きない。
-          key={`${ym}-${generationRun?.generatedAt?.getTime() ?? "none"}`}
-          officeId={officeId}
-          ym={ym}
-          days={range.days}
-          employees={employeeRows}
-          patterns={patternOptions}
-          initialCells={initialCells}
-          prevMonthCells={prevCells}
-          autoCellKeys={autoCellKeys}
-        />
+        <>
+          <ReorderPanel officeId={officeId} employees={employeeRows} />
+          <ShiftGrid
+            // 自動生成 (router.refresh) 後にグリッド内部状態を初期化し直すため、
+            // 生成時刻を key に含めて再マウントさせる。手修正の保存では generatedAt は
+            // 変わらないので再マウントは起きない。
+            key={`${ym}-${generationRun?.generatedAt?.getTime() ?? "none"}`}
+            officeId={officeId}
+            ym={ym}
+            days={range.days}
+            employees={employeeRows}
+            patterns={patternOptions}
+            initialCells={initialCells}
+            prevMonthCells={prevCells}
+            autoCellKeys={autoCellKeys}
+          />
+        </>
       )}
     </div>
   );
@@ -273,7 +280,7 @@ async function AllOfficesView({
         officeId: { in: officeIds },
         OR: [{ retiredAt: null }, { retiredAt: { gte: range.start } }],
       },
-      orderBy: [{ officeId: "asc" }, { employeeCode: "asc" }],
+      // 拠点ごとに sortForRoster で並べ替えるため取得順は問わない。
       select: {
         id: true,
         officeId: true,
@@ -283,6 +290,7 @@ async function AllOfficesView({
         lastNameKana: true,
         firstNameKana: true,
         employmentType: true,
+        displayOrder: true,
       },
     }),
     prisma.shiftPattern.findMany({
@@ -378,7 +386,7 @@ async function AllOfficesView({
         const officePatterns = patterns.filter(
           (p) => p.officeId === office.id || p.officeId === null,
         );
-        const employeeRows: EmployeeRow[] = emps.map((e) => ({
+        const employeeRows: EmployeeRow[] = sortForRoster(emps).map((e) => ({
           id: e.id,
           code: e.employeeCode,
           name: `${e.lastName} ${e.firstName}`,

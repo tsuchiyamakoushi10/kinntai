@@ -28,9 +28,17 @@ export const JOB_CATEGORY_LABELS: Record<JobCategory, string> = {
 
 export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
   FULL_TIME: "正社員",
-  CONTRACT: "契約社員",
-  PART_TIME: "パート",
+  PART_TIME_INSURED: "パート（社保あり）",
+  PART_TIME_UNINSURED: "パート（社保なし）",
 };
+
+/**
+ * 常勤 (終日勤務) 扱いの雇用形態か。自動シフト生成で「終日埋め」の対象にするかの判定に使う。
+ * 正社員 と パート（社保あり）を常勤扱いとする (社保ありは所定時間が長くフル配置可能なため)。
+ */
+export function isRegularEmployment(t: EmploymentType | null): boolean {
+  return t === "FULL_TIME" || t === "PART_TIME_INSURED";
+}
 
 export const EMPLOYMENT_STATUS_LABELS: Record<EmploymentStatus, string> = {
   ACTIVE: "在籍中",

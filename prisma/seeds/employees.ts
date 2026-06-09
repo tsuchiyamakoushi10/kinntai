@@ -232,7 +232,7 @@ function buildEmployees(): EmployeeSeed[] {
       for (let i = 0; i < count; i++) push(a.officeCode, "FULL_TIME", jc);
     }
     for (const [jc, count] of Object.entries(a.partTime) as Array<[JobCategory, number]>) {
-      for (let i = 0; i < count; i++) push(a.officeCode, "PART_TIME", jc);
+      for (let i = 0; i < count; i++) push(a.officeCode, "PART_TIME_UNINSURED", jc);
     }
   }
 

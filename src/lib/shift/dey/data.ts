@@ -7,6 +7,7 @@
  */
 import type { DayKind, PrismaClient } from "@prisma/client";
 
+import { isRegularEmployment } from "../../employee-labels";
 import { dayKindFor } from "../../calendar/holidays";
 import type { SymbolCoverage, SymbolMaster } from "../coverage";
 import {
@@ -115,7 +116,7 @@ export async function loadDeyGenerateInput(
     return {
       id: e.id,
       employeeCode: e.employeeCode,
-      isFullTime: e.employmentType === "FULL_TIME" || e.employmentType === "CONTRACT",
+      isFullTime: isRegularEmployment(e.employmentType),
       isCounselor: e.jobCategory === "LIFE_COUNSELOR",
       unavailableDates: unavailable,
       targetWorkDays: e.shiftConstraint?.targetMonthlyWorkDays ?? DEY_DEFAULT_TARGET_WORK_DAYS,
