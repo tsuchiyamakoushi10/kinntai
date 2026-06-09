@@ -1,11 +1,49 @@
 "use client";
 
-import type { EmploymentType, ShiftKind } from "@prisma/client";
+import type {
+  EmploymentType,
+  ShiftKind,
+  ShiftPreferenceStatus,
+  ShiftPreferenceType,
+} from "@prisma/client";
 import { useMemo, useRef, useState, useTransition } from "react";
 
+import {
+  SHIFT_PREFERENCE_STATUS_LABELS,
+  SHIFT_PREFERENCE_TYPE_LABELS,
+} from "@/lib/employee-labels";
 import type { ShiftCell } from "@/lib/shifts/diff";
 
 import { saveShifts } from "./actions";
+
+/** 勤務表に重ねて表示する「従業員が出した希望」1 件分。 */
+export type PreferenceMark = {
+  employeeId: string;
+  /** `YYYY-MM-DD` */
+  workDate: string;
+  preferenceType: ShiftPreferenceType;
+  status: ShiftPreferenceStatus;
+};
+
+/** 希望種別ごとのセル表示 (短縮ラベル + 色)。 */
+const PREF_VISUAL: Record<
+  ShiftPreferenceType,
+  { short: string; bg: string; text: string; dot: string }
+> = {
+  REQUESTED_OFF: { short: "希休", bg: "bg-pink-100", text: "text-pink-800", dot: "bg-pink-400" },
+  PAID_LEAVE: { short: "有給", bg: "bg-amber-100", text: "text-amber-800", dot: "bg-amber-400" },
+  PREFERRED_NIGHT: {
+    short: "夜希",
+    bg: "bg-indigo-100",
+    text: "text-indigo-800",
+    dot: "bg-indigo-400",
+  },
+  UNAVAILABLE: { short: "不可", bg: "bg-rose-100", text: "text-rose-800", dot: "bg-rose-400" },
+};
+
+function prefTitle(p: PreferenceMark): string {
+  return `${SHIFT_PREFERENCE_TYPE_LABELS[p.preferenceType]}（${SHIFT_PREFERENCE_STATUS_LABELS[p.status]}）の申請`;
+}
 
 export type EmployeeRow = {
   id: string;
@@ -37,6 +75,8 @@ type Props = {
   prevMonthCells: ReadonlyArray<ShiftCell>;
   /** 自動作成由来の (employeeId:workDate) 集合。初期表示時の識別マーク用。 */
   autoCellKeys?: ReadonlySet<string>;
+  /** 従業員が出した希望 (希望休 / 有給 など)。勤務表に色とラベルで重ねて表示する。 */
+  preferences?: ReadonlyArray<PreferenceMark>;
   /** 閲覧専用モード (ALL 閲覧で使う)。パレット / 保存 / 編集 UI を全部隠す。 */
   readOnly?: boolean;
 };
@@ -79,6 +119,7 @@ export function ShiftGrid({
   initialCells,
   prevMonthCells,
   autoCellKeys,
+  preferences,
   readOnly = false,
 }: Props) {
   const [cells, setCells] = useState<CellMap>(() => toCellMap(initialCells));
@@ -103,6 +144,13 @@ export function ShiftGrid({
     for (const p of patterns) m.set(p.id, p);
     return m;
   }, [patterns]);
+
+  // (employeeId:workDate) → 希望。却下済みは呼び出し側で除外して渡す想定。
+  const prefByCell = useMemo(() => {
+    const m = new Map<string, PreferenceMark>();
+    for (const p of preferences ?? []) m.set(cellKey(p.employeeId, p.workDate), p);
+    return m;
+  }, [preferences]);
 
   function paintCell(employeeIdx: number, dayIdx: number): void {
     const emp = employees[employeeIdx];
@@ -347,6 +395,22 @@ export function ShiftGrid({
         </div>
       )}
 
+      {/* 希望 (申請) の凡例。preferences が渡されたときだけ表示。 */}
+      {preferences && preferences.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <span className="font-medium">従業員の希望:</span>
+          {(Object.keys(PREF_VISUAL) as ShiftPreferenceType[]).map((t) => (
+            <span key={t} className="inline-flex items-center gap-1">
+              <span className={`inline-block size-3 rounded-sm ${PREF_VISUAL[t].bg}`} />
+              {SHIFT_PREFERENCE_TYPE_LABELS[t]}
+            </span>
+          ))}
+          <span className="text-slate-400">
+            （点線＝承認待ち / 配置済みのセルは右上に色ドット）
+          </span>
+        </div>
+      )}
+
       {/* グリッド */}
       <div
         ref={gridRef}
@@ -402,19 +466,28 @@ export function ShiftGrid({
                   </div>
                 </th>
                 {days.map((d, di) => {
-                  const cell = cells.get(cellKey(emp.id, d));
+                  const k = cellKey(emp.id, d);
+                  const cell = cells.get(k);
                   const pattern = cell ? patternsById.get(cell.shiftPatternId) : null;
+                  const pref = prefByCell.get(k) ?? null;
+                  const visual = pref ? PREF_VISUAL[pref.preferenceType] : null;
                   const isCursor = cursor?.employeeIdx === ei && cursor?.dayIdx === di;
                   const w = weekdayOf(d);
                   const weekend = w === 0 || w === 6;
-                  const isAuto = autoCellKeys?.has(cellKey(emp.id, d)) ?? false;
+                  const isAuto = autoCellKeys?.has(k) ?? false;
+                  // 未配置セルに希望を背景＋ラベルで表示 (配置済みなら隅にドットで残す)。
+                  const showPrefAsCell = !pattern && pref !== null;
                   return (
                     <td
                       key={d}
                       className={[
                         "relative h-9 border-r border-slate-100 p-0 text-center align-middle",
                         readOnly ? "" : "cursor-pointer hover:ring-2 hover:ring-slate-400/50",
-                        weekend && !pattern ? "bg-slate-50/60" : "",
+                        weekend && !pattern && !pref ? "bg-slate-50/60" : "",
+                        showPrefAsCell && visual ? visual.bg : "",
+                        showPrefAsCell && pref?.status === "PENDING"
+                          ? "outline-1 -outline-offset-2 outline-slate-400 outline-dashed"
+                          : "",
                         isCursor && !readOnly ? "ring-2 ring-slate-900 ring-inset" : "",
                       ].join(" ")}
                       style={
@@ -427,15 +500,24 @@ export function ShiftGrid({
                         gridRef.current?.focus();
                         paintCell(ei, di);
                       }}
-                      title={
+                      title={[
                         pattern
                           ? `${pattern.name} (${pattern.code})${isAuto ? " ・自動作成由来" : ""}`
-                          : ""
-                      }
+                          : "",
+                        pref ? prefTitle(pref) : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" / ")}
                     >
                       {pattern ? (
                         <span className="block truncate px-0.5 text-[11px] font-medium text-slate-900">
                           {pattern.name}
+                        </span>
+                      ) : showPrefAsCell && visual ? (
+                        <span
+                          className={`block truncate px-0.5 text-[11px] font-medium ${visual.text}`}
+                        >
+                          {visual.short}
                         </span>
                       ) : (
                         <span className="block text-slate-300">·</span>
@@ -448,6 +530,13 @@ export function ShiftGrid({
                         >
                           ▾
                         </span>
+                      )}
+                      {pref && pattern && visual && (
+                        <span
+                          aria-hidden
+                          title={prefTitle(pref)}
+                          className={`pointer-events-none absolute top-0.5 right-0.5 size-1.5 rounded-full ${visual.dot}`}
+                        />
                       )}
                     </td>
                   );

@@ -97,6 +97,7 @@ export const TRAINING_TYPE_OPTIONS: ReadonlyArray<{ value: TrainingType; label: 
 
 export const SHIFT_PREFERENCE_TYPE_LABELS: Record<ShiftPreferenceType, string> = {
   REQUESTED_OFF: "希望休",
+  PAID_LEAVE: "有給",
   PREFERRED_NIGHT: "希望夜勤",
   UNAVAILABLE: "勤務不可",
 };

@@ -155,6 +155,7 @@ enum ShiftPreferenceType {
   REQUESTED_OFF   @map("requested_off")
   PREFERRED_NIGHT @map("preferred_night")
   UNAVAILABLE     @map("unavailable")
+  PAID_LEAVE      @map("paid_leave") // 有給希望 (希望休と同様に本人/管理者が申請)
 
   @@map("shift_preference_type")
 }

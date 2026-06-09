@@ -11,7 +11,7 @@ import type { ShiftCell } from "@/lib/shifts/diff";
 import { AutoGenerateButton } from "./auto-generate-button";
 import { ReorderPanel } from "./reorder-panel";
 import { ShiftFilters } from "./shift-filters";
-import { ShiftGrid, type EmployeeRow, type PatternOption } from "./shift-grid";
+import { ShiftGrid, type EmployeeRow, type PatternOption, type PreferenceMark } from "./shift-grid";
 
 export const dynamic = "force-dynamic";
 
@@ -69,8 +69,8 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
   const range = monthRange(ym);
   const prevRange = monthRange(range.prevYm);
 
-  const [office, employees, patterns, currentShifts, prevShifts, generationRun] = await Promise.all(
-    [
+  const [office, employees, patterns, currentShifts, prevShifts, generationRun, shiftPreferences] =
+    await Promise.all([
       prisma.office.findUnique({ where: { id: officeId }, select: { name: true } }),
       prisma.employee.findMany({
         where: {
@@ -123,8 +123,16 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
         where: { officeId_targetMonth: { officeId, targetMonth: range.start } },
         select: { status: true, confirmedAt: true, generatedAt: true },
       }),
-    ],
-  );
+      // 当月・当拠点の従業員が出した希望 (却下分を除く)。勤務表に重ねて表示する。
+      prisma.shiftPreference.findMany({
+        where: {
+          targetDate: { gte: range.start, lt: range.end },
+          employee: { officeId },
+          status: { not: "REJECTED" },
+        },
+        select: { employeeId: true, targetDate: true, preferenceType: true, status: true },
+      }),
+    ]);
 
   if (!office) {
     return (
@@ -170,6 +178,13 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     workDate: dateToYmd(s.workDate),
     shiftPatternId: s.shiftPatternId,
     note: s.note,
+  }));
+
+  const preferenceMarks: PreferenceMark[] = shiftPreferences.map((p) => ({
+    employeeId: p.employeeId,
+    workDate: dateToYmd(p.targetDate),
+    preferenceType: p.preferenceType,
+    status: p.status,
   }));
 
   return (
@@ -256,6 +271,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
             initialCells={initialCells}
             prevMonthCells={prevCells}
             autoCellKeys={autoCellKeys}
+            preferences={preferenceMarks}
           />
         </>
       )}
