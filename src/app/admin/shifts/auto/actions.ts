@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { fromJstYmd, monthRange } from "@/lib/attendance/business-date";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
-import { generateMonthlyShifts } from "@/lib/shift/auto-generator";
 import { loadDeyGenerateInput } from "@/lib/shift/dey/data";
 import { generateDey } from "@/lib/shift/dey/generate";
 import { summarizeDeyCoverage, toDeyProposals } from "@/lib/shift/dey/proposals";
@@ -17,11 +16,8 @@ import { loadShortGenerateInput } from "@/lib/shift/short/data";
 import { generateShort, type ShortConfig } from "@/lib/shift/short/generate";
 import { summarizeShortCoverage, toShortProposals } from "@/lib/shift/short/proposals";
 
-import { loadGenerateInput } from "./data";
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const YM = /^\d{4}-(0[1-9]|1[0-2])$/;
-const ALGORITHM_VERSION = "greedy-v1";
 
 /** 拠点ごとに生成器を切り替え、保存形 (proposedShifts) と stats を返す。 */
 type BuiltRun = {
@@ -33,12 +29,15 @@ type BuiltRun = {
 
 type ExistingRunMeta = { id: string; generatedById: string } | null;
 
+/**
+ * 拠点ごとに生成器を切り替える。専用生成を持たない拠点 (梨花は専用画面、未対応拠点) は
+ * null を返し、呼び出し側で「自動作成 未対応」として扱う。
+ */
 async function buildRun(
   officeId: string,
   ym: string,
-  seed: number,
   existingRun: ExistingRunMeta,
-): Promise<BuiltRun> {
+): Promise<BuiltRun | null> {
   const office = await prisma.office.findUnique({
     where: { id: officeId },
     select: { code: true },
@@ -54,14 +53,7 @@ async function buildRun(
   if (isKitchenOffice(code)) {
     return buildKitchenRun(officeId, ym, existingRun);
   }
-  const genInput = await loadGenerateInput(officeId, ym, seed, ALGORITHM_VERSION);
-  const result = generateMonthlyShifts(genInput);
-  return {
-    proposedShifts: result.proposedShifts,
-    stats: JSON.parse(JSON.stringify(result.stats)),
-    algorithmVersion: ALGORITHM_VERSION,
-    warningCount: result.warnings.length,
-  };
+  return null;
 }
 
 /**
@@ -247,7 +239,10 @@ export async function saveDraftRun(input: {
   }
 
   // 入力データ + dry-run (拠点ごとに生成器を切り替え)
-  const result = await buildRun(input.officeId, input.ym, input.seed, existingRun);
+  const result = await buildRun(input.officeId, input.ym, existingRun);
+  if (!result) {
+    return { ok: false, error: "この拠点は自動作成に対応していません。" };
+  }
 
   await prisma.$transaction(async (tx) => {
     // 1) run を upsert (新規 / 上書き)

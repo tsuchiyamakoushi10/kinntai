@@ -3,12 +3,17 @@
  *
  * 自動作成 v2 (docs/auto-shift-design-v2.md §4.1) で外出しした調整値。
  * 純粋関数として切り出し、サーバアクション (admin/shift-settings) と画面の双方から使う。
- * 既定値は auto-generator の DEFAULT_SHIFT_GEN_SETTING と 1:1 で対応する。
  */
-import { DEFAULT_SHIFT_GEN_SETTING, type ShiftGenSetting } from "@/lib/shift/auto-generator";
 
-/** 編集対象の設定値。auto-generator の ShiftGenSetting と同形。 */
-export type OfficeShiftSettingValues = ShiftGenSetting;
+/** 編集対象の設定値 (連勤上限 / 月の夜勤上限の既定 / パート年収上限の既定)。 */
+export type OfficeShiftSettingValues = {
+  /** 連勤上限 (これ以上は配置しない)。 */
+  maxConsecutiveWorkDays: number;
+  /** 月の夜勤上限の既定値 (個人制約で上書き可)。 */
+  defaultMaxNightShiftsPerMonth: number;
+  /** パート年収上限の既定値 (個人制約で上書き可)。 */
+  defaultAnnualIncomeCapYen: number;
+};
 
 /** 各項目の入力範囲 (UI の min/max と検証で共有)。 */
 export const OFFICE_SHIFT_SETTING_BOUNDS = {
@@ -21,7 +26,11 @@ export const OFFICE_SHIFT_SETTING_BOUNDS = {
 } as const;
 
 /** 既定値 (office_shift_settings の行が無い拠点に適用)。 */
-export const OFFICE_SHIFT_SETTING_DEFAULTS: OfficeShiftSettingValues = DEFAULT_SHIFT_GEN_SETTING;
+export const OFFICE_SHIFT_SETTING_DEFAULTS: OfficeShiftSettingValues = {
+  maxConsecutiveWorkDays: 6,
+  defaultMaxNightShiftsPerMonth: 5,
+  defaultAnnualIncomeCapYen: 1_300_000,
+};
 
 export type ValidateResult =
   | { ok: true; values: OfficeShiftSettingValues }

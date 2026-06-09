@@ -4,7 +4,6 @@ import Link from "next/link";
 import { currentJstYm, monthRange } from "@/lib/attendance/business-date";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
-import { generateMonthlyShifts } from "@/lib/shift/auto-generator";
 import { loadDeyGenerateInput } from "@/lib/shift/dey/data";
 import { generateDey } from "@/lib/shift/dey/generate";
 import { summarizeDeyCoverage } from "@/lib/shift/dey/proposals";
@@ -20,12 +19,10 @@ import { AutoRunner } from "./auto-runner";
 import { DeyPreview } from "./dey-preview";
 import { KitchenPreview } from "./kitchen-preview";
 import { ShortPreview } from "./short-preview";
-import { loadGenerateInput } from "./data";
 
 export const dynamic = "force-dynamic";
 
 const YM_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
-const ALGORITHM_VERSION = "phase-v2";
 
 type SearchParams = { officeId?: string; ym?: string; seed?: string };
 type Props = { searchParams: Promise<SearchParams> };
@@ -131,68 +128,11 @@ export default async function AdminShiftsAutoPage({ searchParams }: Props) {
     proposedCount = result.assignments.length;
     preview = <ShortPreview days={result.days} summary={summary} />;
   } else {
-    const input = await loadGenerateInput(officeId, ym, seed, ALGORITHM_VERSION);
-    const result = generateMonthlyShifts(input);
-    employeeCount = input.employees.length;
-    proposedCount = result.proposedShifts.length;
-
-    const warnCounts = new Map<string, number>();
-    for (const w of result.warnings) {
-      warnCounts.set(w.code, (warnCounts.get(w.code) ?? 0) + 1);
-    }
+    // 専用生成を持たない拠点 (梨花は専用画面、それ以外は未対応)。
     preview = (
-      <>
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h2 className="text-base font-semibold text-slate-900">配置サマリ (dry-run)</h2>
-          <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <div>
-              <dt className="text-xs text-slate-500">必要枠</dt>
-              <dd className="text-lg font-semibold text-slate-900">
-                {result.stats.fill.totalSlots}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">埋まった枠</dt>
-              <dd className="text-lg font-semibold text-slate-900">
-                {result.stats.fill.filledSlots}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">充足率</dt>
-              <dd className="text-lg font-semibold text-slate-900">
-                {Math.round(result.stats.fill.rate * 1000) / 10}%
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">処理時間</dt>
-              <dd className="text-lg font-semibold text-slate-900">{result.stats.elapsedMs}ms</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h2 className="text-base font-semibold text-slate-900">
-            警告 ({result.warnings.length})
-          </h2>
-          {result.warnings.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-500">警告はありません。</p>
-          ) : (
-            <ul className="mt-3 grid gap-2 text-sm">
-              {Array.from(warnCounts.entries()).map(([code, count]) => (
-                <li
-                  key={code}
-                  className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2"
-                >
-                  <span className="font-medium text-slate-900">{WARNING_LABELS[code] ?? code}</span>
-                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
-                    {count} 件
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </>
+      <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <p className="text-sm text-amber-900">この拠点は月次シフトの自動作成に対応していません。</p>
+      </section>
     );
   }
 
@@ -279,15 +219,3 @@ export default async function AdminShiftsAutoPage({ searchParams }: Props) {
     </div>
   );
 }
-
-const WARNING_LABELS: Record<string, string> = {
-  QUOTA_UNDERFILLED: "必要人員に達していない枠",
-  QUOTA_OVERFILLED: "必要人員を超えている枠 (保護対象が多い)",
-  NIGHT_SHIFT_OVER_LIMIT: "夜勤上限を超えている従業員",
-  NIGHT_PREF_UNMET: "夜勤希望回数に達していない従業員",
-  TARGET_WORKDAYS_UNREACHED: "月間出勤目標に達していない従業員",
-  INCOME_CAP_EXCEEDED: "年収上限を超える見込みのパート",
-  UNAVAILABLE_DOW_VIOLATED: "不可曜日に既存シフトが乗っている",
-  PREV_MONTH_NIGHT_HANGING: "前月末 NIGHT_IN を引き継げない",
-  INACTIVE_PATTERN_REFERENCED: "無効化パターンを枠が参照している",
-};

@@ -10,7 +10,9 @@
  *     NRS(ナーシングホーム)はショートと同じ構造(夜勤あり)なので生成器を流用し、記号だけ差し替える
  *     (ショ日→日勤、ショ短A→日勤、ショ短Aの代わりも日勤。半日A/公休/夜入/夜明は共通)。
  *   - 厨房 (generateKitchen): 固定ロスター。厨房記号(0/0)は配置基準モデルに乗らないため専用。
- *   - それ以外: 当面 v1 の汎用生成 (シフト枠ベース)。梨花は専用画面のため対象外。
+ *   - 梨花: 専用画面 (/admin/shifts/rika) のため本配線の対象外。
+ *   - それ以外: 専用生成を持たないため自動作成 未対応 (呼び出し側で null 扱い)。
+ *     旧 v1 汎用生成 (シフト枠ベース) は全拠点を専用パスへ移行したため撤去済み (2026-06-09)。
  */
 import { SHORT_DEFAULT_CONFIG, type ShortConfig } from "./short/generate";
 import { DEFAULT_NIGHT_CYCLE_CONFIG } from "./short/night-cycle";
