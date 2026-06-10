@@ -75,7 +75,7 @@ function NavLink({ item, active }: { item: Item; active: boolean }) {
       className={[
         "group flex items-center gap-2.5 rounded-full px-4 py-2.5 text-sm transition-colors",
         active
-          ? "bg-orange-500 font-bold text-white shadow-sm shadow-orange-200"
+          ? "bg-orange-400 font-bold text-white shadow-sm shadow-orange-200"
           : "font-medium text-slate-600 hover:bg-orange-50 hover:text-orange-700",
       ].join(" ")}
     >
