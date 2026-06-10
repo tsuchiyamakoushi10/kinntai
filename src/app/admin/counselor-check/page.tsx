@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
+import { RIKA_COUNSELOR_REQUIRED, RIKA_OFFICE_CODE } from "@/lib/shift/rika/config";
 import {
   countAttentionOffices,
   evaluateCounselorChecks,
@@ -73,10 +74,15 @@ export default async function CounselorCheckPage() {
     officeName: o.name,
     officeCode: o.code,
     // 必要相談員数 = 日種をまたいだ「午前/午後で必要な相談員」の最大。
-    requiredCounselors: o.coverageDemands.reduce(
-      (max, d) => Math.max(max, d.counselorAmRequired, d.counselorPmRequired),
-      0,
-    ),
+    // 梨花は専用ロジックのため office_coverage_demands を持たず、相談員必要数はハードコード
+    // (RIKA_COUNSELOR_REQUIRED) にある。これを使わないと相談員登録が「要確認」と誤判定される。
+    requiredCounselors:
+      o.code === RIKA_OFFICE_CODE
+        ? RIKA_COUNSELOR_REQUIRED
+        : o.coverageDemands.reduce(
+            (max, d) => Math.max(max, d.counselorAmRequired, d.counselorPmRequired),
+            0,
+          ),
     counselors: o.employees.map((e) => ({ employeeId: e.id, employeeCode: e.employeeCode })),
   }));
 
