@@ -75,14 +75,14 @@ function NavLink({ item, active }: { item: Item; active: boolean }) {
       className={[
         "group flex items-center gap-2.5 rounded-full px-4 py-2.5 text-sm transition-colors",
         active
-          ? "bg-orange-400 font-bold text-white shadow-sm shadow-orange-200"
-          : "font-medium text-slate-600 hover:bg-orange-50 hover:text-orange-700",
+          ? "bg-pink-400 font-bold text-white shadow-sm shadow-pink-200"
+          : "font-medium text-slate-600 hover:bg-pink-50 hover:text-pink-700",
       ].join(" ")}
     >
       <span
         className={[
           "size-1.5 shrink-0 rounded-full transition-colors",
-          active ? "bg-white" : "bg-slate-300 group-hover:bg-orange-400",
+          active ? "bg-white" : "bg-slate-300 group-hover:bg-pink-400",
         ].join(" ")}
       />
       {item.label}
@@ -123,7 +123,7 @@ function CollapsibleSection({ section, pathname }: { section: Section; pathname:
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={expanded}
-        className={`mb-1 flex items-center justify-between rounded-md py-1 ${headingClass} transition-colors hover:text-orange-500`}
+        className={`mb-1 flex items-center justify-between rounded-md py-1 ${headingClass} transition-colors hover:text-pink-500`}
       >
         <span>{section.title}</span>
         <Chevron open={expanded} />
