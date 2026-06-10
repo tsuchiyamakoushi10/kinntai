@@ -80,11 +80,14 @@ export default async function AdminDashboardPage() {
     activeEmployees: number;
   };
 
-  const officeStats: OfficeStat[] = offices.map((o) => ({
-    id: o.id,
-    name: o.name,
-    activeEmployees: o._count.employees,
-  }));
+  // 在籍人数の多い順に並べる。同数は拠点名で安定ソート (offices は code 昇順で取得済み)。
+  const officeStats: OfficeStat[] = offices
+    .map((o) => ({
+      id: o.id,
+      name: o.name,
+      activeEmployees: o._count.employees,
+    }))
+    .sort((a, b) => b.activeEmployees - a.activeEmployees || a.name.localeCompare(b.name, "ja"));
 
   // 年5日アラート: violated + warn を「要対応」として 1 件カウント。watch / ok は集計外。
   let fiveDayWarn = 0;
