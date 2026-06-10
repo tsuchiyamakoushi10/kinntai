@@ -90,6 +90,50 @@ describe("generateRikaShifts", () => {
     ).toBe(true);
   });
 
+  it("相談員フロア: 主相談員が希望休でも、週上限の副相談員を確保し不在にしない", () => {
+    // 主相談員 C1 (常勤) を同一週の月・火に希望休 → その2日は C1 不在。
+    // 副相談員 C2 は週1上限。通常なら 2 日目 (火) は週上限で外れるが、相談員フロアが
+    // 週上限を上書きして確保するため、火曜も相談員が居る (COUNSELOR_MISSING にならない)。
+    const day1 = businessDays[0]!; // 2025-12-01 (月)
+    const day2 = businessDays[1]!; // 2025-12-02 (火) 同一週
+    const synthetic: RikaGenMember[] = [
+      {
+        id: "C1",
+        employmentClass: "full",
+        isHelper: false,
+        isCounselor: true,
+        allowedSymbols: ["DAY_CARE"],
+        targetWorkDays: null,
+        maxWorkDaysPerWeek: null,
+      },
+      {
+        id: "C2",
+        employmentClass: "part",
+        isHelper: false,
+        isCounselor: true,
+        allowedSymbols: ["DAY_CARE"],
+        targetWorkDays: null,
+        maxWorkDaysPerWeek: 1, // 週1上限
+      },
+      ...["W1", "W2", "W3"].map(
+        (id): RikaGenMember => ({
+          id,
+          employmentClass: "part",
+          isHelper: false,
+          isCounselor: false,
+          allowedSymbols: ["DAY_CARE"],
+          targetWorkDays: null,
+          maxWorkDaysPerWeek: null,
+        }),
+      ),
+    ];
+    const r = generateRikaShifts(YM, synthetic, { C1: [day1, day2] });
+    const m = new Map(r.cells.map((c) => [`${c.memberId}|${c.date}`, c.symbol]));
+    // 火曜は C2 が週上限を超えて確保される (フロア)。
+    expect(m.get(`C2|${day2}`)).toBe("DAY_CARE");
+    expect(r.warnings.some((w) => w.code === "COUNSELOR_MISSING" && w.date === day2)).toBe(false);
+  });
+
   it("希望休は維持される", () => {
     const reqOff = { 菅原知美: [businessDays[0]!, businessDays[1]!] };
     const r = generateRikaShifts(YM, MEMBERS, reqOff);

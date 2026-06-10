@@ -16,6 +16,7 @@
  * 本モジュールは DB / React に依存しない純粋関数。同じ入力 → 同じ出力 (決定論的)。
  */
 import {
+  RIKA_COUNSELOR_REQUIRED,
   RIKA_MAX_CONSECUTIVE_DAYS,
   RIKA_REQUEST_OFF_QUOTA,
   RIKA_STAFFING,
@@ -189,6 +190,34 @@ export function generateRikaShifts(
       if (need.am <= 0 && need.pm <= 0) break;
       const pick = chooseSymbol(m, need);
       if (pick && pick.gain > 0) place(m, pick.code);
+    }
+
+    // ---- 相談員フロア: 営業日は必ず相談員を 1 名確保する ----
+    // 梨花の相談員は五木田 1 名のみ。Tier1 で常勤相談員は毎営業日入るが、週上限などの軟制約で
+    // 外れたり、将来パート相談員が gain0 で Tier2 に置かれない場合に備え、相談員が 0 名なら 1 名出す。
+    // 希望休・連勤上限 (ハード制約) の相談員は対象外 → その日は下の COUNSELOR_MISSING で警告。
+    if (RIKA_COUNSELOR_REQUIRED > 0 && !counselorWorkedToday) {
+      const counselorPool = members
+        .filter(
+          (m) =>
+            m.isCounselor &&
+            !assignedToday.has(m.id) &&
+            !reqOffSet.get(m.id)!.has(day.date) &&
+            (consec.get(m.id) ?? 0) < RIKA_MAX_CONSECUTIVE_DAYS,
+        )
+        .sort(
+          (a, b) =>
+            Number(a.isHelper) - Number(b.isHelper) ||
+            workCount.get(a.id)! - workCount.get(b.id)! ||
+            a.id.localeCompare(b.id),
+        );
+      for (const m of counselorPool) {
+        const pick = chooseSymbol(m, need);
+        if (pick) {
+          place(m, pick.code); // gain 0 でも相談員確保のため勤務させる
+          break;
+        }
+      }
     }
 
     // ---- 余った候補は公休。連勤はリセット ----
