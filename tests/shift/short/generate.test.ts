@@ -230,6 +230,52 @@ describe("generateShort", () => {
     for (const day of r.days) expect(day.coverage!.counselorAmShort).toBe(false);
   });
 
+  it("相談員2名 (固定日中 + 夜勤あり) で、二人の休みがかぶらない (毎営業日 最低1名)", () => {
+    // NRS 想定: 田中=固定の日中相談員、高橋=夜勤も入る相談員。高橋が夜勤サイクル中は日中に出ない
+    // ので、田中がペース休みを取ると相談員ゼロになりうる。フロアで毎営業日 最低1名を確保する。
+    const d = days(20);
+    const demand: Partial<Record<DayKind, ShortDemand>> = {
+      WEEKDAY: { am: 6, pm: 6, counselorAm: 1, counselorPm: 1, nurseAm: 0, nursePm: 0, nightIn: 1 },
+    };
+    const tanaka: ShortEmployee = {
+      ...emp("C1-TANAKA", { isCounselor: true, nightCap: 0 }),
+      fixedSymbol: "有日勤",
+    };
+    const takahashi = emp("C2-TAKAHASHI", { isCounselor: true, nightCap: 4 });
+    // 一般職員で AM/PM を満たす頭数を用意 (相談員フロアの検証に集中)。
+    const others = Array.from({ length: 8 }, (_, i) => emp(`W${i}`, { nightCap: 2 }));
+    const r = generateShort(input(d, [tanaka, takahashi, ...others], demand));
+    const m = byDate(r);
+    const counselorIds = ["C1-TANAKA", "C2-TAKAHASHI"];
+    for (const day of r.days) {
+      if (!day.operating) continue;
+      const dayCell = m.get(day.date)!;
+      const present = counselorIds.filter((id) => {
+        const sym = dayCell.get(id);
+        return sym === "有日勤" || sym === "ショ日" || sym === "ショ短A" || sym === "半日A";
+      });
+      // ハード制約 (希望休/有給) は無いので、毎営業日 最低1名の相談員が日中に居るはず。
+      expect(present.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("相談員2名が両方ハード制約 (希望休) の日は確保せず不足表示 (強制しない)", () => {
+    const d = days(5);
+    const demand: Partial<Record<DayKind, ShortDemand>> = {
+      WEEKDAY: { am: 2, pm: 2, counselorAm: 1, counselorPm: 1, nurseAm: 0, nursePm: 0, nightIn: 0 },
+    };
+    const off = new Set(["2026-06-03"]);
+    const emps = [
+      emp("C1", { isCounselor: true, unavailableDates: off }),
+      emp("C2", { isCounselor: true, unavailableDates: off }),
+      emp("P1", { isFullTime: false }),
+      emp("P2", { isFullTime: false }),
+    ];
+    const r = generateShort(input(d, emps, demand));
+    const day = r.days.find((x) => x.date === "2026-06-03")!;
+    expect(day.coverage!.counselorAmShort).toBe(true); // 両名 希望休 → 不足は不足のまま
+  });
+
   it("看護師が必要で居れば確保、居なければ不足表示", () => {
     const d = days(3);
     const demand: Partial<Record<DayKind, ShortDemand>> = {

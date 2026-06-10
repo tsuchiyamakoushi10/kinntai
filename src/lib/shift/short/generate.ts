@@ -306,6 +306,50 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
       guarantee(Math.max(demand.counselorAm, demand.counselorPm), (e) => e.isCounselor);
       guarantee(Math.max(demand.nurseAm, demand.nursePm), (e) => e.isNurse);
 
+      // 相談員フロア: 相談員が必要な営業日に 1 名も日中に居なければ、ハード制約
+      // (希望休/有給/夜勤で塞がり/連勤上限) で休んでいる人を除き、相談員を 1 名出勤させる。
+      // 通常フェーズはペース配分 (idealWorkDaysBy) や固定配置の休みで相談員が全員休む日が出うるが、
+      // NRS は相談員が 2 名しか居らず「二人の休みがかぶる」のを極力避けたい。固定相談員 (田中=日中メイン)
+      // を優先的に出し、夜勤明け直後 (preferredOff) の人は後回しにする。両名ともハード制約のときだけ
+      // 不足のまま (coverage で赤表示 → 人が調整)。
+      const counselorNeed = Math.max(demand.counselorAm, demand.counselorPm);
+      if (counselorNeed > 0 && dayCount < dayCap) {
+        const counselorPresent = employees.some((e) => e.isCounselor && today.has(e.id));
+        if (!counselorPresent) {
+          const hardBlocked = (e: ShortEmployee): boolean =>
+            occupiedByNight.has(e.id) ||
+            e.unavailableDates.has(day.date) ||
+            e.paidLeaveDates.has(day.date) ||
+            consecutive.get(e.id)! >= config.maxConsecutiveDays;
+          const fallback = employees
+            .filter(
+              (e) => e.isCounselor && !e.isNightShiftOnly && !today.has(e.id) && !hardBlocked(e),
+            )
+            .sort((a, b) => {
+              // 固定相談員 (日中メイン) を優先して出す。
+              const fa = a.fixedSymbol ? 0 : 1;
+              const fb = b.fixedSymbol ? 0 : 1;
+              if (fa !== fb) return fa - fb;
+              // 夜勤明け直後 (公休が望ましい) の人は後回し。
+              const pa = night.preferredOff.has(`${a.id}|${day.date}`) ? 1 : 0;
+              const pb = night.preferredOff.has(`${b.id}|${day.date}`) ? 1 : 0;
+              if (pa !== pb) return pa - pb;
+              const ca = workDays.get(a.id)!;
+              const cb = workDays.get(b.id)!;
+              if (ca !== cb) return ca - cb; // 出勤の少ない人から (公平)
+              return a.employeeCode.localeCompare(b.employeeCode);
+            });
+          const pick = fallback[0];
+          if (pick) {
+            placeDay(
+              pick,
+              pick.fixedSymbol ??
+                (pick.isFullTime ? config.symbols.fullDay : config.symbols.partFullDay),
+            );
+          }
+        }
+      }
+
       // Phase 3: 常勤を ショ日 で配置。月内ペース配分 (目標×経過/総営業日) を超えた人は今日は
       // 休ませる (デイと同じ)。これで休みが月内に均等分散し、月末 (6/30 等) に目標到達で
       // 一斉に休んでスカスカになるのを防ぐ。日勤上限 (dayCap) も守る。
