@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/auth-guard";
 import { dayKindFor } from "@/lib/calendar/holidays";
 import { prisma } from "@/lib/db";
 import { sortForRoster } from "@/lib/employee-order";
+import { isKitchenOffice } from "@/lib/shift/office-generator";
 import type { CoverageNeed } from "@/lib/shift/grid-coverage";
 import type { ShiftCell } from "@/lib/shifts/diff";
 
@@ -43,10 +44,17 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
   const ym = sp.ym && YM_PATTERN.test(sp.ym) ? sp.ym : currentJstYm();
   const officeId = sp.officeId ?? "";
 
-  const offices = await prisma.office.findMany({
-    where: { isActive: true },
-    orderBy: { code: "asc" },
-    select: { id: true, name: true, code: true },
+  // 厨房は拠点選択・一覧の最後に回す (それ以外は code 昇順)。勤務表で厨房は補助的な扱いのため。
+  const offices = (
+    await prisma.office.findMany({
+      where: { isActive: true },
+      orderBy: { code: "asc" },
+      select: { id: true, name: true, code: true },
+    })
+  ).sort((a, b) => {
+    const ak = isKitchenOffice(a.code) ? 1 : 0;
+    const bk = isKitchenOffice(b.code) ? 1 : 0;
+    return ak - bk; // code 昇順は取得済み → 厨房だけ末尾へ (安定ソート)
   });
 
   // 梨花もデイ/ショートと同じ標準パイプライン (この勤務表 + 自動作成画面) で扱う

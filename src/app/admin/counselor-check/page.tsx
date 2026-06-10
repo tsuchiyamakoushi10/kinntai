@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
+import { KITCHEN_OFFICE_CODES } from "@/lib/shift/office-generator";
 import { RIKA_COUNSELOR_REQUIRED, RIKA_OFFICE_CODE } from "@/lib/shift/rika/config";
 import {
   countAttentionOffices,
@@ -41,7 +42,8 @@ export default async function CounselorCheckPage() {
   await requireAdmin();
 
   const offices = await prisma.office.findMany({
-    where: { isActive: true },
+    // 厨房は相談員を配置しない拠点なのでチェック対象から外す。
+    where: { isActive: true, code: { notIn: [...KITCHEN_OFFICE_CODES] } },
     orderBy: { code: "asc" },
     select: {
       id: true,
