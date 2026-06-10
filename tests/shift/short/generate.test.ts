@@ -43,6 +43,7 @@ function emp(
     nightCap: opts.nightCap ?? 5,
     preferredNightDates: opts.preferredNightDates ?? new Set(),
     paidLeaveDates: opts.paidLeaveDates ?? new Set(),
+    isNightShiftOnly: opts.isNightShiftOnly ?? false,
   };
 }
 
@@ -112,6 +113,43 @@ describe("generateShort", () => {
     }
     // 夜入の人は日中記号を持たない (Map 上書きが無い = ペアが正しい)
     expect(r.unfilledNightDays).toEqual([]);
+  });
+
+  it("夜勤専従は夜勤希望日のみ夜勤、それ以外は公休 (日中に一切入らない)", () => {
+    const d = days(10);
+    const night = new Set(["2026-06-05"]);
+    const emps = [
+      emp("A"),
+      emp("B"),
+      emp("C"),
+      emp("D"),
+      emp("N", { isNightShiftOnly: true, preferredNightDates: night }),
+    ];
+    const r = generateShort(input(d, emps));
+    const m = byDate(r);
+    // 希望日 6/05 は夜入、翌 6/06 は夜明。
+    expect(m.get("2026-06-05")!.get("N")).toBe("夜入");
+    expect(m.get("2026-06-06")!.get("N")).toBe("夜明");
+    // それ以外の日はすべて公休 (日中記号は付かない)。
+    for (const day of d) {
+      const sym = m.get(day.date)!.get("N");
+      if (day.date === "2026-06-05" || day.date === "2026-06-06") continue;
+      expect(sym).toBe("公休");
+    }
+    // 夜勤回数は希望どおり 1 回。
+    expect(r.nightCountByEmployee["N"]).toBe(1);
+  });
+
+  it("夜勤専従で夜勤希望が無ければ全日 公休 (夜勤も日中も入らない)", () => {
+    const d = days(10);
+    const emps = [emp("A"), emp("B"), emp("C"), emp("D"), emp("N", { isNightShiftOnly: true })];
+    const r = generateShort(input(d, emps));
+    const m = byDate(r);
+    for (const day of d) {
+      expect(m.get(day.date)!.get("N")).toBe("公休");
+    }
+    expect(r.nightCountByEmployee["N"]).toBe(0);
+    expect(r.workDaysByEmployee["N"]).toBe(0);
   });
 
   it("人員が足りれば営業日の午前/午後は充足する", () => {

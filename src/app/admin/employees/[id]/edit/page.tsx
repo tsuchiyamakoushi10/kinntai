@@ -52,6 +52,7 @@ export default async function EditEmployeePage({ params }: Props) {
       employee.dailyWorkHours !== null ? Number(employee.dailyWorkHours).toString() : "",
     baseWageType: employee.baseWageType ?? "",
     baseWageAmount: employee.baseWageAmount !== null ? employee.baseWageAmount.toString() : "",
+    nightShiftOnly: employee.nightShiftOnly,
   };
 
   const fullName = `${employee.lastName} ${employee.firstName}`;

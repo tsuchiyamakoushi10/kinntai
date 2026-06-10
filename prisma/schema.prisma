@@ -323,6 +323,9 @@ model Employee {
   // 月の夜勤希望回数 (自動作成 v2 Phase 2 で優先配置に使用)。null = 希望なし(0 扱い)。
   // shift_constraints.max_night_shifts_per_month (上限) とは別軸 (希望 ≤ 上限 が通常)。
   desiredNightShiftsPerMonth Int?             @map("desired_night_shifts_per_month")
+  // 夜勤専従か。true の従業員はシフト希望で夜勤を入れた日だけ夜勤に入り、それ以外は自動で公休になる
+  // (NRS/ショートの自動生成のみ適用)。日中フェーズには一切配置しない。
+  nightShiftOnly             Boolean          @default(false) @map("night_shift_only")
   // 勤務表の手動並び順 (拠点内)。0 = 未設定で、雇用形態順 → 社員コード順にフォールバックする。
   displayOrder               Int              @default(0) @map("display_order")
   notes                      String?

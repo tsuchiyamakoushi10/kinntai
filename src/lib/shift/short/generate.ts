@@ -68,6 +68,12 @@ export type ShortEmployee = {
    * NH の固定番 (田中=有日勤・木下=日勤 等) に使う。固定配置者は夜勤・通常フェーズから外す。
    */
   fixedSymbol?: string | null;
+  /**
+   * 夜勤専従か。true の人は日中フェーズに一切置かず、夜勤希望 (preferredNightDates) に出した日
+   * だけ夜勤に入る。希望外の日はすべて公休 (有給希望日は有休)。希望が空なら夜勤も入らず全休。
+   * NRS/ショートのみ (従業員マスターの night_shift_only)。
+   */
+  isNightShiftOnly?: boolean;
 };
 
 /** 1 日種ぶんの配置基準 (午前/午後 + 相談員 + 夜入)。office_coverage_demands 由来。 */
@@ -203,6 +209,8 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
     nightCap: e.nightCap,
     // 有給日も夜勤に入れない (希望休/勤務不可と合わせて夜勤の不可日に)。
     unavailableDates: new Set([...e.unavailableDates, ...e.paidLeaveDates]),
+    // 夜勤専従は「希望日のみ」夜勤可 (希望が空なら夜勤なし)。希望外日のローテ対象にしない。
+    nightOnly: e.isNightShiftOnly ?? false,
   }));
   const night = assignNightCycle(nightDays, nightEmployees, config.night);
 
@@ -262,8 +270,10 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
 
       // 夜勤で塞がっている / 連勤上限 / 不可日 / 夜明の翌日 (公休が望ましい) は日中に置かない。
       // 固定配置者 (fixedSymbol) は Phase 1 のみで扱い、通常の日中フェーズには出さない。
+      // 夜勤専従 (isNightShiftOnly) は日中フェーズに一切置かない (夜勤希望日のみ夜勤、他は公休)。
       const eligible = (e: ShortEmployee): boolean =>
         !e.fixedSymbol &&
+        !e.isNightShiftOnly &&
         !occupiedByNight.has(e.id) &&
         !today.has(e.id) &&
         !e.unavailableDates.has(day.date) &&

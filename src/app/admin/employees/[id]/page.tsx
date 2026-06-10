@@ -384,6 +384,7 @@ function BasicTab({
             employee.employmentType ? EMPLOYMENT_TYPE_LABELS[employee.employmentType] : "未設定"
           }
         />
+        {employee.nightShiftOnly && <InfoRow label="夜勤専従" value="あり（夜勤希望日のみ勤務）" />}
       </Card>
 
       <Card title="現在の雇用条件">

@@ -28,6 +28,11 @@ export type NightEmployee = {
   unavailableDates: ReadonlySet<string>;
   /** 夜勤希望の日 ("YYYY-MM-DD")。その日は優先的に夜入を割り当てる。 */
   preferredNightDates: ReadonlySet<string>;
+  /**
+   * 夜勤専従か。true の人は希望日 (preferredNightDates) のみ夜勤可。希望が空なら夜勤に入れない。
+   * (通常の従業員は希望が空なら全日ローテ対象だが、専従は希望外日に入れない。)
+   */
+  nightOnly?: boolean;
 };
 
 export type NightCycleConfig = {
@@ -96,6 +101,11 @@ export function assignNightCycle(
         if (e.unavailableDates.has(day.date)) return false; // 当日が希望休/不可
         // 夜入を置くと翌日は必ず夜明。翌日が希望休なら置けない。
         if (nextDate && e.unavailableDates.has(nextDate)) return false;
+        // 夜勤専従は「希望日のみ」夜勤可 (希望が空なら夜勤なし)。
+        if (e.nightOnly) {
+          if (!e.preferredNightDates.has(day.date)) return false;
+          return true;
+        }
         // 夜勤希望を出している人は「希望日のみ」夜勤可 (希望 = その人が夜勤に入れる日の指定)。
         // 希望を出していない人 (空) は全日ローテーション対象。
         if (e.preferredNightDates.size > 0 && !e.preferredNightDates.has(day.date)) return false;

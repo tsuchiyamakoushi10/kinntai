@@ -80,6 +80,25 @@ describe("assignNightCycle", () => {
     expect(bNightDates).toEqual(["2026-06-01"]);
   });
 
+  it("夜勤専従は希望日のみ夜入 (希望外日には全くローテしない)", () => {
+    // 専従 B は希望が空でない (6/02 のみ) → 6/02 だけ夜入。他日は希望を出していない A が担当。
+    const a = emp("A", 30);
+    const b: NightEmployee = { ...emp("B", 30, [], ["2026-06-02"]), nightOnly: true };
+    const r = assignNightCycle(days(10), [a, b]);
+    const bNightDates = r.assignments
+      .filter((x) => x.employeeId === "B" && x.baseSymbol === "夜入")
+      .map((x) => x.date);
+    expect(bNightDates).toEqual(["2026-06-02"]);
+  });
+
+  it("夜勤専従で希望が空なら夜勤に一切入らない", () => {
+    // 通常従業員は希望が空だと全日ローテ対象だが、専従は希望が無ければ夜勤ゼロ。
+    const b: NightEmployee = { ...emp("B", 30), nightOnly: true };
+    const r = assignNightCycle(days(10), [emp("A", 30), b]);
+    const usedB = r.assignments.some((x) => x.employeeId === "B");
+    expect(usedB).toBe(false);
+  });
+
   it("夜勤不可 (cap 0) は割り当てない", () => {
     const r = assignNightCycle(days(10), [emp("A", 5), emp("X", 0), emp("Y", 0)]);
     const usedX = r.assignments.some((a) => a.employeeId === "X");

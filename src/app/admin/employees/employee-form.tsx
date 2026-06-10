@@ -135,6 +135,24 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
         </Row>
       </Section>
 
+      <Section title="シフト">
+        <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <input
+            type="checkbox"
+            name="nightShiftOnly"
+            defaultChecked={v.nightShiftOnly}
+            className="mt-1 h-5 w-5 rounded border-slate-300"
+          />
+          <span className="flex flex-col gap-0.5 text-sm">
+            <span className="font-medium text-slate-700">夜勤専従</span>
+            <span className="text-xs text-slate-500">
+              シフト希望で夜勤を入れた日だけ夜勤に入り、それ以外の日は自動で休み（公休）になります。
+              ナーシング・ショートの自動作成のみ反映されます。
+            </span>
+          </span>
+        </label>
+      </Section>
+
       <Section title="雇用契約">
         <Row>
           <Field label="入社日" hint="実際に勤務を始めた日">

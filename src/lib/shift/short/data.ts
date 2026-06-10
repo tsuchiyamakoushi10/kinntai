@@ -89,6 +89,7 @@ export async function loadShortGenerateInput(
           jobCategory: true,
           joinedAt: true,
           retiredAt: true,
+          nightShiftOnly: true,
           shiftConstraint: {
             select: { targetMonthlyWorkDays: true, maxNightShiftsPerMonth: true },
           },
@@ -203,6 +204,8 @@ export async function loadShortGenerateInput(
         paidLeaveDates: new Set(paidByEmp.get(e.id) ?? []),
         // 固定配置 (NH の固定番)。指定が無ければ null。
         fixedSymbol: ov?.fixedSymbol ?? null,
+        // 夜勤専従 (従業員マスター)。夜勤希望日のみ夜勤、他は自動で公休。
+        isNightShiftOnly: e.nightShiftOnly,
       };
     });
 
