@@ -11,6 +11,8 @@
  */
 import nodemailer, { type Transporter } from "nodemailer";
 
+import { APP_NAME } from "@/lib/brand";
+
 export type Mail = {
   to: string;
   subject: string;
@@ -38,7 +40,7 @@ function getSmtpTransport(): Transporter {
 }
 
 function fromAddress(): string {
-  const name = process.env.MAIL_FROM_NAME ?? "kinntai";
+  const name = process.env.MAIL_FROM_NAME ?? APP_NAME;
   const addr = process.env.MAIL_FROM_ADDRESS ?? "no-reply@example.com";
   return `"${name}" <${addr}>`;
 }

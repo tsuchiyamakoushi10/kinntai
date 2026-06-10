@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
+import { BrandLogo } from "@/components/brand-logo";
 
 import { LoginForm } from "./login-form";
 
@@ -21,19 +22,25 @@ export default async function LoginPage({ searchParams }: Props) {
   const { from } = await searchParams;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-md">
-        <h1 className="text-2xl font-bold text-slate-900">kinntai にログイン</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          メールアドレスとパスワードを入力してください。
-        </p>
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-orange-50 via-white to-amber-50 p-4">
+      {/* やわらかい装飾 (オレンジの光のにじみ)。 */}
+      <div className="pointer-events-none absolute -top-24 -left-24 size-72 rounded-full bg-orange-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 -bottom-24 size-72 rounded-full bg-amber-200/40 blur-3xl" />
+
+      <div className="relative w-full max-w-sm rounded-3xl border border-white/70 bg-white/90 p-8 shadow-xl shadow-orange-100/60 backdrop-blur">
+        <div className="flex flex-col items-center text-center">
+          <BrandLogo size="lg" />
+          <p className="mt-5 text-sm text-slate-500">
+            メールアドレスとパスワードを入力してください。
+          </p>
+        </div>
         <div className="mt-6">
           <LoginForm from={from ?? ""} />
         </div>
-        <div className="mt-4 text-center text-sm">
+        <div className="mt-5 text-center text-sm">
           <Link
             href="/password-reset"
-            className="text-slate-600 underline-offset-2 hover:underline"
+            className="text-slate-500 underline-offset-2 transition-colors hover:text-orange-600 hover:underline"
           >
             パスワードをお忘れの方はこちら
           </Link>

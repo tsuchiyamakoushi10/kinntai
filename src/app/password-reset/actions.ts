@@ -1,5 +1,6 @@
 "use server";
 
+import { APP_NAME } from "@/lib/brand";
 import { prisma } from "@/lib/db";
 import { sendMail } from "@/lib/mail";
 import { findValidPasswordResetToken, issuePasswordResetToken } from "@/lib/password-reset";
@@ -40,9 +41,9 @@ export async function requestPasswordReset(
     const link = `${base}/password-reset/confirm?token=${encodeURIComponent(rawToken)}`;
     await sendMail({
       to: rawEmail,
-      subject: "[kinntai] パスワード再設定のご案内",
+      subject: `[${APP_NAME}] パスワード再設定のご案内`,
       text: [
-        "kinntai のパスワード再設定リクエストを受け付けました。",
+        `${APP_NAME} のパスワード再設定リクエストを受け付けました。`,
         "",
         "以下のリンクを開いて、新しいパスワードを設定してください。",
         "（このリンクは 30 分で無効になります）",
