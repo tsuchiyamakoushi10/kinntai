@@ -2,6 +2,8 @@
 
 import { useActionState, useMemo, useState } from "react";
 
+import { SHIFT_PREFERENCE_TYPE_LABELS } from "@/lib/employee-labels";
+
 import type { BulkOffFormState } from "./actions";
 
 /** カレンダーで扱う希望種別 (希望休 / 有給 / 夜勤希望)。 */
@@ -25,31 +27,28 @@ type Props = {
 
 const WEEK_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
-const TYPE_LABEL: Record<PrefType, string> = {
-  REQUESTED_OFF: "希望休",
-  PAID_LEAVE: "有給",
-  PREFERRED_NIGHT: "夜勤希望",
-};
-// 勤務表の凡例と色を統一 (希望休=ピンク / 有給=アンバー / 夜勤希望=藍)。
+// 文言は canonical (SHIFT_PREFERENCE_TYPE_LABELS) を参照し、勤務表・凡例とブレないようにする。
+const TYPE_LABEL = SHIFT_PREFERENCE_TYPE_LABELS;
+// 勤務表の凡例と色を統一 (希望休=ピンク / 有給=アンバー / 夜勤希望=藍、濃さ 300)。
 const TYPE_STYLE: Record<PrefType, { sel: string; chip: string }> = {
   REQUESTED_OFF: {
-    sel: "bg-pink-200 font-bold text-pink-900 ring-2 ring-pink-500",
-    chip: "bg-pink-200 text-pink-900",
+    sel: "bg-pink-300 font-bold text-pink-900 ring-2 ring-pink-500",
+    chip: "bg-pink-300 text-pink-900",
   },
   PAID_LEAVE: {
-    sel: "bg-amber-200 font-bold text-amber-900 ring-2 ring-amber-500",
-    chip: "bg-amber-200 text-amber-900",
+    sel: "bg-amber-300 font-bold text-amber-900 ring-2 ring-amber-500",
+    chip: "bg-amber-300 text-amber-900",
   },
   PREFERRED_NIGHT: {
-    sel: "bg-indigo-200 font-bold text-indigo-900 ring-2 ring-indigo-500",
-    chip: "bg-indigo-200 text-indigo-900",
+    sel: "bg-indigo-300 font-bold text-indigo-900 ring-2 ring-indigo-500",
+    chip: "bg-indigo-300 text-indigo-900",
   },
 };
 
 /**
  * 1 社員 × 1 月のカレンダー多選択フォーム。
  * 「塗る種別」(希望休 / 有給) を選び、日付クリックでその種別を付与/解除する (1 日 1 種別)。
- * 保存で月内の希望休・有給をまとめて上書きする (希望夜勤・勤務不可は触らない)。
+ * 保存で月内の希望休・有給をまとめて上書きする (夜勤希望・勤務不可は触らない)。
  */
 export function BulkOffCalendar({
   action,

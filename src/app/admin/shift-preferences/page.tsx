@@ -137,7 +137,7 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
         <div>
           <h1 className="text-2xl font-bold text-slate-900">シフト希望</h1>
           <p className="text-sm text-slate-500">
-            従業員から提出された希望休 / 希望夜勤 / 勤務不可の一覧と承認
+            従業員から提出された希望休 / 夜勤希望 / 勤務不可の一覧と承認
           </p>
         </div>
       </header>
@@ -250,7 +250,7 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold text-slate-800">単発の代理入力</h2>
         <p className="text-xs text-slate-500">
-          1 件だけ追加したい場合はここから。種別で「希望休 / 希望夜勤 / 勤務不可」を選べます。
+          1 件だけ追加したい場合はここから。種別で「希望休 / 夜勤希望 / 勤務不可」を選べます。
           複数日まとめて入れる時は上のカレンダー入力が便利です。
         </p>
         <ProxyPreferenceForm
