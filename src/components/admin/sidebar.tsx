@@ -64,15 +64,31 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-const linkClass = (active: boolean): string =>
-  [
-    "group flex items-center rounded-lg px-3 py-2 text-[13px] transition-colors",
-    active
-      ? "bg-slate-900 font-semibold text-white shadow-sm"
-      : "font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-  ].join(" ");
+const headingClass = "px-3 text-xs font-bold tracking-wide text-slate-400";
 
-const headingClass = "px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400";
+/** 暖色ピル: 大きめ・角丸フル。選択中はオレンジ塗り＋影、通常はやさしいオレンジのホバー。 */
+function NavLink({ item, active }: { item: Item; active: boolean }) {
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      className={[
+        "group flex items-center gap-2.5 rounded-full px-4 py-2.5 text-sm transition-colors",
+        active
+          ? "bg-orange-500 font-bold text-white shadow-sm shadow-orange-200"
+          : "font-medium text-slate-600 hover:bg-orange-50 hover:text-orange-700",
+      ].join(" ")}
+    >
+      <span
+        className={[
+          "size-1.5 shrink-0 rounded-full transition-colors",
+          active ? "bg-white" : "bg-slate-300 group-hover:bg-orange-400",
+        ].join(" ")}
+      />
+      {item.label}
+    </Link>
+  );
+}
 
 export function AdminSidebar() {
   const pathname = usePathname();
@@ -83,17 +99,10 @@ export function AdminSidebar() {
         section.collapsible ? (
           <CollapsibleSection key={section.title} section={section} pathname={pathname} />
         ) : (
-          <div key={section.title ?? `top-${i}`} className="flex flex-col gap-1">
+          <div key={section.title ?? `top-${i}`} className="flex flex-col gap-1.5">
             {section.title && <p className={`mb-1 ${headingClass}`}>{section.title}</p>}
             {section.items.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                aria-current={isActive(pathname, item.href) ? "page" : undefined}
-                className={linkClass(isActive(pathname, item.href))}
-              >
-                {item.label}
-              </Link>
+              <NavLink key={item.label} item={item} active={isActive(pathname, item.href)} />
             ))}
           </div>
         ),
@@ -109,26 +118,19 @@ function CollapsibleSection({ section, pathname }: { section: Section; pathname:
   const expanded = open || childActive;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={expanded}
-        className={`mb-1 flex items-center justify-between rounded-md py-1 ${headingClass} transition-colors hover:text-slate-600`}
+        className={`mb-1 flex items-center justify-between rounded-md py-1 ${headingClass} transition-colors hover:text-orange-500`}
       >
         <span>{section.title}</span>
         <Chevron open={expanded} />
       </button>
       {expanded &&
         section.items.map((item) => (
-          <Link
-            key={item.label}
-            href={item.href}
-            aria-current={isActive(pathname, item.href) ? "page" : undefined}
-            className={linkClass(isActive(pathname, item.href))}
-          >
-            {item.label}
-          </Link>
+          <NavLink key={item.label} item={item} active={isActive(pathname, item.href)} />
         ))}
     </div>
   );
@@ -140,7 +142,7 @@ function Chevron({ open }: { open: boolean }) {
       viewBox="0 0 20 20"
       fill="currentColor"
       aria-hidden
-      className={`size-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+      className={`size-3.5 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
     >
       <path d="M7 4.5a.75.75 0 0 1 1.28-.53l5 5a.75.75 0 0 1 0 1.06l-5 5A.75.75 0 0 1 7 14.5v-10Z" />
     </svg>
