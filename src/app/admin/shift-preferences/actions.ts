@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { parseDateInputValue } from "@/lib/format";
+import type { BulkOffFormState } from "@/lib/shift-preference-bulk";
 
 async function updateStatus(preferenceId: string, next: ShiftPreferenceStatus): Promise<void> {
   const session = await requireAdmin();
@@ -121,11 +122,6 @@ export async function deleteShiftPreference(preferenceId: string): Promise<void>
   await prisma.shiftPreference.delete({ where: { id: preferenceId } });
   revalidatePath("/admin/shift-preferences");
 }
-
-export type BulkOffFormState = {
-  error?: string;
-  saved?: number;
-};
 
 /**
  * カレンダー一括入力。

@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { STAFF_SHIFT_PREFERENCE_TYPES } from "@/lib/employee-labels";
 import { parseDateInputValue } from "@/lib/format";
+import type { BulkOffFormState } from "@/lib/shift-preference-bulk";
 
 export type ShiftPreferenceFormValues = {
   targetDate: string;
@@ -82,6 +83,85 @@ export async function createShiftPreference(
 
   revalidatePath("/me/shift-preferences");
   return {};
+}
+
+/**
+ * 本人によるカレンダー一括入力。管理側の `bulkSetMonthlyOffPreferences` と同じ操作だが、
+ * - employeeId はセッションから取得（なりすまし防止）。
+ * - 提出は `status = PENDING`（管理者承認で確定）。管理者の代理入力は ACCEPTED で作るのと対比。
+ *
+ * 指定月の 希望休 / 有給 / 夜勤希望 を送信状態で「上書き」する（当月のこれら3種別を消して入れ直し）。
+ * 勤務不可 (UNAVAILABLE) は触らない。
+ */
+export async function bulkSetMyMonthlyPreferences(
+  _prev: BulkOffFormState,
+  formData: FormData,
+): Promise<BulkOffFormState> {
+  const session = await requireSession();
+  const userId = session.user.id;
+  const employeeId = session.user.employeeId;
+  if (!employeeId) {
+    return { error: "従業員情報が紐づいていないため希望を出せません。" };
+  }
+
+  const ym = String(formData.get("ym") ?? "");
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) {
+    return { error: "対象月が不正です。" };
+  }
+
+  const parseDates = (raw: string): string[] =>
+    raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && s.startsWith(`${ym}-`));
+
+  const offDates = parseDates(String(formData.get("requestedOff") ?? ""));
+  const paidDates = parseDates(String(formData.get("paidLeave") ?? ""));
+  const nightDates = parseDates(String(formData.get("preferredNight") ?? ""));
+
+  const [yStr, mStr] = ym.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const monthStart = new Date(`${ym}-01T00:00:00.000Z`);
+  const nextYm = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+  const monthEnd = new Date(`${nextYm}-01T00:00:00.000Z`);
+
+  const rows = [
+    ...offDates.map((d) => ({ date: d, type: ShiftPreferenceType.REQUESTED_OFF })),
+    ...paidDates.map((d) => ({ date: d, type: ShiftPreferenceType.PAID_LEAVE })),
+    ...nightDates.map((d) => ({ date: d, type: ShiftPreferenceType.PREFERRED_NIGHT })),
+  ];
+
+  await prisma.$transaction(async (tx) => {
+    await tx.shiftPreference.deleteMany({
+      where: {
+        employeeId,
+        preferenceType: {
+          in: [
+            ShiftPreferenceType.REQUESTED_OFF,
+            ShiftPreferenceType.PAID_LEAVE,
+            ShiftPreferenceType.PREFERRED_NIGHT,
+          ],
+        },
+        targetDate: { gte: monthStart, lt: monthEnd },
+      },
+    });
+    if (rows.length > 0) {
+      await tx.shiftPreference.createMany({
+        data: rows.map((r) => ({
+          employeeId,
+          targetDate: new Date(`${r.date}T00:00:00.000Z`),
+          preferenceType: r.type,
+          status: ShiftPreferenceStatus.PENDING,
+          createdById: userId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+  });
+
+  revalidatePath("/me/shift-preferences");
+  return { saved: rows.length };
 }
 
 /**

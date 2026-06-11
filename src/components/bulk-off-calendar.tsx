@@ -3,8 +3,7 @@
 import { useActionState, useMemo, useState } from "react";
 
 import { SHIFT_PREFERENCE_TYPE_LABELS } from "@/lib/employee-labels";
-
-import type { BulkOffFormState } from "./actions";
+import type { BulkOffFormState } from "@/lib/shift-preference-bulk";
 
 /** カレンダーで扱う希望種別 (希望休 / 有給 / 夜勤希望)。 */
 type PrefType = "REQUESTED_OFF" | "PAID_LEAVE" | "PREFERRED_NIGHT";

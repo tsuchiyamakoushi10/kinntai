@@ -16,6 +16,9 @@ import {
   SHIFT_PREFERENCE_TYPE_LABELS,
 } from "@/lib/employee-labels";
 import { formatDate, toDateInputValue } from "@/lib/format";
+import { NIGHT_OFFICE_CODES } from "@/lib/shift-preference-bulk";
+
+import { BulkOffCalendar } from "@/components/bulk-off-calendar";
 
 import {
   acceptShiftPreference,
@@ -25,7 +28,6 @@ import {
   rejectShiftPreference,
   resetShiftPreference,
 } from "./actions";
-import { BulkOffCalendar } from "./bulk-off-calendar";
 import { ProxyPreferenceForm } from "./proxy-form";
 
 export const dynamic = "force-dynamic";
@@ -93,9 +95,7 @@ export default async function AdminShiftPreferencesPage({ searchParams }: Props)
     rejected: preferences.filter((p) => p.status === "REJECTED").length,
   };
 
-  // 夜勤のある拠点 (夜勤希望をカレンダーで出す対象)。
-  const NIGHT_OFFICE_CODES = new Set(["SHO-CENTER", "NRS-CENTER"]);
-
+  // 夜勤のある拠点 (夜勤希望をカレンダーで出す対象) は NIGHT_OFFICE_CODES を参照。
   const employeeOptions = employees.map((e) => ({
     id: e.id,
     employeeCode: e.employeeCode,
