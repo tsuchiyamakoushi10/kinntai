@@ -30,9 +30,7 @@ export default async function LoginPage({ searchParams }: Props) {
       <div className="relative w-full max-w-sm rounded-3xl border border-white/70 bg-white/90 p-8 shadow-xl shadow-pink-100/60 backdrop-blur">
         <div className="flex flex-col items-center text-center">
           <BrandLogo size="lg" />
-          <p className="mt-5 text-sm text-slate-500">
-            メールアドレスとパスワードを入力してください。
-          </p>
+          <p className="mt-5 text-sm text-slate-500">IDとパスワードを入力してください。</p>
         </div>
         <div className="mt-6">
           <LoginForm from={from ?? ""} />
