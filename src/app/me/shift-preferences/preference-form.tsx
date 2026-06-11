@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 
-import { SHIFT_PREFERENCE_TYPE_OPTIONS } from "@/lib/employee-labels";
+import { STAFF_SHIFT_PREFERENCE_TYPE_OPTIONS } from "@/lib/employee-labels";
 
 import type { ShiftPreferenceFormState } from "./actions";
 
@@ -55,7 +55,7 @@ export function PreferenceForm({ action, defaultDate }: Props) {
           required
           className="rounded-md border border-slate-300 px-3 py-2"
         >
-          {SHIFT_PREFERENCE_TYPE_OPTIONS.map((o) => (
+          {STAFF_SHIFT_PREFERENCE_TYPE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>

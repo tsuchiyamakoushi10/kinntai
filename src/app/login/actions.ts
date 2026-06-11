@@ -17,24 +17,26 @@ export type LoginState = {
  * - 失敗時は state.error にユーザー向けメッセージを返す。専門用語を避ける。
  */
 export async function loginAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  const email = String(formData.get("email") ?? "").trim();
+  const identifier = String(formData.get("identifier") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const from = String(formData.get("from") ?? "");
 
-  if (!email || !password) {
-    return { error: "メールアドレスとパスワードを入力してください。" };
+  if (!identifier || !password) {
+    return { error: "IDとパスワードを入力してください。" };
   }
 
   // Server Action → "/" → middleware で /admin・/me に振り直す経路だと、Next.js
   // 15 + Auth.js v5 の RSC ナビゲーションで URL バーが "/" のまま残るケースがある。
   // ロールが分かれば直接そのホームに飛ばせるので、認証前に role だけ前引きする。
   // パスワードはここでは検証しないので、認証の判定は signIn 側に任せる。
+  // loginId / email のどちらでも照合する (authorize と同じ優先順位)。
   const target =
     from ||
     (await (async () => {
+      const key = identifier.toLowerCase();
       const user = await prisma.user
-        .findUnique({
-          where: { email: email.toLowerCase() },
+        .findFirst({
+          where: { OR: [{ loginId: key }, { email: key }] },
           select: { role: true, isActive: true },
         })
         .catch(() => null);
@@ -44,7 +46,7 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
 
   try {
     await signIn("credentials", {
-      email,
+      identifier,
       password,
       redirectTo: target,
     });
@@ -53,7 +55,7 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
     // Auth.js は成功時にも `NEXT_REDIRECT` を throw するため、AuthError 以外は
     // 再 throw して Next.js に処理させる必要がある。
     if (e instanceof AuthError) {
-      return { error: "メールアドレスまたはパスワードが正しくありません。" };
+      return { error: "IDまたはパスワードが正しくありません。" };
     }
     throw e;
   }

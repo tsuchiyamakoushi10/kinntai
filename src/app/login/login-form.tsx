@@ -18,11 +18,13 @@ export function LoginForm({ from }: Props) {
       <input type="hidden" name="from" value={from} />
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-slate-700">メールアドレス</span>
+        <span className="font-medium text-slate-700">ID（職員番号またはメール）</span>
         <input
-          type="email"
-          name="email"
-          autoComplete="email"
+          type="text"
+          name="identifier"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
           required
           className="rounded-lg border border-slate-300 px-3 py-2.5 text-base transition focus:border-pink-400 focus:ring-2 focus:ring-pink-200 focus:outline-none"
         />

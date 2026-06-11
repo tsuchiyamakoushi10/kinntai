@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireSession } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
+import { STAFF_SHIFT_PREFERENCE_TYPES } from "@/lib/employee-labels";
 import { parseDateInputValue } from "@/lib/format";
 
 export type ShiftPreferenceFormValues = {
@@ -53,7 +54,8 @@ export async function createShiftPreference(
   if (!targetDate) {
     return { error: "対象日を正しく入力してください。", values };
   }
-  if (!(values.preferenceType in ShiftPreferenceType)) {
+  // 本人が出せるのは 希望休 / 夜勤希望 / 有給 のみ（勤務不可は管理者代理入力）。
+  if (!STAFF_SHIFT_PREFERENCE_TYPES.includes(values.preferenceType as ShiftPreferenceType)) {
     return { error: "希望種別を選択してください。", values };
   }
   if (values.note.length > 500) {

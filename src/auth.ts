@@ -27,18 +27,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
       credentials: {
-        email: { label: "メールアドレス", type: "email" },
+        identifier: { label: "ID（職員番号またはメール）", type: "text" },
         password: { label: "パスワード", type: "password" },
       },
       async authorize(raw) {
-        const email = typeof raw.email === "string" ? raw.email.trim().toLowerCase() : "";
+        const identifier = typeof raw.identifier === "string" ? raw.identifier.trim() : "";
         const password = typeof raw.password === "string" ? raw.password : "";
-        if (!email || !password) return null;
+        if (!identifier || !password) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { email },
-          include: { employee: true },
-        });
+        // loginId (例 "e0001") を優先し、無ければメール (小文字化) で照合する。
+        // どちらか一方でもログインできるようにする。
+        const user =
+          (await prisma.user.findUnique({
+            where: { loginId: identifier.toLowerCase() },
+            include: { employee: true },
+          })) ??
+          (await prisma.user.findUnique({
+            where: { email: identifier.toLowerCase() },
+            include: { employee: true },
+          }));
         if (!user || !user.isActive) return null;
 
         const ok = await verifyPassword(password, user.passwordHash);
@@ -46,7 +53,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         return {
           id: user.id,
-          email: user.email,
+          email: user.email ?? undefined,
           name: user.employee ? `${user.employee.lastName} ${user.employee.firstName}` : "管理者",
           role: user.role,
           employeeId: user.employeeId,

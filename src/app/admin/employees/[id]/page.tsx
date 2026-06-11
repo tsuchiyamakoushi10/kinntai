@@ -25,10 +25,12 @@ import { createSignedToken } from "@/lib/storage";
 
 import {
   clearEmployeeTabletPin,
+  reissueCredential,
   returnEmployeeFromLeave,
   setEmployeeOnLeave,
   setEmployeeTabletPin,
   unretireEmployee,
+  type ReissueCredentialState,
   type TabletPinFormState,
 } from "../actions";
 import { DEFAULT_INITIAL_PASSWORD } from "../constants";
@@ -36,6 +38,7 @@ import { upsertShiftConstraint } from "./constraints/actions";
 import { ConstraintForm } from "./constraints/constraint-form";
 import { deleteEmployeeDocument, uploadEmployeeDocument } from "./documents/actions";
 import { DocumentUploadForm } from "./documents/upload-form";
+import { LoginCredentialForm } from "./login-credential-form";
 import { TabletPinForm } from "./tablet-pin-form";
 import { createTrainingRecord, deleteTrainingRecord } from "./trainings/actions";
 import { TrainingForm } from "./trainings/training-form";
@@ -75,7 +78,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
     where: { id },
     include: {
       office: { select: { id: true, code: true, name: true } },
-      user: { select: { email: true, pinCodeHash: true } },
+      user: { select: { email: true, loginId: true, pinCodeHash: true } },
       qualifications: { orderBy: { acquiredOn: "asc" } },
       employmentContracts: { orderBy: { contractStartOn: "desc" } },
       documents: {
@@ -268,6 +271,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
           isRetired={isRetired}
           setPinAction={setEmployeeTabletPin.bind(null, employee.id)}
           clearPinAction={clearEmployeeTabletPin.bind(null, employee.id)}
+          reissueAction={reissueCredential.bind(null, employee.id)}
         />
       )}
 
@@ -310,7 +314,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: Props
 type EmployeeWithRelations = Prisma.EmployeeGetPayload<{
   include: {
     office: { select: { id: true; code: true; name: true } };
-    user: { select: { email: true; pinCodeHash: true } };
+    user: { select: { email: true; loginId: true; pinCodeHash: true } };
     qualifications: true;
     employmentContracts: true;
     documents: true;
@@ -331,11 +335,16 @@ function BasicTab({
   isRetired,
   setPinAction,
   clearPinAction,
+  reissueAction,
 }: {
   employee: EmployeeWithRelations;
   isRetired: boolean;
   setPinAction: (state: TabletPinFormState, formData: FormData) => Promise<TabletPinFormState>;
   clearPinAction: () => Promise<void>;
+  reissueAction: (
+    state: ReissueCredentialState,
+    formData: FormData,
+  ) => Promise<ReissueCredentialState>;
 }) {
   const fullName = `${employee.lastName} ${employee.firstName}`;
   const fullKana = `${employee.lastNameKana} ${employee.firstNameKana}`;
@@ -354,6 +363,7 @@ function BasicTab({
       </Card>
 
       <Card title="連絡先">
+        <InfoRow label="ログインID" value={employee.user?.loginId ?? "未発行"} />
         <InfoRow label="メール" value={employee.user?.email ?? "—"} />
         <InfoRow label="電話" value={employee.phone ?? "—"} />
       </Card>
@@ -431,6 +441,18 @@ function BasicTab({
           </ul>
         )}
       </Card>
+
+      {!isRetired && (
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-semibold text-slate-800">ログイン（スマホ申請用）</h2>
+          <div className="mt-3">
+            <LoginCredentialForm
+              loginId={employee.user?.loginId ?? null}
+              reissueAction={reissueAction}
+            />
+          </div>
+        </section>
+      )}
 
       {ATTENDANCE_ENABLED && (
         <section className="rounded-xl border border-slate-200 bg-white p-5">

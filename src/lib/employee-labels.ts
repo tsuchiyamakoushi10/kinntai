@@ -110,6 +110,24 @@ export const SHIFT_PREFERENCE_TYPE_OPTIONS: ReadonlyArray<{
   label: SHIFT_PREFERENCE_TYPE_LABELS[v],
 }));
 
+/**
+ * 職員がスマホから自分で申請できる種別（希望休・夜勤希望・有給）。
+ * 「勤務不可」は管理者が代理入力する運用のため、本人向けの選択肢からは除外する。
+ */
+export const STAFF_SHIFT_PREFERENCE_TYPES: ReadonlyArray<ShiftPreferenceType> = [
+  "REQUESTED_OFF",
+  "PREFERRED_NIGHT",
+  "PAID_LEAVE",
+];
+
+export const STAFF_SHIFT_PREFERENCE_TYPE_OPTIONS: ReadonlyArray<{
+  value: ShiftPreferenceType;
+  label: string;
+}> = STAFF_SHIFT_PREFERENCE_TYPES.map((v) => ({
+  value: v,
+  label: SHIFT_PREFERENCE_TYPE_LABELS[v],
+}));
+
 export const SHIFT_PREFERENCE_STATUS_LABELS: Record<ShiftPreferenceStatus, string> = {
   PENDING: "承認待ち",
   ACCEPTED: "承認済",

@@ -75,6 +75,12 @@ export default async function EmployeeListPage({ searchParams }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <Link
+            href="/admin/employees/credentials"
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            ログイン発行
+          </Link>
+          <Link
             href="/admin/employees/retired"
             className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >

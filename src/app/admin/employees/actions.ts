@@ -13,6 +13,7 @@ import { redirect } from "next/navigation";
 
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
+import { issueCredentialForEmployee } from "@/lib/issue-login-credential";
 import { hashPassword } from "@/lib/password";
 import { hashPin, isValidPinFormat } from "@/lib/pin";
 import { parseDateInputValue } from "@/lib/format";
@@ -490,6 +491,41 @@ export async function setEmployeeTabletPin(
 
   revalidatePath(`/admin/employees/${employeeId}`);
   return { message: "暗証番号を更新しました。" };
+}
+
+// =============================================================================
+// ログイン資格情報の個別再発行
+// =============================================================================
+
+export type ReissueCredentialState = {
+  error?: string;
+  /** 発行できた場合のみ。平文初期パスワードを含むため一度だけ表示する。 */
+  issued?: { loginId: string; initialPassword: string };
+};
+
+/**
+ * 1 名分のログインID / 初期パスワードを再発行する（パスワード失念時の救済）。
+ *
+ * loginId は既存があれば維持し、パスワードのみ再生成する。結果は state で返し、
+ * 詳細画面で一度だけ表示する（DB には平文を保存しない）。
+ */
+export async function reissueCredential(
+  employeeId: string,
+  // useActionState 用に (prevState, formData) の形を満たす必要があるが、
+  // この発行操作は入力を取らないため両方とも参照しない。
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _prev: ReissueCredentialState,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _formData: FormData,
+): Promise<ReissueCredentialState> {
+  await requireAdmin();
+  try {
+    const { loginId, initialPassword } = await issueCredentialForEmployee(employeeId);
+    revalidatePath(`/admin/employees/${employeeId}`);
+    return { issued: { loginId, initialPassword } };
+  } catch {
+    return { error: "ログインの発行に失敗しました。" };
+  }
 }
 
 /** 暗証番号を無効化する（NULL にする）。タブレット打刻不可になる。 */
