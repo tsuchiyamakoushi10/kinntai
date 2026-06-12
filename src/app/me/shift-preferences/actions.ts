@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { STAFF_SHIFT_PREFERENCE_TYPES } from "@/lib/employee-labels";
 import { parseDateInputValue } from "@/lib/format";
 import type { BulkOffFormState } from "@/lib/shift-preference-bulk";
+import { isWithinRequestedOffLimit, maxRequestedOffPerMonth } from "@/lib/shift-preference-limit";
 
 export type ShiftPreferenceFormValues = {
   targetDate: string;
@@ -61,6 +62,34 @@ export async function createShiftPreference(
   }
   if (values.note.length > 500) {
     return { error: "メモは 500 文字以内で入力してください。", values };
+  }
+
+  // 希望休のときだけ、当月の既存希望休 + 今回 1 件が雇用形態ごとの月上限を超えないか確認する。
+  if (values.preferenceType === ShiftPreferenceType.REQUESTED_OFF) {
+    const y = targetDate.getUTCFullYear();
+    const m = targetDate.getUTCMonth();
+    const monthStart = new Date(Date.UTC(y, m, 1));
+    const monthEnd = new Date(Date.UTC(y, m + 1, 1));
+    const [employee, existingOff] = await Promise.all([
+      prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: { employmentType: true },
+      }),
+      prisma.shiftPreference.count({
+        where: {
+          employeeId,
+          preferenceType: ShiftPreferenceType.REQUESTED_OFF,
+          targetDate: { gte: monthStart, lt: monthEnd },
+        },
+      }),
+    ]);
+    if (!isWithinRequestedOffLimit(existingOff + 1, employee?.employmentType ?? null)) {
+      const limit = maxRequestedOffPerMonth(employee?.employmentType ?? null);
+      return {
+        error: `この月の希望休は既に上限（${limit} 日）です。他の日を取り消してから追加してください。`,
+        values,
+      };
+    }
   }
 
   try {
@@ -118,6 +147,19 @@ export async function bulkSetMyMonthlyPreferences(
   const offDates = parseDates(String(formData.get("requestedOff") ?? ""));
   const paidDates = parseDates(String(formData.get("paidLeave") ?? ""));
   const nightDates = parseDates(String(formData.get("preferredNight") ?? ""));
+
+  // 希望休 (REQUESTED_OFF) は雇用形態ごとの月上限を超えられない（有給・夜勤希望は対象外）。
+  // クライアント側でも警告するが、改ざん・直リクエスト対策にサーバーでも必ず弾く。
+  const employee = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: { employmentType: true },
+  });
+  if (!isWithinRequestedOffLimit(offDates.length, employee?.employmentType ?? null)) {
+    const limit = maxRequestedOffPerMonth(employee?.employmentType ?? null);
+    return {
+      error: `希望休は月 ${limit} 日までです（選択 ${offDates.length} 日）。減らしてから保存してください。`,
+    };
+  }
 
   const [yStr, mStr] = ym.split("-");
   const y = Number(yStr);

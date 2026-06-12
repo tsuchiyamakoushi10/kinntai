@@ -17,6 +17,7 @@ import {
 } from "@/lib/employee-labels";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { NIGHT_OFFICE_CODES } from "@/lib/shift-preference-bulk";
+import { maxRequestedOffPerMonth } from "@/lib/shift-preference-limit";
 
 import { bulkSetMyMonthlyPreferences } from "./actions";
 
@@ -44,6 +45,7 @@ export default async function MyShiftPreferencesPage({ searchParams }: Props) {
         select: {
           lastName: true,
           firstName: true,
+          employmentType: true,
           office: { select: { code: true } },
         },
       })
@@ -68,6 +70,7 @@ export default async function MyShiftPreferencesPage({ searchParams }: Props) {
 
   const allowNight = employee?.office?.code != null && NIGHT_OFFICE_CODES.has(employee.office.code);
   const employeeName = employee ? `${employee.lastName} ${employee.firstName}` : "";
+  const maxRequestedOff = maxRequestedOffPerMonth(employee?.employmentType ?? null);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col gap-5 bg-slate-50 p-5">
@@ -113,6 +116,7 @@ export default async function MyShiftPreferencesPage({ searchParams }: Props) {
             firstWeekday={firstWeekday}
             initialMarks={initialMarks}
             allowNight={allowNight}
+            maxRequestedOff={maxRequestedOff}
           />
 
           <section className="rounded-2xl bg-white p-5 shadow-sm">

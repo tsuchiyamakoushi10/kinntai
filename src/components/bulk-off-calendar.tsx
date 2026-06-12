@@ -22,6 +22,11 @@ type Props = {
   initialMarks: ReadonlyArray<Mark>;
   /** 夜勤のある拠点 (ショート/NRS) のとき true。夜勤希望の種別を出す。 */
   allowNight?: boolean;
+  /**
+   * 希望休 (REQUESTED_OFF) の月あたり上限日数。職員本人の入力画面でだけ渡す。
+   * 未指定 (管理者の代理入力) のときは上限なし＝従来どおり自由に入力できる。
+   */
+  maxRequestedOff?: number;
 };
 
 const WEEK_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -58,6 +63,7 @@ export function BulkOffCalendar({
   firstWeekday,
   initialMarks,
   allowNight = false,
+  maxRequestedOff,
 }: Props) {
   const [marks, setMarks] = useState<Map<string, PrefType>>(
     () => new Map(initialMarks.map((m) => [m.date, m.type])),
@@ -85,6 +91,8 @@ export function BulkOffCalendar({
     () => [...marks.values()].filter((t) => t === "REQUESTED_OFF").length,
     [marks],
   );
+  // 希望休が上限超過か。maxRequestedOff 未指定 (管理者代理) のときは常に false。
+  const overOffLimit = maxRequestedOff !== undefined && offCount > maxRequestedOff;
   const paidCount = useMemo(
     () => [...marks.values()].filter((t) => t === "PAID_LEAVE").length,
     [marks],
@@ -142,7 +150,8 @@ export function BulkOffCalendar({
             {employeeName} さんの希望休 / 有給{allowNight ? " / 夜勤希望" : ""}
           </p>
           <p className="text-xs text-slate-500">
-            {formatYm(ym)} ／ 希望休 {offCount} 日・有給 {paidCount} 日
+            {formatYm(ym)} ／ 希望休 {offCount}
+            {maxRequestedOff !== undefined ? `/${maxRequestedOff}` : ""} 日・有給 {paidCount} 日
             {allowNight ? `・夜勤希望 ${nightCount} 日` : ""}
           </p>
         </div>
@@ -157,7 +166,7 @@ export function BulkOffCalendar({
           </button>
           <button
             type="submit"
-            disabled={pending}
+            disabled={pending || overOffLimit}
             className="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
           >
             {pending ? "保存中…" : "保存"}
@@ -188,6 +197,12 @@ export function BulkOffCalendar({
         })}
       </div>
 
+      {overOffLimit && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          希望休は月 {maxRequestedOff} 日までです（現在 {offCount} 日）。
+          {offCount - maxRequestedOff!} 日減らすと保存できます。
+        </p>
+      )}
       {state.error && (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {state.error}
