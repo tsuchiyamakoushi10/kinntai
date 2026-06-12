@@ -77,7 +77,11 @@ export async function loadShortGenerateInput(
   const rangeEnd = new Date(`${lastDate}T00:00:00.000Z`);
   rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
 
-  const [employeesRaw, demandsRaw, patternsRaw, prefsRaw, nightPrefsRaw, paidPrefsRaw] =
+  // 前月末の日付 (夜勤の月またぎ引き継ぎに使う)。targetMonth の月 (1始まり) の 0 日 = 前月末。
+  const ymMatch = /^(\d{4})-(\d{2})$/.exec(targetMonth)!;
+  const prevMonthLastDate = new Date(Date.UTC(Number(ymMatch[1]), Number(ymMatch[2]) - 1, 0));
+
+  const [employeesRaw, demandsRaw, patternsRaw, prefsRaw, nightPrefsRaw, paidPrefsRaw, carryRaw] =
     await Promise.all([
       prisma.employee.findMany({
         where: { officeId, employmentStatus: "ACTIVE", employmentType: { not: null } },
@@ -141,6 +145,11 @@ export async function loadShortGenerateInput(
           employee: { officeId },
         },
         select: { employeeId: true, targetDate: true },
+      }),
+      // 前月末の確定シフト (夜勤の月またぎ引き継ぎ用)。前月末が夜入の人は当月1日に夜明を置く。
+      prisma.shift.findMany({
+        where: { officeId, workDate: prevMonthLastDate },
+        select: { employeeId: true, shiftPattern: { select: { shiftKind: true } } },
       }),
     ]);
 
@@ -238,5 +247,15 @@ export async function loadShortGenerateInput(
     ]),
   );
 
-  return { days, employees, demandByDayKind, master, config };
+  // 前月末の夜勤から当月1日への引き継ぎ。前月末が夜入 → 当月1日に夜明 (occupied + 翌日公休)。
+  // 前月末が夜明 → 当月1日は公休が望ましい。退職等で当月の対象外なら night-cycle 側で無視される。
+  const owesNightOutOnFirstDay = new Set<string>();
+  const preferredOffOnFirstDay = new Set<string>();
+  for (const s of carryRaw) {
+    if (s.shiftPattern.shiftKind === "NIGHT_IN") owesNightOutOnFirstDay.add(s.employeeId);
+    else if (s.shiftPattern.shiftKind === "NIGHT_OUT") preferredOffOnFirstDay.add(s.employeeId);
+  }
+  const carryover = { owesNightOutOnFirstDay, preferredOffOnFirstDay };
+
+  return { days, employees, demandByDayKind, master, config, carryover };
 }

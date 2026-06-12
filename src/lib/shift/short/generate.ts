@@ -30,6 +30,7 @@ import {
 import {
   assignNightCycle,
   DEFAULT_NIGHT_CYCLE_CONFIG,
+  type NightCarryover,
   type NightCycleConfig,
   type NightDay,
   type NightEmployee,
@@ -150,6 +151,8 @@ export type GenerateShortInput = {
   /** 記号 → 午前/午後カウント (ShiftPattern.am/pm_count 由来)。 */
   master: SymbolMaster;
   config?: ShortConfig;
+  /** 前月からの夜勤引き継ぎ (前月末 夜入→当月1日 夜明 等)。無ければ引き継ぎなし。 */
+  carryover?: NightCarryover;
 };
 
 /** 1 セルの割当 (公休・夜入・夜明も含む)。 */
@@ -219,8 +222,10 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
     nightOnly: e.isNightShiftOnly ?? false,
     // 夜勤チェッカーも「希望日まで」しか夜勤に入れない (希望外日は増やさない)。
     nightRequestOnly: e.isNightRequestOnly ?? false,
+    // 月の総勤務日数のハード上限。夜勤コマもこれを消費する (超える夜勤は置かない)。
+    targetWorkDays: e.targetWorkDays,
   }));
-  const night = assignNightCycle(nightDays, nightEmployees, config.night);
+  const night = assignNightCycle(nightDays, nightEmployees, config.night, input.carryover);
 
   // 夜セルを引きやすい形に: "employeeId|date" -> baseSymbol
   const nightCellByKey = new Map<string, string>();
@@ -231,6 +236,18 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
   // ── Phase 3〜5: 日中を埋める (デイと同じ。ただし夜勤セルを尊重) ────────────
   const workDays = new Map<string, number>(employees.map((e) => [e.id, 0]));
   const consecutive = new Map<string, number>(employees.map((e) => [e.id, 0]));
+
+  // 月の総勤務日数のハード上限 (目標日数)。夜勤は先に確定済なので、日中の出勤予算 =
+  // 目標日数 - その人の夜勤コマ数 (夜入+夜明)。これを超えて日中に入れない (= 総勤務が目標を
+  // 超えない)。予算が尽きたら不足のまま (coverage で赤表示 → 人が手動調整)。
+  const nightDaysTotal = new Map<string, number>(employees.map((e) => [e.id, 0]));
+  for (const a of night.assignments) {
+    nightDaysTotal.set(a.employeeId, (nightDaysTotal.get(a.employeeId) ?? 0) + 1);
+  }
+  const dayBudget = (e: ShortEmployee): number =>
+    Math.max(0, e.targetWorkDays - (nightDaysTotal.get(e.id) ?? 0));
+  const dayWorkDays = new Map<string, number>(employees.map((e) => [e.id, 0]));
+  const withinDayBudget = (e: ShortEmployee): boolean => dayWorkDays.get(e.id)! < dayBudget(e);
 
   const assignments: ShortAssignment[] = [];
   const dayResults: ShortDayResult[] = [];
@@ -287,7 +304,8 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
         !e.unavailableDates.has(day.date) &&
         !e.paidLeaveDates.has(day.date) &&
         !night.preferredOff.has(`${e.id}|${day.date}`) &&
-        consecutive.get(e.id)! < config.maxConsecutiveDays;
+        consecutive.get(e.id)! < config.maxConsecutiveDays &&
+        withinDayBudget(e); // 月の総勤務日数 (目標) を超えない (ハード上限)
 
       // Phase 0: 相談員・看護師を必要数だけ最優先で確保 (上限内・常勤/非常勤問わず)。
       const guarantee = (need: number, pred: (e: ShortEmployee) => boolean): void => {
@@ -328,7 +346,8 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
             occupiedByNight.has(e.id) ||
             e.unavailableDates.has(day.date) ||
             e.paidLeaveDates.has(day.date) ||
-            consecutive.get(e.id)! >= config.maxConsecutiveDays;
+            consecutive.get(e.id)! >= config.maxConsecutiveDays ||
+            !withinDayBudget(e); // 月の総勤務日数 (目標) を超えてまで相談員を出さない
           const fallback = employees
             .filter(
               (e) => e.isCounselor && !e.isNightShiftOnly && !today.has(e.id) && !hardBlocked(e),
@@ -430,6 +449,9 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
         assignments.push({ employeeId: e.id, date: day.date, baseSymbol: work });
         workDays.set(e.id, workDays.get(e.id)! + 1);
         consecutive.set(e.id, consecutive.get(e.id)! + 1);
+        // 日中(夜勤以外)の出勤だけ日中予算を消費する。夜勤コマは予算計算で別途差し引き済。
+        const isNight = work === config.night.nightInSymbol || work === config.night.nightOutSymbol;
+        if (!isNight) dayWorkDays.set(e.id, dayWorkDays.get(e.id)! + 1);
       } else {
         // 有給希望日は有休、それ以外 (希望休/勤務不可/休業日/配置なし) は公休。
         const symbol = e.paidLeaveDates.has(day.date)

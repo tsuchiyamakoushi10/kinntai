@@ -185,18 +185,23 @@ describe("generateShort", () => {
     }
   });
 
-  it("不足日があるのに常勤を休ませない (ペース到達でも不足なら出す)", () => {
+  it("常勤も月目標日数 (ハード上限) は超えない (不足は赤表示→手動調整)", () => {
     const d = days(10);
     const demand: Partial<Record<DayKind, ShortDemand>> = {
       WEEKDAY: { am: 3, pm: 3, counselorAm: 0, counselorPm: 0, nurseAm: 0, nursePm: 0, nightIn: 0 },
     };
-    // 目標を低め(3日)に設定。ペース配分だけだと数日で全員が目標到達 → 不足日に常勤が休む。
-    // 安全フィルにより、不足が残る日はペースを無視して常勤を出すので毎日 AM3 を満たす。
+    // 目標を低め(3日)に設定。4名×3日=12人日しか出せず、10日×AM3=30人日には足りない。
+    // 以前は不足を埋めるため目標を超えて出していたが、いまは目標がハード上限 → 超えない。
     const emps = ["A", "B", "C", "D"].map((c) => emp(c, { targetWorkDays: 3 }));
     const r = generateShort(input(d, emps, demand));
-    for (const day of r.days) {
-      expect(day.coverage!.presence.am).toBeGreaterThanOrEqual(3);
+    for (const [, n] of Object.entries(r.workDaysByEmployee)) {
+      expect(n).toBeLessThanOrEqual(3); // 目標(3)を超えない
     }
+    // 上限内では賄えないので不足日が残る (人が手動調整する前提)。
+    const shortfalls = r.days.filter(
+      (x) => x.coverage && (x.coverage.amShortfall > 0 || x.coverage.pmShortfall > 0),
+    );
+    expect(shortfalls.length).toBeGreaterThan(0);
   });
 
   it("常勤の出勤が月内で均等に分散する (月末がスカスカにならない)", () => {
@@ -211,9 +216,14 @@ describe("generateShort", () => {
       ...["P1", "P2", "P3", "P4"].map((c) => emp(c, { isFullTime: false })),
     ];
     const r = generateShort(input(d, emps, demand));
-    // 最終日 (6/30) の午前在席が大きく不足しない (>=5)。前詰めだと 1〜2 になる。
+    // 常勤は誰も目標(21)を超えない (ハード上限)。
+    for (const c of ["A", "B", "C", "D", "E", "F", "G"]) {
+      expect(r.workDaysByEmployee[c] ?? 0).toBeLessThanOrEqual(21);
+    }
+    // 最終日 (6/30) の午前在席が大きく不足しない (>=4)。前詰めだと 1〜2 になる。
+    // (21 日ハード上限により、以前のように上限超過で埋めることはしない)
     const last = r.days.find((x) => x.date === "2026-06-30")!;
-    expect(last.coverage!.presence.am).toBeGreaterThanOrEqual(5);
+    expect(last.coverage!.presence.am).toBeGreaterThanOrEqual(4);
   });
 
   it("相談員が必要なら営業日に確保される", () => {
@@ -385,15 +395,19 @@ describe("generateShort", () => {
     for (const day of r.days) expect(day.nightFilled).toBe(false);
   });
 
-  it("夜勤は全部埋めるのが最優先: 足りなければ nightCap を超えてでも埋める", () => {
+  it("夜勤は nightCap(回数上限)はソフトで超えるが、総勤務日数の目標(21)はハード上限", () => {
     const d = days(30);
-    // 2 名・各上限 3。上限内なら計 6 回だが、夜勤を空けないため上限を超えて全日埋める。
+    // 2 名・夜勤回数上限 3 (ソフト)・目標 21 日 (ハード)。
     const emps = [emp("A", { nightCap: 3 }), emp("B", { nightCap: 3 })];
     const r = generateShort(input(d, emps));
-    expect(r.unfilledNightDays).toEqual([]);
-    const total = Object.values(r.nightCountByEmployee).reduce((s, n) => s + n, 0);
-    expect(total).toBe(d.length); // 全日ぶん夜入が置かれる
+    // nightCap(3) はソフト → 超えて夜勤を増やす。
     expect(Math.max(...Object.values(r.nightCountByEmployee))).toBeGreaterThan(3);
+    // ただし総勤務日数 (夜入+夜明) は目標 21 を超えない (ハード上限)。
+    for (const [, n] of Object.entries(r.workDaysByEmployee)) {
+      expect(n).toBeLessThanOrEqual(21);
+    }
+    // 2 名×21 日では 30 日ぶんの夜勤を賄えない → 未充足が残る (人が手動調整)。
+    expect(r.unfilledNightDays.length).toBeGreaterThan(0);
   });
 
   it("相談員不足は coverage で可視化される (配置は強制しない)", () => {
@@ -417,6 +431,17 @@ describe("generateShort", () => {
       (x) => x.coverage?.counselorAmShort || x.coverage?.counselorPmShort,
     );
     expect(counselorShort.length).toBeGreaterThan(0);
+  });
+
+  it("前月引き継ぎ: 前月末に夜入した人は当月1日が夜明になる", () => {
+    const d = days(5);
+    const emps = [emp("A"), emp("B"), emp("C")];
+    const r = generateShort({
+      ...input(d, emps),
+      carryover: { owesNightOutOnFirstDay: new Set(["A"]), preferredOffOnFirstDay: new Set() },
+    });
+    const m = byDate(r);
+    expect(m.get("2026-06-01")!.get("A")).toBe("夜明"); // 前月の夜勤を当月1日に引き継ぐ
   });
 
   it("決定論: 同じ入力なら同じ結果", () => {

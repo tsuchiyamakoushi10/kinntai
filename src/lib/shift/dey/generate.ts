@@ -169,7 +169,10 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
       const eligible = (e: DeyEmployee): boolean =>
         !e.unavailableDates.has(day.date) &&
         !e.paidLeaveDates.has(day.date) &&
-        consecutive.get(e.id)! < config.maxConsecutiveDays;
+        consecutive.get(e.id)! < config.maxConsecutiveDays &&
+        // 月の総勤務日数 (目標) を超えない (ハード上限)。相談員確保・穴埋めもこれを超えない。
+        // デイは夜勤が無いので workDays = 日中の出勤日数。超える日は不足のまま (人が手動調整)。
+        workDays.get(e.id)! < e.targetWorkDays;
 
       // Phase 0: 相談員の充足を最優先で確保する。
       // 職種で判定し、常勤/非常勤を問わず、その日の必要数 (counselorAm/Pm の多い方) まで先に置く。

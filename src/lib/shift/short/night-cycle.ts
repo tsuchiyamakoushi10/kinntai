@@ -45,6 +45,19 @@ export type NightEmployee = {
    * 増やさない)。不足分はこのフラグの無い人に回る。nightOnly と違い日勤(日中)は通常どおり。
    */
   nightRequestOnly?: boolean;
+  /**
+   * 月の総勤務日数の上限 (ハード)。夜勤コマ (夜入+夜明) もこれを消費する。未指定=上限なし。
+   * これを超える夜勤は置かない (足りなければ未充足のまま → 人が手動調整)。
+   */
+  targetWorkDays?: number;
+};
+
+/** 前月からの夜勤の引き継ぎ (月またぎ)。 */
+export type NightCarryover = {
+  /** 前月末に夜入した職員 ID。当月 1 日に夜明を置く (occupied + 翌日 preferredOff)。 */
+  owesNightOutOnFirstDay: ReadonlySet<string>;
+  /** 前月末が夜明だった職員 ID。当月 1 日は公休が望ましい (preferredOff)。 */
+  preferredOffOnFirstDay?: ReadonlySet<string>;
 };
 
 export type NightCycleConfig = {
@@ -82,9 +95,12 @@ export function assignNightCycle(
   days: ReadonlyArray<NightDay>,
   employees: ReadonlyArray<NightEmployee>,
   config: NightCycleConfig = DEFAULT_NIGHT_CYCLE_CONFIG,
+  carryover?: NightCarryover,
 ): NightCycleResult {
   const sorted = [...employees].sort((a, b) => a.employeeCode.localeCompare(b.employeeCode));
   const nightCount = new Map<string, number>(sorted.map((e) => [e.id, 0]));
+  // 夜勤コマ数 (夜入+夜明)。総勤務日数の上限 (targetWorkDays) チェックに使う。
+  const nightWorkDays = new Map<string, number>(sorted.map((e) => [e.id, 0]));
   const occupiedByDate = new Map<string, Set<string>>();
   const preferredOff = new Set<string>();
   const assignments: NightAssignment[] = [];
@@ -98,6 +114,24 @@ export function assignNightCycle(
     }
     return set;
   };
+
+  // 前月からの引き継ぎ: 前月末に夜入した人は当月 1 日に夜明 (= 当日塞がり・翌日公休が望ましい)。
+  // 前月末が夜明だった人は当月 1 日が公休望ましい。これらは availability より優先 (夜勤は既に発生済)。
+  if (carryover && days.length > 0) {
+    const known = new Set(sorted.map((e) => e.id));
+    const day1 = days[0]!.date;
+    const day2 = days[1]?.date ?? null;
+    for (const id of carryover.owesNightOutOnFirstDay) {
+      if (!known.has(id)) continue;
+      assignments.push({ employeeId: id, date: day1, baseSymbol: config.nightOutSymbol });
+      occupiedOn(day1).add(id);
+      nightWorkDays.set(id, (nightWorkDays.get(id) ?? 0) + 1);
+      if (day2) preferredOff.add(`${id}|${day2}`);
+    }
+    for (const id of carryover.preferredOffOnFirstDay ?? []) {
+      if (known.has(id)) preferredOff.add(`${id}|${day1}`);
+    }
+  }
 
   for (let i = 0; i < days.length; i++) {
     const day = days[i]!;
@@ -113,6 +147,12 @@ export function assignNightCycle(
         if (e.unavailableDates.has(day.date)) return false; // 当日が希望休/不可
         // 夜入を置くと翌日は必ず夜明。翌日が希望休なら置けない。
         if (nextDate && e.unavailableDates.has(nextDate)) return false;
+        // 月の総勤務日数 (目標日数) を超える夜勤は置かない (ハード上限)。夜入(今日)+夜明(翌日)で
+        // グリッド内なら 2 コマ、最終日は 1 コマ消費する。超えるなら未充足のまま (人が手動調整)。
+        if (e.targetWorkDays !== undefined) {
+          const need = nextDate ? 2 : 1;
+          if ((nightWorkDays.get(e.id) ?? 0) + need > e.targetWorkDays) return false;
+        }
         // 夜勤専従・夜勤チェッカーは希望日以外には一切入れない (希望が空なら夜勤なし)。
         // = 「希望日以上の夜勤はさせない」。不足分は下のソフト判定でフラグの無い人に回る。
         if ((e.nightOnly || e.nightRequestOnly) && !e.preferredNightDates.has(day.date)) {
@@ -151,6 +191,7 @@ export function assignNightCycle(
       assignments.push({ employeeId: pick.id, date: day.date, baseSymbol: config.nightInSymbol });
       occToday.add(pick.id);
       nightCount.set(pick.id, (nightCount.get(pick.id) ?? 0) + 1);
+      nightWorkDays.set(pick.id, (nightWorkDays.get(pick.id) ?? 0) + 1); // 夜入で 1 コマ消費
 
       // 翌日に夜明をペアで置く (グリッド内のときのみ)。
       if (nextDate) {
@@ -160,6 +201,7 @@ export function assignNightCycle(
           baseSymbol: config.nightOutSymbol,
         });
         occupiedOn(nextDate).add(pick.id);
+        nightWorkDays.set(pick.id, (nightWorkDays.get(pick.id) ?? 0) + 1); // 夜明で 1 コマ消費
       }
       // 夜明の翌日は公休が望ましい (soft)。
       if (dayAfter) preferredOff.add(`${pick.id}|${dayAfter}`);

@@ -247,14 +247,16 @@ describe("generateDey — 相談員の確保 (Phase 0)", () => {
     expect(r.workDaysByEmployee["C1"]).toBe(5);
   });
 
-  it("相談員は月目標日数を超えても確保される (カバレッジ優先)", () => {
+  it("相談員でも月目標日数 (ハード上限) は超えない (不足は赤表示→手動調整)", () => {
     const employees = [
       emp("C1", false, { isCounselor: true, targetWorkDays: 2 }),
       ...["P1", "P2", "P3", "P4", "P5", "P6"].map((c) => emp(c, false)),
     ];
     const r = generateDey(baseInput({ days: weekdays(5), employees }));
-    expect(r.workDaysByEmployee["C1"]).toBe(5); // 目標 2 を超えて 5 日確保
-    for (const day of r.days) expect(day.coverage!.counselorAmShort).toBe(false);
+    expect(r.workDaysByEmployee["C1"]).toBe(2); // 目標 2 を超えない (ハード上限)
+    // 相談員 1 名が 2 日しか出られない → 残り 3 日は相談員不足 (赤) のまま。
+    const shortDays = r.days.filter((d) => d.coverage!.counselorAmShort).length;
+    expect(shortDays).toBe(3);
   });
 
   it("複数相談員がいれば必要数だけ置き、負担を分散する", () => {

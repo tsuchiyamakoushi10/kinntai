@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { assignNightCycle, type NightDay, type NightEmployee } from "@/lib/shift/short/night-cycle";
+import {
+  assignNightCycle,
+  DEFAULT_NIGHT_CYCLE_CONFIG,
+  type NightDay,
+  type NightEmployee,
+} from "@/lib/shift/short/night-cycle";
 
 function days(n: number, nightInRequired = 1): NightDay[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -179,6 +184,35 @@ describe("assignNightCycle", () => {
     const r = assignNightCycle(days(3), [emp("X", 0)]);
     expect(r.unfilledNightDays).toEqual(["2026-06-01", "2026-06-02", "2026-06-03"]);
     expect(r.assignments).toEqual([]);
+  });
+
+  it("targetWorkDays を超える夜勤は置かない (総勤務日数のハード上限)", () => {
+    // A だけ・目標 4 日 → 夜勤コマ(夜入+夜明)は最大 4 まで。夜入は2回(=4コマ)で打ち止め。
+    const a: NightEmployee = { ...emp("A", 30), targetWorkDays: 4 };
+    const r = assignNightCycle(days(20), [a]);
+    const aCells = r.assignments.filter((x) => x.employeeId === "A").length;
+    expect(aCells).toBeLessThanOrEqual(4);
+    expect(r.unfilledNightDays.length).toBeGreaterThan(0); // 上限で埋めきれず未充足
+  });
+
+  it("前月引き継ぎ: 前月末 夜入の人は当月1日に夜明・翌日は公休望ましい", () => {
+    const r = assignNightCycle(days(5), [emp("A", 5), emp("B", 5)], DEFAULT_NIGHT_CYCLE_CONFIG, {
+      owesNightOutOnFirstDay: new Set(["A"]),
+    });
+    const m = byDate(r);
+    expect(m.get("2026-06-01")!.get("A")).toBe("夜明"); // 当月1日は夜明
+    // 1日は夜勤で塞がるので新たな夜入は付かない (別の人 B が夜入)。
+    expect(m.get("2026-06-01")!.get("A")).not.toBe("夜入");
+    // 夜明の翌日 (6/02) は公休が望ましい。
+    expect(r.preferredOff.has("A|2026-06-02")).toBe(true);
+  });
+
+  it("前月引き継ぎ: 前月末 夜明の人は当月1日が公休望ましい", () => {
+    const r = assignNightCycle(days(5), [emp("A", 5), emp("B", 5)], DEFAULT_NIGHT_CYCLE_CONFIG, {
+      owesNightOutOnFirstDay: new Set(),
+      preferredOffOnFirstDay: new Set(["A"]),
+    });
+    expect(r.preferredOff.has("A|2026-06-01")).toBe(true);
   });
 
   it("同じ入力なら同じ結果 (決定論)", () => {
