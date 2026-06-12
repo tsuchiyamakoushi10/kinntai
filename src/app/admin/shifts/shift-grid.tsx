@@ -164,15 +164,10 @@ export function ShiftGrid({
   readOnly = false,
 }: Props) {
   const [cells, setCells] = useState<CellMap>(() => toCellMap(initialCells));
-  const initialKey = useMemo(() => JSON.stringify(initialCells), [initialCells]);
-  const currentKey = useMemo(() => {
-    const arr = Array.from(cells.values()).sort((a, b) => {
-      const ek = a.employeeId.localeCompare(b.employeeId);
-      return ek !== 0 ? ek : a.workDate.localeCompare(b.workDate);
-    });
-    return JSON.stringify(arr);
-  }, [cells]);
-  const isDirty = initialKey !== currentKey;
+  // 「未保存の変更があるか」は編集操作でフラグを立てて持つ。
+  // 以前は毎タップ全セルを sort + JSON.stringify して比較していたが、
+  // 大きな表ではこれがメインスレッドを止める主因だったため廃止した。
+  const [isDirty, setIsDirty] = useState(false);
 
   const [activePatternId, setActivePatternId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<{ employeeIdx: number; dayIdx: number } | null>(null);
@@ -244,19 +239,22 @@ export function ShiftGrid({
       });
       return next;
     });
+    setIsDirty(true);
   }
 
   function clearCell(employeeIdx: number, dayIdx: number): void {
     const emp = employees[employeeIdx];
     const day = days[dayIdx];
     if (!emp || !day) return;
+    const k = cellKey(emp.id, day);
+    if (!cells.has(k)) return;
     setCells((prev) => {
-      const k = cellKey(emp.id, day);
       if (!prev.has(k)) return prev;
       const next = new Map(prev);
       next.delete(k);
       return next;
     });
+    setIsDirty(true);
   }
 
   function moveCursor(de: number, dd: number): void {
@@ -335,6 +333,7 @@ export function ShiftGrid({
       if (added === 0) {
         setMessage({ kind: "err", text: "コピー対象の空セルがありませんでした。" });
       } else {
+        setIsDirty(true);
         setMessage({ kind: "ok", text: `前月から ${added} 件コピーしました (保存はまだです)。` });
       }
       return next;
@@ -343,11 +342,13 @@ export function ShiftGrid({
 
   function clearAll(): void {
     setCells(new Map());
+    setIsDirty(true);
     setMessage({ kind: "ok", text: `すべて消去しました (保存はまだです)。` });
   }
 
   function resetToInitial(): void {
     setCells(toCellMap(initialCells));
+    setIsDirty(false);
     setMessage(null);
   }
 
@@ -359,6 +360,7 @@ export function ShiftGrid({
         cells: Array.from(cells.values()),
       });
       if (res.ok) {
+        setIsDirty(false);
         setMessage({
           kind: "ok",
           text: `保存しました (追加・更新 ${res.upserted} 件 / 削除 ${res.deleted} 件)。`,
