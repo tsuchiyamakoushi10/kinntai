@@ -38,6 +38,7 @@ export type EmployeeFormValues = {
   baseWageType: string;
   baseWageAmount: string;
   nightShiftOnly: boolean;
+  nightRequestOnly: boolean;
 };
 
 export type EmployeeFormState = {
@@ -67,6 +68,7 @@ type Parsed = {
   baseWageType: WageType | null;
   baseWageAmount: number | null;
   nightShiftOnly: boolean;
+  nightRequestOnly: boolean;
 };
 
 function parseAndValidate(
@@ -170,6 +172,7 @@ function parseAndValidate(
       baseWageType: (values.baseWageType || null) as WageType | null,
       baseWageAmount,
       nightShiftOnly: values.nightShiftOnly,
+      nightRequestOnly: values.nightRequestOnly,
     },
   };
 }
@@ -194,6 +197,7 @@ function valuesFromForm(formData: FormData): EmployeeFormValues {
     baseWageType: get("baseWageType"),
     baseWageAmount: get("baseWageAmount"),
     nightShiftOnly: formData.get("nightShiftOnly") === "on",
+    nightRequestOnly: formData.get("nightRequestOnly") === "on",
   };
 }
 
@@ -256,6 +260,7 @@ export async function createEmployee(
           baseWageType: parsed.data.baseWageType,
           baseWageAmount: parsed.data.baseWageAmount,
           nightShiftOnly: parsed.data.nightShiftOnly,
+          nightRequestOnly: parsed.data.nightRequestOnly,
         },
       });
       // メール未入力なら login User は作らない (CSV 取り込み相当の「ログインなし社員」)。
@@ -340,6 +345,7 @@ export async function updateEmployee(
           baseWageType: parsed.data.baseWageType,
           baseWageAmount: parsed.data.baseWageAmount,
           nightShiftOnly: parsed.data.nightShiftOnly,
+          nightRequestOnly: parsed.data.nightRequestOnly,
         },
       });
       // メールが入力されているときだけ login User を作成 / 更新する。

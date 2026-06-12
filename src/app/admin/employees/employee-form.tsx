@@ -151,6 +151,20 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
             </span>
           </span>
         </label>
+        <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <input
+            type="checkbox"
+            name="nightRequestOnly"
+            defaultChecked={v.nightRequestOnly}
+            className="mt-1 h-5 w-5 rounded border-slate-300"
+          />
+          <span className="flex flex-col gap-0.5 text-sm">
+            <span className="font-medium text-slate-700">夜勤は希望日まで（夜勤チェッカー）</span>
+            <span className="text-xs text-slate-500">
+              シフト希望で夜勤を入れた日までしか夜勤に入りません（それ以上は増やしません）。足りない夜勤はチェックの無い人に振り分けられます。日勤は通常どおり入ります。ナーシング・ショートの自動作成のみ反映されます。
+            </span>
+          </span>
+        </label>
       </Section>
 
       <Section title="雇用契約">

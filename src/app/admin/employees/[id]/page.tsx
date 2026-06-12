@@ -395,6 +395,9 @@ function BasicTab({
           }
         />
         {employee.nightShiftOnly && <InfoRow label="夜勤専従" value="あり（夜勤希望日のみ勤務）" />}
+        {employee.nightRequestOnly && (
+          <InfoRow label="夜勤チェッカー" value="あり（夜勤は希望日まで・それ以上は増やさない）" />
+        )}
       </Card>
 
       <Card title="現在の雇用条件">

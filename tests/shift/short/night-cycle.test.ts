@@ -70,18 +70,7 @@ describe("assignNightCycle", () => {
     expect(nightInEmp).toBe("B");
   });
 
-  it("人手が足りていれば、希望を出した人は希望日のみ夜入 (希望を尊重)", () => {
-    // A・C は希望なし(全日ローテ可)が 2 名居るので夜勤は回る。B は 6/01 のみ夜勤希望 →
-    // 足りているので B は 6/01 だけ。希望外の日には回されない。
-    const members = [emp("A", 30), emp("C", 30), emp("B", 30, [], ["2026-06-01"])];
-    const r = assignNightCycle(days(10), members);
-    const bNightDates = r.assignments
-      .filter((a) => a.employeeId === "B" && a.baseSymbol === "夜入")
-      .map((a) => a.date);
-    expect(bNightDates).toEqual(["2026-06-01"]);
-  });
-
-  it("人手が足りなければ、希望を出した人も希望外の日に回して全部埋める", () => {
+  it("希望を出しても(チェッカー無しなら)足りなければ希望外の日に回して全部埋める", () => {
     // A 1 名(全日可)だけでは連日は組めない(夜明の翌日は塞がる)。夜勤を全部埋めるのが
     // 最優先なので、6/01 のみ希望の B も希望外の日に回される。
     const members = [emp("A", 30), emp("B", 30, [], ["2026-06-01"])];
@@ -92,6 +81,25 @@ describe("assignNightCycle", () => {
       .map((a) => a.date);
     expect(bNightDates).toContain("2026-06-01"); // 希望日は必ず組む
     expect(bNightDates.length).toBeGreaterThan(1); // 希望外の日にも入って埋める
+  });
+
+  it("夜勤チェッカーONの人は希望日までしか夜入しない (残りは他の人に回る)", () => {
+    // B は夜勤チェッカーON・6/01 のみ希望。A は通常(全日可)。
+    // 足りない日が出ても B は 6/01 以外には入らず、A 1 名では賄えない日は未充足のまま。
+    const a = emp("A", 30);
+    const b: NightEmployee = { ...emp("B", 30, [], ["2026-06-01"]), nightRequestOnly: true };
+    const r = assignNightCycle(days(6), [a, b]);
+    const bNightDates = r.assignments
+      .filter((x) => x.employeeId === "B" && x.baseSymbol === "夜入")
+      .map((x) => x.date);
+    expect(bNightDates).toEqual(["2026-06-01"]); // 希望日まで。希望外には増やさない
+    expect(r.unfilledNightDays.length).toBeGreaterThan(0); // A だけでは連日は賄えない
+  });
+
+  it("夜勤チェッカーONで希望が空なら夜勤に一切入らない", () => {
+    const b: NightEmployee = { ...emp("B", 30), nightRequestOnly: true };
+    const r = assignNightCycle(days(10), [emp("A", 30), b]);
+    expect(r.assignments.some((x) => x.employeeId === "B")).toBe(false);
   });
 
   it("夜勤専従は希望日のみ夜入 (希望外日には全くローテしない)", () => {

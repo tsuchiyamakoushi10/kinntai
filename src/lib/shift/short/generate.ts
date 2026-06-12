@@ -74,6 +74,12 @@ export type ShortEmployee = {
    * NRS/ショートのみ (従業員マスターの night_shift_only)。
    */
   isNightShiftOnly?: boolean;
+  /**
+   * 夜勤チェッカー。true の人は夜勤希望に出した日までしか夜勤に入らない (希望外の日に増やさない)。
+   * 不足分はフラグの無い人に回る。夜勤専従と違い日中フェーズには通常どおり配置する。
+   * NRS/ショートのみ (従業員マスターの night_request_only)。
+   */
+  isNightRequestOnly?: boolean;
 };
 
 /** 1 日種ぶんの配置基準 (午前/午後 + 相談員 + 夜入)。office_coverage_demands 由来。 */
@@ -211,6 +217,8 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
     unavailableDates: new Set([...e.unavailableDates, ...e.paidLeaveDates]),
     // 夜勤専従は「希望日のみ」夜勤可 (希望が空なら夜勤なし)。希望外日のローテ対象にしない。
     nightOnly: e.isNightShiftOnly ?? false,
+    // 夜勤チェッカーも「希望日まで」しか夜勤に入れない (希望外日は増やさない)。
+    nightRequestOnly: e.isNightRequestOnly ?? false,
   }));
   const night = assignNightCycle(nightDays, nightEmployees, config.night);
 

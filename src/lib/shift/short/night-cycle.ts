@@ -40,6 +40,11 @@ export type NightEmployee = {
    * (通常の従業員は希望が空なら全日ローテ対象だが、専従は希望外日に入れない。)
    */
   nightOnly?: boolean;
+  /**
+   * 夜勤チェッカー。true の人は希望日 (preferredNightDates) までしか夜勤に入らない (希望外の日に
+   * 増やさない)。不足分はこのフラグの無い人に回る。nightOnly と違い日勤(日中)は通常どおり。
+   */
+  nightRequestOnly?: boolean;
 };
 
 export type NightCycleConfig = {
@@ -108,25 +113,27 @@ export function assignNightCycle(
         if (e.unavailableDates.has(day.date)) return false; // 当日が希望休/不可
         // 夜入を置くと翌日は必ず夜明。翌日が希望休なら置けない。
         if (nextDate && e.unavailableDates.has(nextDate)) return false;
-        // 夜勤専従は希望日以外には一切入れない (希望が空なら夜勤なし)。
-        if (e.nightOnly && !e.preferredNightDates.has(day.date)) return false;
+        // 夜勤専従・夜勤チェッカーは希望日以外には一切入れない (希望が空なら夜勤なし)。
+        // = 「希望日以上の夜勤はさせない」。不足分は下のソフト判定でフラグの無い人に回る。
+        if ((e.nightOnly || e.nightRequestOnly) && !e.preferredNightDates.has(day.date)) {
+          return false;
+        }
         return true;
       });
       if (candidates.length === 0) {
         unfilledNightDays.push(day.date);
         break;
       }
-      // 夜勤は全部埋めるのが最優先。上限(nightCap)・希望日の制限はソフト扱いにし、
-      // 「埋まらないより超える」を選ぶ。penalty が小さいほど先に選ぶ:
+      // 夜勤は全部埋めるのが最優先。上限(nightCap)はソフト扱いにし、「埋まらないより超える」を
+      // 選ぶ。希望日以外に増やしたくない人は夜勤チェッカー (上の hard 判定で除外済) で守る。
+      // penalty が小さいほど先に選ぶ:
       //   0  : その日を夜勤希望に出している人 (希望は最優先で必ず組む。上限も無視)
-      //   1  : 通常ローテ枠 (希望未提出 かつ 上限内)
+      //   1  : 通常ローテ枠 (上限内)
       //   +2 : 上限超過 (足りないので増やす)
-      //   +4 : 希望を出した人を希望外の日に回す (やむを得ないときだけ)
       const penalty = (e: NightEmployee): number => {
         if (e.preferredNightDates.has(day.date)) return 0;
         let p = 1;
         if ((nightCount.get(e.id) ?? 0) >= e.nightCap) p += 2; // 上限超過
-        if (e.preferredNightDates.size > 0) p += 4; // 希望を出しているのに今日は希望外
         return p;
       };
       candidates.sort((a, b) => {

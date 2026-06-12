@@ -26,6 +26,7 @@ const EMPTY: EmployeeFormValues = {
   baseWageType: "MONTHLY",
   baseWageAmount: "230000",
   nightShiftOnly: false,
+  nightRequestOnly: false,
 };
 
 export default async function NewEmployeePage() {

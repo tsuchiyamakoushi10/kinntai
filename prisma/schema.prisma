@@ -333,6 +333,10 @@ model Employee {
   // 夜勤専従か。true の従業員はシフト希望で夜勤を入れた日だけ夜勤に入り、それ以外は自動で公休になる
   // (NRS/ショートの自動生成のみ適用)。日中フェーズには一切配置しない。
   nightShiftOnly             Boolean          @default(false) @map("night_shift_only")
+  // 夜勤チェッカー: true の従業員は夜勤希望に出した日までしか夜勤に入らない (それ以上は増やさない)。
+  // 不足分はこのフラグの無い人に振り分けられる。日勤(日中)は通常どおり配置する点が夜勤専従と異なる。
+  // (NRS/ショートの自動生成のみ適用)。
+  nightRequestOnly           Boolean          @default(false) @map("night_request_only")
   // 勤務表の手動並び順 (拠点内)。0 = 未設定で、雇用形態順 → 社員コード順にフォールバックする。
   displayOrder               Int              @default(0) @map("display_order")
   notes                      String?

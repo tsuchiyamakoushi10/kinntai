@@ -90,6 +90,7 @@ export async function loadShortGenerateInput(
           joinedAt: true,
           retiredAt: true,
           nightShiftOnly: true,
+          nightRequestOnly: true,
           shiftConstraint: {
             select: { targetMonthlyWorkDays: true, maxNightShiftsPerMonth: true },
           },
@@ -206,6 +207,8 @@ export async function loadShortGenerateInput(
         fixedSymbol: ov?.fixedSymbol ?? null,
         // 夜勤専従 (従業員マスター)。夜勤希望日のみ夜勤、他は自動で公休。
         isNightShiftOnly: e.nightShiftOnly,
+        // 夜勤チェッカー (従業員マスター)。夜勤希望日までしか夜勤に入れない (日勤は通常どおり)。
+        isNightRequestOnly: e.nightRequestOnly,
       };
     });
 
