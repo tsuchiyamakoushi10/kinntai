@@ -54,6 +54,32 @@ export default async function MyShiftsPage({ searchParams }: PageProps) {
     );
   }
 
+  // 所属拠点のその月が「公開」済みでなければシフトは見せない (管理者の編集途中を隠す)。
+  // 公開フラグは shift_publications の行の有無で判定する。
+  const employee = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: { officeId: true },
+  });
+  const publication = employee?.officeId
+    ? await prisma.shiftPublication.findUnique({
+        where: { officeId_targetMonth: { officeId: employee.officeId, targetMonth: range.start } },
+        select: { id: true },
+      })
+    : null;
+
+  if (!publication) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-md flex-col gap-5 bg-slate-50 p-5">
+        <Header ym={ym} prevYm={range.prevYm} nextYm={range.nextYm} />
+        <p className="rounded-2xl bg-white p-6 text-center text-sm text-slate-600 shadow-sm">
+          {formatYmDisplay(ym)}のシフトはまだ公開されていません。
+          <br />
+          確定までしばらくお待ちください。
+        </p>
+      </main>
+    );
+  }
+
   const shifts = await prisma.shift.findMany({
     where: {
       employeeId,

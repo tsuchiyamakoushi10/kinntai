@@ -231,6 +231,7 @@ model Office {
   shiftGenerationRuns ShiftGenerationRun[]
   shiftSetting        OfficeShiftSetting?
   coverageDemands     OfficeCoverageDemand[]
+  shiftPublications   ShiftPublication[]
 
   @@map("offices")
 }
@@ -266,6 +267,7 @@ model User {
   createdShiftPrefs   ShiftPreference[]    @relation("ShiftPreferenceCreatedBy")
   reviewedShiftPrefs  ShiftPreference[]    @relation("ShiftPreferenceReviewedBy")
   shiftGenerationRuns ShiftGenerationRun[] @relation("ShiftGenerationRunGeneratedBy")
+  shiftPublications   ShiftPublication[]   @relation("ShiftPublicationPublishedBy")
 
   @@map("users")
 }
@@ -776,6 +778,26 @@ model ShiftGenerationRun {
 
   @@unique([officeId, targetMonth])
   @@map("shift_generation_runs")
+}
+
+// 勤務表の「公開」状態。行が存在する (office, month) = 公開済みで職員が閲覧可。
+// 公開取消は行削除。修正の即時反映のため「公開フラグ」だけを持ち、シフト本体は触らない。
+// ShiftGenerationRun の status(DRAFT/CONFIRMED) は自動生成の確定であって公開とは別概念
+// (手動作成の拠点には Run が無い) のため、公開は専用テーブルで持つ。
+model ShiftPublication {
+  id            String   @id @default(uuid()) @db.Uuid
+  officeId      String   @map("office_id") @db.Uuid
+  targetMonth   DateTime @map("target_month") @db.Date
+  publishedAt   DateTime @default(now()) @map("published_at") @db.Timestamptz(6)
+  publishedById String   @map("published_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  office      Office @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  publishedBy User   @relation("ShiftPublicationPublishedBy", fields: [publishedById], references: [id], onDelete: Restrict)
+
+  @@unique([officeId, targetMonth])
+  @@map("shift_publications")
 }
 
 // 会社マスタ (シングルトン)。労働条件通知書 / 雇用契約書 PDF 出力で参照する、

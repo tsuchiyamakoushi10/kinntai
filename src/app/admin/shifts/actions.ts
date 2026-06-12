@@ -265,3 +265,49 @@ export async function resetEmployeeOrder(input: { officeId: string }): Promise<R
   revalidatePath("/admin/shifts");
   return { ok: true };
 }
+
+export type PublishResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * 勤務表の公開 (拠点 × 月)。shift_publications に行を作る = 職員が /me/shifts で
+ * その月を閲覧可能になる。unique 制約で冪等 (二重公開しても publishedAt/by を更新)。
+ */
+export async function publishShifts(input: {
+  officeId: string;
+  ym: string;
+}): Promise<PublishResult> {
+  const session = await requireAdmin();
+  if (!UUID.test(input.officeId)) return { ok: false, error: "拠点 ID の形式が不正です。" };
+  if (!YM.test(input.ym)) return { ok: false, error: "対象月の形式が不正です。" };
+
+  const targetMonth = monthRange(input.ym).start;
+  await prisma.shiftPublication.upsert({
+    where: { officeId_targetMonth: { officeId: input.officeId, targetMonth } },
+    create: { officeId: input.officeId, targetMonth, publishedById: session.user.id },
+    update: { publishedById: session.user.id, publishedAt: new Date() },
+  });
+
+  revalidatePath("/admin/shifts");
+  return { ok: true };
+}
+
+/**
+ * 勤務表の公開取消 (拠点 × 月)。行を消す = 職員から再び隠す。誤公開のリカバリ用。
+ * 行が無ければ no-op。シフト本体 (shifts) は触らない。
+ */
+export async function unpublishShifts(input: {
+  officeId: string;
+  ym: string;
+}): Promise<PublishResult> {
+  await requireAdmin();
+  if (!UUID.test(input.officeId)) return { ok: false, error: "拠点 ID の形式が不正です。" };
+  if (!YM.test(input.ym)) return { ok: false, error: "対象月の形式が不正です。" };
+
+  const targetMonth = monthRange(input.ym).start;
+  await prisma.shiftPublication.deleteMany({
+    where: { officeId: input.officeId, targetMonth },
+  });
+
+  revalidatePath("/admin/shifts");
+  return { ok: true };
+}

@@ -12,6 +12,7 @@ import type { CoverageNeed } from "@/lib/shift/grid-coverage";
 import type { ShiftCell } from "@/lib/shifts/diff";
 
 import { AutoGenerateButton } from "./auto-generate-button";
+import { PublishButton } from "./publish-button";
 import { ReorderPanel } from "./reorder-panel";
 import { ShiftFilters } from "./shift-filters";
 import { ShiftGrid, type EmployeeRow, type PatternOption, type PreferenceMark } from "./shift-grid";
@@ -91,6 +92,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     generationRun,
     shiftPreferences,
     coverageDemandRows,
+    publication,
   ] = await Promise.all([
     prisma.office.findUnique({ where: { id: officeId }, select: { name: true } }),
     prisma.employee.findMany({
@@ -173,6 +175,10 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
         nightInRequired: true,
         nightOutRequired: true,
       },
+    }),
+    prisma.shiftPublication.findUnique({
+      where: { officeId_targetMonth: { officeId, targetMonth: range.start } },
+      select: { publishedAt: true },
     }),
   ]);
 
@@ -266,6 +272,12 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <PublishButton
+            officeId={officeId}
+            ym={ym}
+            publishedAt={publication?.publishedAt ?? null}
+          />
+          <span className="mx-1 h-5 w-px bg-slate-200" />
           <AutoGenerateButton officeId={officeId} ym={ym} />
           <span className="mx-1 h-5 w-px bg-slate-200" />
           <Link
