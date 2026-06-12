@@ -174,7 +174,8 @@ enum ShiftPreferenceStatus {
 enum DayKind {
   WEEKDAY        @map("weekday")
   SATURDAY       @map("saturday")
-  SUNDAY_HOLIDAY @map("sunday_holiday")
+  SUNDAY_HOLIDAY @map("sunday_holiday") // 日曜 (祝日は HOLIDAY で別管理)
+  HOLIDAY        @map("holiday") // 祝日・振替休日・国民の休日
 
   @@map("day_kind")
 }

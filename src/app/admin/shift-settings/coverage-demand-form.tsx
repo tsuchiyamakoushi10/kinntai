@@ -22,7 +22,7 @@ const ROWS: ReadonlyArray<{ key: FieldKey; label: string }> = [
   { key: "counselorPmRequired", label: "うち相談員 (午後)" },
   { key: "nurseAmRequired", label: "うち看護師 (午前)" },
   { key: "nursePmRequired", label: "うち看護師 (午後)" },
-  { key: "earlyAmRequired", label: "うち送迎 (8:15開始)" },
+  { key: "earlyAmRequired", label: "うち8:15出勤" },
   { key: "nightInRequired", label: "夜入" },
   { key: "nightOutRequired", label: "夜明" },
 ];
@@ -76,7 +76,7 @@ export function CoverageDemandForm({ officeId, initial }: Props) {
     <div className="flex flex-col gap-3">
       <p className="text-sm text-slate-500">
         「午前◯名・午後◯名」で必要人数を決めます (相談員を含む総数)。合計が 0 の列は{" "}
-        <span className="font-medium">休業日</span> 扱いになります (例: デイの日祝)。
+        <span className="font-medium">休業日</span> 扱いになります (例: デイの日曜)。
       </p>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">

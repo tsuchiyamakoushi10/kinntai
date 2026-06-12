@@ -2,9 +2,10 @@
  * 各拠点の配置基準 (office_coverage_demands) を投入する。
  *
  * 値はオーナー提供の実数 (2026-06-08):
- *   デイ      : 月〜土 午前7/午後5 (相談員 午前午後各1)・日祝 休業。夜勤なし
- *   ショート  : 平日/土 午前6/午後6 (相談員各1)・日祝 午前5/午後5。夜入1/夜明1 (毎日)
- *   ナーシング: 平日/土 午前6/午後6 (相談員各1)・日祝 午前5/午後5。夜入1/夜明1 (毎日)
+ *   デイ      : 月〜土＋祝 午前7/午後5 (相談員 午前午後各1)・日曜 休業。夜勤なし
+ *               (祝日は営業・平日と同じ人数。日曜のみ休業 = SUNDAY_HOLIDAY を全0)
+ *   ショート  : 平日/土 午前6/午後6 (相談員各1)・日/祝 午前5/午後5。夜入1/夜明1 (毎日)
+ *   ナーシング: 平日/土 午前6/午後6 (相談員各1)・日/祝 午前5/午後5。夜入1/夜明1 (毎日)
  *   梨花      : 専用ロジックのため対象外 (参考: 3名/相談員1)
  *
  * upsert なので複数回流しても安全。本番反映はユーザー確認のうえ実施 (CLAUDE.md §5)。
@@ -36,7 +37,7 @@ const z: CoverageDemandValues = {
 // 拠点コード → 日種 → 配置基準
 const PLAN: Record<string, DemandByDayKind> = {
   "DAY-CENTER": {
-    // 午前7のうち送迎(8:15)5名。
+    // 午前7のうち 8:15 出勤 5名。
     WEEKDAY: {
       ...z,
       amRequired: 7,
@@ -53,7 +54,16 @@ const PLAN: Record<string, DemandByDayKind> = {
       counselorPmRequired: 1,
       earlyAmRequired: 5,
     },
-    SUNDAY_HOLIDAY: { ...z }, // 日祝 休業
+    SUNDAY_HOLIDAY: { ...z }, // 日曜 休業
+    // 祝日は営業・平日と同じ人数。
+    HOLIDAY: {
+      ...z,
+      amRequired: 7,
+      pmRequired: 5,
+      counselorAmRequired: 1,
+      counselorPmRequired: 1,
+      earlyAmRequired: 5,
+    },
   },
   "SHO-CENTER": {
     WEEKDAY: {
@@ -79,6 +89,18 @@ const PLAN: Record<string, DemandByDayKind> = {
       nightOutRequired: 1,
     },
     SUNDAY_HOLIDAY: {
+      amRequired: 5,
+      pmRequired: 5,
+      counselorAmRequired: 1,
+      counselorPmRequired: 1,
+      nurseAmRequired: 1,
+      nursePmRequired: 1,
+      earlyAmRequired: 0,
+      nightInRequired: 1,
+      nightOutRequired: 1,
+    },
+    // 祝日も日曜と同じ縮小配置。
+    HOLIDAY: {
       amRequired: 5,
       pmRequired: 5,
       counselorAmRequired: 1,
@@ -126,6 +148,18 @@ const PLAN: Record<string, DemandByDayKind> = {
       nightInRequired: 1,
       nightOutRequired: 1,
     },
+    // 祝日も日曜と同じ縮小配置。
+    HOLIDAY: {
+      amRequired: 5,
+      pmRequired: 5,
+      counselorAmRequired: 1,
+      counselorPmRequired: 1,
+      nurseAmRequired: 0,
+      nursePmRequired: 0,
+      earlyAmRequired: 0,
+      nightInRequired: 1,
+      nightOutRequired: 1,
+    },
   },
 };
 
@@ -158,7 +192,9 @@ async function main(): Promise<void> {
     console.log(`✓ ${office.name} (${code}) の配置基準を投入`);
   }
   console.log(`\n✅ ${count} 行を upsert しました。`);
-  console.log("※ 梨花は専用ロジックのため対象外。デイの日祝は休業 (全0)。");
+  console.log(
+    "※ 梨花は専用ロジックのため対象外。デイは祝日営業・日曜のみ休業 (SUNDAY_HOLIDAY 全0)。",
+  );
 }
 
 main()

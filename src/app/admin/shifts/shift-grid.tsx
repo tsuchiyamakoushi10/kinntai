@@ -52,7 +52,7 @@ function shortfallText(s: DayShortfall): string {
   const parts: string[] = [];
   if (s.am) parts.push(`午前-${s.am}`);
   if (s.pm) parts.push(`午後-${s.pm}`);
-  if (s.earlyAm) parts.push(`送迎-${s.earlyAm}`);
+  if (s.earlyAm) parts.push(`8:15-${s.earlyAm}`);
   if (s.nightIn) parts.push(`夜入-${s.nightIn}`);
   if (s.nightOut) parts.push(`夜明-${s.nightOut}`);
   if (s.counselorAm) parts.push("相談員(午前)");

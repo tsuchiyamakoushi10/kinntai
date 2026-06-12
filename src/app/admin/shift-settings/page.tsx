@@ -113,6 +113,7 @@ export default async function AdminShiftSettingsPage({ searchParams }: Props) {
     WEEKDAY: pick("WEEKDAY"),
     SATURDAY: pick("SATURDAY"),
     SUNDAY_HOLIDAY: pick("SUNDAY_HOLIDAY"),
+    HOLIDAY: pick("HOLIDAY"),
   };
 
   return (

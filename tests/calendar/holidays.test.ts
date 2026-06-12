@@ -63,23 +63,19 @@ describe("dayKindFor", () => {
     expect(dayKindFor("2026-05-10")).toBe(DayKind.SUNDAY_HOLIDAY);
   });
 
-  it("平日の祝日も SUNDAY_HOLIDAY", () => {
+  it("平日の祝日は HOLIDAY (日曜と別区分)", () => {
     // 2026-05-05 (火) こどもの日
-    expect(dayKindFor("2026-05-05")).toBe(DayKind.SUNDAY_HOLIDAY);
+    expect(dayKindFor("2026-05-05")).toBe(DayKind.HOLIDAY);
   });
 
-  it("振替休日も SUNDAY_HOLIDAY", () => {
+  it("振替休日も HOLIDAY", () => {
     // 2026-05-06 (水) 振替休日
-    expect(dayKindFor("2026-05-06")).toBe(DayKind.SUNDAY_HOLIDAY);
+    expect(dayKindFor("2026-05-06")).toBe(DayKind.HOLIDAY);
   });
 
-  it("土曜と祝日が重なる日は SUNDAY_HOLIDAY (祝日優先)", () => {
-    // 2026-02-11 (水) 建国記念の日 → 土曜ではないので素直
-    // 土曜祝日のテスト用に 2024-08-11 を使う (日曜) → これも日曜なので NG
-    // 2024-02-11 は日曜。2025-02-11 は火曜。2026-02-11 は水曜。
-    // 該当ケースを範囲内で探す: 2030-01-11 (土) - 祝日ではない。2025-11-23 (日)。
-    // 土曜祝日は範囲内に見当たらないので、振替に近い 2024-09-23 (月・振替) で代用
-    expect(dayKindFor("2024-09-23")).toBe(DayKind.SUNDAY_HOLIDAY);
+  it("国民の休日 (祝日に挟まれた平日) も HOLIDAY", () => {
+    // 2024-09-23 (月・振替休日)。祝日優先で HOLIDAY。
+    expect(dayKindFor("2024-09-23")).toBe(DayKind.HOLIDAY);
   });
 });
 

@@ -206,19 +206,20 @@ export function holidayName(ymd: string): string | null {
 }
 
 /**
- * `YYYY-MM-DD` から `DayKind` (weekday / saturday / sunday_holiday) を返す。
+ * `YYYY-MM-DD` から `DayKind` (weekday / saturday / sunday_holiday / holiday) を返す。
  *
  * 判定優先順位:
- *   1. 祝日・振替休日・国民の休日 → SUNDAY_HOLIDAY
- *   2. 曜日が日曜 → SUNDAY_HOLIDAY
+ *   1. 祝日・振替休日・国民の休日 → HOLIDAY
+ *   2. 曜日が日曜 → SUNDAY_HOLIDAY (日曜)
  *   3. 曜日が土曜 → SATURDAY
  *   4. それ以外 → WEEKDAY
  *
- * 「土曜が祝日」のケースは SUNDAY_HOLIDAY 扱い (シフト枠の必要人員数を日祝側に揃える方が
- * 現場運用と合致する) とする。
+ * 祝日は日曜と別区分 (HOLIDAY)。デイのように「祝日は営業・日曜は休業」と区別したい拠点が
+ * あるため。祝日も日曜並みでよい拠点は配置基準で HOLIDAY を SUNDAY_HOLIDAY と同値にする。
+ * 「土曜が祝日」のケースも祝日優先で HOLIDAY 扱い。
  */
 export function dayKindFor(ymd: string): DayKind {
-  if (isHoliday(ymd)) return DayKind.SUNDAY_HOLIDAY;
+  if (isHoliday(ymd)) return DayKind.HOLIDAY;
   // JST 基準で曜日を取得。fromJstYmd 経由で UTC 0:00 = JST 9:00 の Date を作り、
   // toLocaleDateString({ timeZone: "Asia/Tokyo", weekday: "short" }) で確実に JST の曜日を読む。
   const d = new Date(`${ymd}T00:00:00.000Z`);

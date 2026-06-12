@@ -148,5 +148,6 @@ export async function saveOfficeCoverageDemand(
 const DAY_KIND_ERROR_LABEL: Record<DayKind, string> = {
   WEEKDAY: "平日",
   SATURDAY: "土",
-  SUNDAY_HOLIDAY: "日祝",
+  SUNDAY_HOLIDAY: "日",
+  HOLIDAY: "祝",
 };

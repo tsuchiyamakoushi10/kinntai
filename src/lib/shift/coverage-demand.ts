@@ -16,19 +16,25 @@ export type CoverageDemandValues = {
   /** 午前/午後のうち看護師(看護職員)で必要な人数。 */
   nurseAmRequired: number;
   nursePmRequired: number;
-  /** 午前のうち送迎(8:15開始)で必要な人数。デイの送迎ロジック用。 */
+  /** 午前のうち 8:15 出勤で必要な人数。デイの早出ロジック用。 */
   earlyAmRequired: number;
   nightInRequired: number;
   nightOutRequired: number;
 };
 
 /** 編集対象の日種 (順序固定。UI の列順とそろえる)。 */
-export const DAY_KINDS: ReadonlyArray<DayKind> = ["WEEKDAY", "SATURDAY", "SUNDAY_HOLIDAY"];
+export const DAY_KINDS: ReadonlyArray<DayKind> = [
+  "WEEKDAY",
+  "SATURDAY",
+  "SUNDAY_HOLIDAY",
+  "HOLIDAY",
+];
 
 export const DAY_KIND_LABELS: Record<DayKind, string> = {
   WEEKDAY: "平日",
   SATURDAY: "土",
-  SUNDAY_HOLIDAY: "日祝",
+  SUNDAY_HOLIDAY: "日",
+  HOLIDAY: "祝",
 };
 
 /** 各項目の入力範囲。 */
@@ -51,7 +57,7 @@ const FIELD_LABELS: Record<keyof CoverageDemandValues, string> = {
   counselorPmRequired: "午後の相談員人数",
   nurseAmRequired: "午前の看護師人数",
   nursePmRequired: "午後の看護師人数",
-  earlyAmRequired: "うち送迎(8:15)の人数",
+  earlyAmRequired: "うち8:15出勤の人数",
   nightInRequired: "夜入の必要数",
   nightOutRequired: "夜明の必要数",
 };
@@ -112,7 +118,7 @@ export function validateCoverageDemand(input: unknown): ValidateResult {
     return { ok: false, error: "午後の相談員人数は午後の必要人数を超えられません。" };
   }
   if (out.earlyAmRequired > out.amRequired) {
-    return { ok: false, error: "送迎(8:15)の人数は午前の必要人数を超えられません。" };
+    return { ok: false, error: "8:15出勤の人数は午前の必要人数を超えられません。" };
   }
   if (out.nurseAmRequired > out.amRequired) {
     return { ok: false, error: "午前の看護師人数は午前の必要人数を超えられません。" };
