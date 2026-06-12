@@ -14,3 +14,16 @@
  * 「常に偽の条件」と lint/型に警告されるのを避けるため。
  */
 export const ATTENDANCE_ENABLED: boolean = false;
+
+/**
+ * 職員ホームの「有給残数」ビュー (/me/leave) を表示するか。
+ *
+ * 現状この残数は運用で使っていない (有給付与の基準日・日数が未整備で、表示値が
+ * 実態と合わないため)。当面は職員側の導線・直 URL を封印する。封印対象は:
+ *
+ * 1. UI 導線 — 従業員ホームの「有給残数を見る」リンク。
+ * 2. ルート — `/me/leave` を middleware で直 URL ブロック (`/` へリダイレクト)。
+ *
+ * 管理側の有給管理 (/admin/leave 配下) はこのフラグの対象外。整備後に true へ戻す。
+ */
+export const EMPLOYEE_LEAVE_VIEW_ENABLED: boolean = false;

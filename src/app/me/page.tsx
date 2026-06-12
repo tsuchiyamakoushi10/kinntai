@@ -11,7 +11,7 @@ import {
   deriveState,
   type PunchAction,
 } from "@/lib/attendance/punch";
-import { ATTENDANCE_ENABLED } from "@/lib/feature-flags";
+import { ATTENDANCE_ENABLED, EMPLOYEE_LEAVE_VIEW_ENABLED } from "@/lib/feature-flags";
 
 import { punch } from "./actions";
 
@@ -128,15 +128,17 @@ export default async function MyHomePage({ searchParams }: PageProps) {
             →
           </span>
         </Link>
-        <Link
-          href="/me/leave"
-          className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
-        >
-          <span>有給残数を見る</span>
-          <span aria-hidden className="text-slate-400">
-            →
-          </span>
-        </Link>
+        {EMPLOYEE_LEAVE_VIEW_ENABLED && (
+          <Link
+            href="/me/leave"
+            className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
+          >
+            <span>有給残数を見る</span>
+            <span aria-hidden className="text-slate-400">
+              →
+            </span>
+          </Link>
+        )}
         <Link
           href="/me/shift-preferences"
           className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"

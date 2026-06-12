@@ -17,7 +17,7 @@ import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 
 import { authConfig } from "@/auth.config";
-import { ATTENDANCE_ENABLED } from "@/lib/feature-flags";
+import { ATTENDANCE_ENABLED, EMPLOYEE_LEAVE_VIEW_ENABLED } from "@/lib/feature-flags";
 
 const { auth } = NextAuth(authConfig);
 
@@ -38,6 +38,14 @@ export default auth((req) => {
   if (
     !ATTENDANCE_ENABLED &&
     ATTENDANCE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+  ) {
+    return NextResponse.redirect(new URL("/", nextUrl));
+  }
+
+  // 職員の有給残数ビュー封印中は /me/leave も直 URL をブロック (管理側 /admin/leave は対象外)。
+  if (
+    !EMPLOYEE_LEAVE_VIEW_ENABLED &&
+    (pathname === "/me/leave" || pathname.startsWith("/me/leave/"))
   ) {
     return NextResponse.redirect(new URL("/", nextUrl));
   }
