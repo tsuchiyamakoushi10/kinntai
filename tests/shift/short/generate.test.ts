@@ -385,13 +385,15 @@ describe("generateShort", () => {
     for (const day of r.days) expect(day.nightFilled).toBe(false);
   });
 
-  it("夜勤回数は nightCap を超えない", () => {
+  it("夜勤は全部埋めるのが最優先: 足りなければ nightCap を超えてでも埋める", () => {
     const d = days(30);
+    // 2 名・各上限 3。上限内なら計 6 回だが、夜勤を空けないため上限を超えて全日埋める。
     const emps = [emp("A", { nightCap: 3 }), emp("B", { nightCap: 3 })];
     const r = generateShort(input(d, emps));
-    for (const [, n] of Object.entries(r.nightCountByEmployee)) {
-      expect(n).toBeLessThanOrEqual(3);
-    }
+    expect(r.unfilledNightDays).toEqual([]);
+    const total = Object.values(r.nightCountByEmployee).reduce((s, n) => s + n, 0);
+    expect(total).toBe(d.length); // 全日ぶん夜入が置かれる
+    expect(Math.max(...Object.values(r.nightCountByEmployee))).toBeGreaterThan(3);
   });
 
   it("相談員不足は coverage で可視化される (配置は強制しない)", () => {

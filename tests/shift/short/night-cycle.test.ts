@@ -70,14 +70,28 @@ describe("assignNightCycle", () => {
     expect(nightInEmp).toBe("B");
   });
 
-  it("夜勤希望を出した人は希望日にしか夜入しない (他の日は対象外)", () => {
-    // B は 6/01 のみ夜勤希望 → 夜勤は 6/01 だけ。他の日は希望を出していない A が担当。
-    const members = [emp("A", 30), emp("B", 30, [], ["2026-06-01"])];
+  it("人手が足りていれば、希望を出した人は希望日のみ夜入 (希望を尊重)", () => {
+    // A・C は希望なし(全日ローテ可)が 2 名居るので夜勤は回る。B は 6/01 のみ夜勤希望 →
+    // 足りているので B は 6/01 だけ。希望外の日には回されない。
+    const members = [emp("A", 30), emp("C", 30), emp("B", 30, [], ["2026-06-01"])];
     const r = assignNightCycle(days(10), members);
     const bNightDates = r.assignments
       .filter((a) => a.employeeId === "B" && a.baseSymbol === "夜入")
       .map((a) => a.date);
     expect(bNightDates).toEqual(["2026-06-01"]);
+  });
+
+  it("人手が足りなければ、希望を出した人も希望外の日に回して全部埋める", () => {
+    // A 1 名(全日可)だけでは連日は組めない(夜明の翌日は塞がる)。夜勤を全部埋めるのが
+    // 最優先なので、6/01 のみ希望の B も希望外の日に回される。
+    const members = [emp("A", 30), emp("B", 30, [], ["2026-06-01"])];
+    const r = assignNightCycle(days(6), members);
+    expect(r.unfilledNightDays).toEqual([]); // 全部埋まる
+    const bNightDates = r.assignments
+      .filter((a) => a.employeeId === "B" && a.baseSymbol === "夜入")
+      .map((a) => a.date);
+    expect(bNightDates).toContain("2026-06-01"); // 希望日は必ず組む
+    expect(bNightDates.length).toBeGreaterThan(1); // 希望外の日にも入って埋める
   });
 
   it("夜勤専従は希望日のみ夜入 (希望外日には全くローテしない)", () => {
@@ -107,12 +121,23 @@ describe("assignNightCycle", () => {
     expect(usedY).toBe(false);
   });
 
-  it("月の上限を超えない", () => {
-    // 2 名で 20 日、各上限 5 → 計 10 回しか置けない → 残りは未充足
+  it("空く日が出るなら月の上限を超えてでも埋める", () => {
+    // 2 名で 20 日・各上限 5。上限内なら計 10 回しか置けないが、夜勤は全部埋めるのが
+    // 最優先なので上限を超えて 20 日ぶん埋める。
     const r = assignNightCycle(days(20), [emp("A", 5), emp("B", 5)]);
-    expect(r.nightCountByEmployee["A"]).toBeLessThanOrEqual(5);
-    expect(r.nightCountByEmployee["B"]).toBeLessThanOrEqual(5);
-    expect(r.unfilledNightDays.length).toBeGreaterThan(0);
+    expect(r.unfilledNightDays).toEqual([]);
+    const ca = r.nightCountByEmployee["A"] ?? 0;
+    const cb = r.nightCountByEmployee["B"] ?? 0;
+    expect(ca + cb).toBe(20); // 全 20 日ぶん埋まる
+    expect(Math.max(ca, cb)).toBeGreaterThan(5); // 上限 5 を超えている
+  });
+
+  it("上限内で足りるうちは上限を超えない (超過はやむを得ないときだけ)", () => {
+    // 4 名・各上限 5 で 12 日 → 上限内 (各 3 回程度) で収まる。むやみに超えない。
+    const r = assignNightCycle(days(12), capable());
+    for (const c of ["A", "B", "C", "D"]) {
+      expect(r.nightCountByEmployee[c] ?? 0).toBeLessThanOrEqual(5);
+    }
   });
 
   it("夜勤回数が偏らない (差 ≤ 1)", () => {

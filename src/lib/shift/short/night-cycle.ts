@@ -4,8 +4,15 @@
  * 「夜入 → 翌日 夜明 → 翌々日 公休(望ましい)」を 1 か月分、先に組む。日中配置より先に
  * 夜勤を固めるのが介護現場の実務 (デイの常勤先取りに対し、ショートは夜勤先取り)。
  *
+ * 方針: **夜勤を全部埋めることを最優先**する。夜勤希望 (preferredNightDates) は尊重して
+ * 先に組むが、人手が足りず空く日が出るくらいなら、月の上限 (nightCap) を超えてでも・
+ * 希望を出した人を希望外の日に回してでも埋める (「埋まらないより超える」)。ただし
+ * 「夜勤をしない人 (nightCap 0)」「当日/翌日が休み」「当日すでに夜勤で塞がり」だけは
+ * 絶対に侵さない (ハード制約)。
+ *
  * DB に触れない純粋関数。夜勤可否/上限は呼び出し側が nightCap で渡す
- * (0 = 夜勤不可、>0 = 月の上限。shift_constraints.max_night_shifts_per_month 由来)。
+ * (0 = 夜勤不可、>0 = 月の上限のめやす。shift_constraints.max_night_shifts_per_month 由来。
+ *  上限は埋めるためなら超えてよいソフト値)。
  * 決定論: 同じ入力なら同じ結果 (夜勤回数が同点なら employeeCode 順)。
  */
 
@@ -94,32 +101,39 @@ export function assignNightCycle(
 
     for (let n = 0; n < day.nightInRequired; n++) {
       const occToday = occupiedOn(day.date);
+      // ハード制約: これを満たさない人は何があっても夜入に置かない (物理的に不可 / 休みを侵さない)。
       const candidates = sorted.filter((e) => {
-        if (e.nightCap <= 0) return false; // 夜勤不可
-        if ((nightCount.get(e.id) ?? 0) >= e.nightCap) return false; // 上限到達
+        if (e.nightCap <= 0) return false; // 夜勤をしない職員 (絶対に置かない)
         if (occToday.has(e.id)) return false; // 既に今日の夜勤(明け/入り)で塞がっている
         if (e.unavailableDates.has(day.date)) return false; // 当日が希望休/不可
         // 夜入を置くと翌日は必ず夜明。翌日が希望休なら置けない。
         if (nextDate && e.unavailableDates.has(nextDate)) return false;
-        // 夜勤専従は「希望日のみ」夜勤可 (希望が空なら夜勤なし)。
-        if (e.nightOnly) {
-          if (!e.preferredNightDates.has(day.date)) return false;
-          return true;
-        }
-        // 夜勤希望を出している人は「希望日のみ」夜勤可 (希望 = その人が夜勤に入れる日の指定)。
-        // 希望を出していない人 (空) は全日ローテーション対象。
-        if (e.preferredNightDates.size > 0 && !e.preferredNightDates.has(day.date)) return false;
+        // 夜勤専従は希望日以外には一切入れない (希望が空なら夜勤なし)。
+        if (e.nightOnly && !e.preferredNightDates.has(day.date)) return false;
         return true;
       });
       if (candidates.length === 0) {
         unfilledNightDays.push(day.date);
         break;
       }
-      // その日を夜勤希望に出している人を最優先 → 夜勤回数が少ない人 → employeeCode。
+      // 夜勤は全部埋めるのが最優先。上限(nightCap)・希望日の制限はソフト扱いにし、
+      // 「埋まらないより超える」を選ぶ。penalty が小さいほど先に選ぶ:
+      //   0  : その日を夜勤希望に出している人 (希望は最優先で必ず組む。上限も無視)
+      //   1  : 通常ローテ枠 (希望未提出 かつ 上限内)
+      //   +2 : 上限超過 (足りないので増やす)
+      //   +4 : 希望を出した人を希望外の日に回す (やむを得ないときだけ)
+      const penalty = (e: NightEmployee): number => {
+        if (e.preferredNightDates.has(day.date)) return 0;
+        let p = 1;
+        if ((nightCount.get(e.id) ?? 0) >= e.nightCap) p += 2; // 上限超過
+        if (e.preferredNightDates.size > 0) p += 4; // 希望を出しているのに今日は希望外
+        return p;
+      };
       candidates.sort((a, b) => {
-        const wantA = a.preferredNightDates.has(day.date) ? 1 : 0;
-        const wantB = b.preferredNightDates.has(day.date) ? 1 : 0;
-        if (wantA !== wantB) return wantB - wantA;
+        const pa = penalty(a);
+        const pb = penalty(b);
+        if (pa !== pb) return pa - pb;
+        // 同じ優先度なら夜勤回数が少ない人から (負担を分散) → employeeCode。
         const ca = nightCount.get(a.id) ?? 0;
         const cb = nightCount.get(b.id) ?? 0;
         if (ca !== cb) return ca - cb;
