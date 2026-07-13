@@ -21,6 +21,9 @@ describe("parseSymbolMaster (実CSV)", () => {
   it("終日記号は午前1・午後1", () => {
     expect(master.get("日勤")).toMatchObject({ amCount: 1, pmCount: 1, isNight: false });
     expect(master.get("デ短A")).toMatchObject({ amCount: 1, pmCount: 1, isNight: false });
+    // NH (ナーシング) 標準日勤 / 早番。NRS 自動生成の終日記号に使う。
+    expect(master.get("有日勤")).toMatchObject({ amCount: 1, pmCount: 1, isNight: false });
+    expect(master.get("有早")).toMatchObject({ amCount: 1, pmCount: 1, isNight: false });
   });
 
   it("午前のみ記号は午前1・午後0", () => {
@@ -51,8 +54,8 @@ describe("parseSymbolMaster (実CSV)", () => {
   });
 
   it("想定どおりの記号数を取り込む", () => {
-    // CSV のデータ行 (ヘッダ除く) すべてが入る
-    expect(master.size).toBe(33);
+    // CSV のデータ行 (ヘッダ除く) すべてが入る (NH 用の 有日勤/有早/のデ日そ を含む)
+    expect(master.size).toBe(36);
   });
 
   it("ヘッダが壊れていれば例外", () => {
