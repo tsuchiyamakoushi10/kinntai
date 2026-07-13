@@ -44,9 +44,10 @@ export async function resolveUniqueLoginId(
   throw new Error(`loginId の空きが見つかりませんでした: ${base}`);
 }
 
-// 紛らわしい文字 (0/O, 1/l/I) を除いた英数字。高齢の職員が紙のメモから
-// 入力する前提で、誤読しにくい集合にする。
-const PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+// 英小文字のみ。数字が混ざるとログインできない職員が多いため、初期パスワードは
+// 英字だけで発行する。紛らわしい i/l, o は除いて誤読しにくい集合にする（紙のメモ
+// から高齢の職員が入力する前提）。
+const PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyz";
 const INITIAL_PASSWORD_LENGTH = 8;
 
 /**

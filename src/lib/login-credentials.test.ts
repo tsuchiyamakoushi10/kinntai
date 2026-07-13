@@ -42,13 +42,13 @@ describe("generateInitialPassword", () => {
     expect(generateInitialPassword(12)).toHaveLength(12);
   });
 
-  it("紛らわしい文字 (0 O 1 l I) を含まない", () => {
+  it("数字と紛らわしい文字 (i l o) を含まない", () => {
     for (let i = 0; i < 200; i += 1) {
-      expect(generateInitialPassword()).not.toMatch(/[0O1lI]/);
+      expect(generateInitialPassword()).not.toMatch(/[0-9ilo]/);
     }
   });
 
-  it("英小文字と 2-9 の数字のみで構成される", () => {
-    expect(generateInitialPassword(40)).toMatch(/^[a-z2-9]+$/);
+  it("英小文字のみで構成される", () => {
+    expect(generateInitialPassword(40)).toMatch(/^[a-z]+$/);
   });
 });
