@@ -39,6 +39,19 @@ function isEarlyPattern(startTime: Date | null, amCount: number): boolean {
   return startTime.getUTCHours() * 60 + startTime.getUTCMinutes() <= 8 * 60 + 15;
 }
 
+// 事業所またぎのセルバッジ / トグルに出す短い事業所ラベル。既知の拠点は判別しやすい
+// 略称、未知の拠点は名称先頭 3 文字にフォールバックする (表示専用)。
+const OFFICE_SHORT_BY_CODE: Record<string, string> = {
+  "DAY-CENTER": "デイ",
+  "SHO-CENTER": "ショート",
+  "NRS-CENTER": "NRS",
+  "DAY-RIKKA": "梨花",
+  KITCHEN: "厨房",
+};
+function officeShortLabel(code: string, name: string): string {
+  return OFFICE_SHORT_BY_CODE[code] ?? name.slice(0, 3);
+}
+
 export default async function AdminShiftsPage({ searchParams }: Props) {
   await requireAdmin();
   const sp = await searchParams;
@@ -83,24 +96,19 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
   const range = monthRange(ym);
   const prevRange = monthRange(range.prevYm);
 
-  const [
-    office,
-    employees,
-    patterns,
-    currentShifts,
-    prevShifts,
-    generationRun,
-    shiftPreferences,
-    coverageDemandRows,
-    publication,
-  ] = await Promise.all([
+  // ステージ A: 拠点 + 従業員 (この拠点に primary 所属 か support 応援で入る人)。
+  // 応援 (support) 職員は勤務表に行を出すが、編集はメイン (primary) 拠点でのみ。
+  const [office, employees] = await Promise.all([
     prisma.office.findUnique({ where: { id: officeId }, select: { name: true } }),
     prisma.employee.findMany({
       where: {
-        officeId,
         // 休職中 (産休等) は勤務表に表示しない。
         employmentStatus: { not: "ON_LEAVE" },
-        OR: [{ retiredAt: null }, { retiredAt: { gte: range.start } }],
+        AND: [
+          { OR: [{ retiredAt: null }, { retiredAt: { gte: range.start } }] },
+          // primary = この拠点所属、または support = この拠点に応援で入る割当を持つ。
+          { OR: [{ officeId }, { officeAssignments: { some: { officeId, role: "SUPPORT" } } }] },
+        ],
       },
       // 並び順は雇用形態 + 手動 display_order を JS 側 (sortForRoster) で決めるため、
       // ここでは取得順は問わない。
@@ -114,12 +122,52 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
         employmentType: true,
         jobCategory: true,
         displayOrder: true,
+        officeId: true,
+        officeAssignments: { select: { officeId: true, role: true } },
       },
     }),
+  ]);
+
+  if (!office) {
+    return (
+      <div className="flex flex-col gap-6">
+        <p className="text-sm text-slate-500">拠点が見つかりませんでした。</p>
+      </div>
+    );
+  }
+
+  // またぎ (応援割当を持つ) 職員で、この拠点が primary の人の ID。彼らは他拠点分の
+  // シフトもこのメイングリッドに読み込み、公休集計を人単位で正しく出す。
+  const crossPrimaryEmpIds = employees
+    .filter((e) => e.officeId === officeId && e.officeAssignments.some((a) => a.role === "SUPPORT"))
+    .map((e) => e.id);
+  // この拠点の primary 職員が応援で入る他拠点の集合 (パレットに固有記号を出すため)。
+  const supportOfficeIds = Array.from(
+    new Set(
+      employees
+        .filter((e) => e.officeId === officeId)
+        .flatMap((e) =>
+          e.officeAssignments.filter((a) => a.role === "SUPPORT").map((a) => a.officeId),
+        ),
+    ),
+  );
+
+  // ステージ B: パターン・シフト・希望・配置基準など。
+  const [
+    patterns,
+    currentShifts,
+    crossShifts,
+    prevShifts,
+    generationRun,
+    shiftPreferences,
+    coverageDemandRows,
+    publication,
+  ] = await Promise.all([
     prisma.shiftPattern.findMany({
       where: {
         isActive: true,
-        OR: [{ officeId }, { officeId: null }],
+        // 自拠点 + 全拠点共通 + またぎ職員の応援先固有記号 (ショ日 等) も選べるように。
+        OR: [{ officeId }, { officeId: null }, { officeId: { in: supportOfficeIds } }],
       },
       orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
       select: {
@@ -132,6 +180,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
         amCount: true,
         pmCount: true,
         startTime: true,
+        officeId: true,
       },
     }),
     prisma.shift.findMany({
@@ -142,11 +191,36 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
         shiftPatternId: true,
         note: true,
         generationRunId: true,
+        officeId: true,
       },
     }),
+    // またぎ職員 (この拠点 primary) の他拠点シフト。メイングリッドに応援日を映す。
+    crossPrimaryEmpIds.length > 0
+      ? prisma.shift.findMany({
+          where: {
+            employeeId: { in: crossPrimaryEmpIds },
+            officeId: { not: officeId },
+            workDate: { gte: range.start, lt: range.end },
+          },
+          select: {
+            employeeId: true,
+            workDate: true,
+            shiftPatternId: true,
+            note: true,
+            generationRunId: true,
+            officeId: true,
+          },
+        })
+      : Promise.resolve([]),
     prisma.shift.findMany({
       where: { officeId, workDate: { gte: prevRange.start, lt: prevRange.end } },
-      select: { employeeId: true, workDate: true, shiftPatternId: true, note: true },
+      select: {
+        employeeId: true,
+        workDate: true,
+        shiftPatternId: true,
+        note: true,
+        officeId: true,
+      },
     }),
     prisma.shiftGenerationRun.findUnique({
       where: { officeId_targetMonth: { officeId, targetMonth: range.start } },
@@ -182,21 +256,24 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     }),
   ]);
 
-  if (!office) {
-    return (
-      <div className="flex flex-col gap-6">
-        <p className="text-sm text-slate-500">拠点が見つかりませんでした。</p>
-      </div>
+  const employeeRows: EmployeeRow[] = sortForRoster(employees).map((e) => {
+    const spanned = Array.from(
+      new Set(
+        [e.officeId, ...e.officeAssignments.map((a) => a.officeId)].filter((x): x is string => !!x),
+      ),
     );
-  }
-
-  const employeeRows: EmployeeRow[] = sortForRoster(employees).map((e) => ({
-    id: e.id,
-    code: e.employeeCode,
-    name: `${e.lastName} ${e.firstName}`,
-    kana: `${e.lastNameKana ?? ""} ${e.firstNameKana ?? ""}`.trim(),
-    employmentType: e.employmentType,
-  }));
+    return {
+      id: e.id,
+      code: e.employeeCode,
+      name: `${e.lastName} ${e.firstName}`,
+      kana: `${e.lastNameKana ?? ""} ${e.firstNameKana ?? ""}`.trim(),
+      employmentType: e.employmentType,
+      // またぎ対応: この拠点が primary の人だけ編集可。応援受入れ行は read-only 反映。
+      primaryOfficeId: e.officeId,
+      spannedOfficeIds: spanned,
+      editable: e.officeId === officeId,
+    };
+  });
 
   const patternOptions: PatternOption[] = patterns.map((p) => ({
     id: p.id,
@@ -208,6 +285,8 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     amCount: p.amCount,
     pmCount: p.pmCount,
     isEarly: isEarlyPattern(p.startTime, p.amCount),
+    // null = 全拠点共通記号。非 null = その事業所固有 (置くと自動でその事業所のセルになる)。
+    officeId: p.officeId,
   }));
 
   // 不足アラート用の配置基準・日種・相談員集合
@@ -234,15 +313,18 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
   );
   const hasDemands = coverageDemandRows.length > 0;
 
-  const initialCells: ShiftCell[] = currentShifts.map((s) => ({
+  // 自拠点分 + またぎ職員の他拠点分。セルは各自の officeId を持つ。
+  const allCurrentShifts = [...currentShifts, ...crossShifts];
+  const initialCells: ShiftCell[] = allCurrentShifts.map((s) => ({
     employeeId: s.employeeId,
     workDate: dateToYmd(s.workDate),
     shiftPatternId: s.shiftPatternId,
+    officeId: s.officeId,
     note: s.note,
   }));
 
   const autoCellKeys = new Set<string>();
-  for (const s of currentShifts) {
+  for (const s of allCurrentShifts) {
     if (s.generationRunId !== null) {
       autoCellKeys.add(`${s.employeeId}:${dateToYmd(s.workDate)}`);
     }
@@ -252,6 +334,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     employeeId: s.employeeId,
     workDate: dateToYmd(s.workDate),
     shiftPatternId: s.shiftPatternId,
+    officeId: s.officeId,
     note: s.note,
   }));
 
@@ -260,6 +343,13 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
     workDate: dateToYmd(p.targetDate),
     preferenceType: p.preferenceType,
     status: p.status,
+  }));
+
+  // グリッドの事業所トグル / バッジ用 (全拠点の id → 名称 / 略称)。
+  const officeOptions = offices.map((o) => ({
+    id: o.id,
+    name: o.name,
+    short: officeShortLabel(o.code, o.name),
   }));
 
   return (
@@ -338,7 +428,8 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
         </div>
       ) : (
         <>
-          <ReorderPanel officeId={officeId} employees={employeeRows} />
+          {/* 並べ替えはこの拠点 primary の在籍者のみ (応援受入れ行は対象外)。 */}
+          <ReorderPanel officeId={officeId} employees={employeeRows.filter((e) => e.editable)} />
           <ShiftGrid
             // 自動生成 (router.refresh) 後にグリッド内部状態を初期化し直すため、
             // 生成時刻を key に含めて再マウントさせる。手修正の保存では generatedAt は
@@ -349,6 +440,7 @@ export default async function AdminShiftsPage({ searchParams }: Props) {
             days={range.days}
             employees={employeeRows}
             patterns={patternOptions}
+            offices={officeOptions}
             initialCells={initialCells}
             prevMonthCells={prevCells}
             autoCellKeys={autoCellKeys}
@@ -368,11 +460,16 @@ async function AllOfficesView({
   offices,
   ym,
 }: {
-  offices: ReadonlyArray<{ id: string; name: string }>;
+  offices: ReadonlyArray<{ id: string; name: string; code: string }>;
   ym: string;
 }) {
   const range = monthRange(ym);
   const officeIds = offices.map((o) => o.id);
+  const officeOptions = offices.map((o) => ({
+    id: o.id,
+    name: o.name,
+    short: officeShortLabel(o.code, o.name),
+  }));
 
   // 全拠点を 1 クエリで取得 → 拠点 ID でグルーピング
   const [employees, patterns, currentShifts, generationRuns] = await Promise.all([
@@ -516,6 +613,10 @@ async function AllOfficesView({
           name: `${e.lastName} ${e.firstName}`,
           kana: `${e.lastNameKana ?? ""} ${e.firstNameKana ?? ""}`.trim(),
           employmentType: e.employmentType,
+          // ALL は読み取り専用なので editable=false。またぎ用メタは最小で埋める。
+          primaryOfficeId: e.officeId ?? office.id,
+          spannedOfficeIds: [e.officeId ?? office.id],
+          editable: false,
         }));
         const patternOptions: PatternOption[] = officePatterns.map((p) => ({
           id: p.id,
@@ -527,11 +628,13 @@ async function AllOfficesView({
           amCount: p.amCount,
           pmCount: p.pmCount,
           isEarly: isEarlyPattern(p.startTime, p.amCount),
+          officeId: p.officeId,
         }));
         const initialCells: ShiftCell[] = sf.map((s) => ({
           employeeId: s.employeeId,
           workDate: dateToYmd(s.workDate),
           shiftPatternId: s.shiftPatternId,
+          officeId: s.officeId,
           note: s.note,
         }));
         const autoKeys = new Set<string>();
@@ -575,6 +678,7 @@ async function AllOfficesView({
               days={range.days}
               employees={employeeRows}
               patterns={patternOptions}
+              offices={officeOptions}
               initialCells={initialCells}
               prevMonthCells={[]}
               autoCellKeys={autoKeys}

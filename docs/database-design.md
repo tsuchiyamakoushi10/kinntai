@@ -105,6 +105,25 @@ users ──── employees   (1:1、users.role で管理者/従業員を区別
 - `desired_night_shifts_per_month`: 自動作成 v2 ([auto-shift-design-v2.md §4.2](auto-shift-design-v2.md) ①) で追加。日付単位の `shift_preferences.preferred_night`（夜勤を入れてよい日）とは別軸で、「月あたり何回夜勤に入りたいか」を保持する。月の夜勤上限 `shift_constraints.max_night_shifts_per_month`（上限）と区別する（希望 ≤ 上限が通常）
 - `is_manager`: 管理者（施設管理者）フラグ。`true` の職員は S-E-10 のシフト希望画面で `shift_preferences.office_day`（事務日）/ `record_round`（実績周り日）を月あたり事務日 2 日・実績周り日 1 日まで指定できる。自動作成（デイ / ショート / NRS）はその日を勤務記号「事務」/「実績周り」で固定配置し、公休を入れない（勤務日数・連勤・フロア人数にカウント）。ログイン権限 `users.role` とは別軸
 
+### 2.3.1 `employee_office_assignment` — 事業所配属 / 兼務（応援）
+
+1 従業員 × 配属/兼務する事業所ごとに 1 行。事業所またぎ（応援）勤務の宣言的表現。
+詳細は [employee-master.md §5.2](employee-master.md)。
+
+| カラム                  | 型                          | 説明                                                             |
+| ----------------------- | --------------------------- | ---------------------------------------------------------------- |
+| id                      | uuid                        | PK                                                               |
+| employee_id             | uuid                        | `employees.id` FK（onDelete: Cascade）                           |
+| office_id               | uuid                        | `offices.id` FK（配属先）                                        |
+| role                    | enum(`primary` / `support`) | primary=主たる所属（`employees.office_id` と同一）/ support=応援 |
+| created_at / updated_at | timestamptz                 |                                                                  |
+
+- 一意: `(employee_id, office_id)`、インデックス: `(office_id, role)`
+- `role=primary` は既存 `employees.office_id` からバックフィル。primary の真実は `employees.office_id`
+- `role=support`（応援先）を持つ職員は、その事業所の勤務表に行が出て、自動生成でも配置対象に含まれる
+- 勤務表の編集は primary 拠点でのみ。`shifts.office_id` がセルごとの勤務先（応援日は応援先の office_id）
+- v1 は最小 3 列。`allowed_pattern_codes` / `time_scope` / `priority` は将来（[employee-master.md §5.2](employee-master.md)）
+
 ### 2.4 `qualifications` — 保有資格（キャリアアップ助成金 / 加算で参照）
 
 | カラム                  | 型                                                                                                   | 説明     |

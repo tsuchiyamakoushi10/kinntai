@@ -39,6 +39,8 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
   // 週合計時間の補助表示用ローカルステート（保存はしない、見せるだけ）
   const [weeklyDays, setWeeklyDays] = useState<string>(v.weeklyWorkDays);
   const [dailyHours, setDailyHours] = useState<string>(v.dailyWorkHours);
+  // 応援先チェックボックスから主たる所属を除くため、選択中の所属拠点を追跡する。
+  const [primaryOfficeId, setPrimaryOfficeId] = useState<string>(v.officeId);
   const weeklyTotal = useMemo(() => {
     const d = Number(weeklyDays);
     const h = Number(dailyHours);
@@ -100,7 +102,12 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
       <Section title="所属">
         <Row>
           <Field label="所属拠点">
-            <select name="officeId" defaultValue={v.officeId} className={inputCls}>
+            <select
+              name="officeId"
+              value={primaryOfficeId}
+              onChange={(e) => setPrimaryOfficeId(e.target.value)}
+              className={inputCls}
+            >
               <option value="">（未設定）</option>
               {offices.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -133,6 +140,39 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
           </Field>
           <div />
         </Row>
+        <Field
+          label="応援で入る事業所（兼務先）"
+          hint="所属拠点のほかに応援で勤務する事業所。勤務表にこの人の行が出て、その事業所の勤務も入れられます。"
+        >
+          <div className="flex flex-col gap-1.5">
+            {offices.filter((o) => o.id !== primaryOfficeId).length === 0 ? (
+              <span className="text-xs text-slate-400">
+                先に所属拠点を選ぶと、応援先を選べます。
+              </span>
+            ) : (
+              offices
+                .filter((o) => o.id !== primaryOfficeId)
+                .map((o) => (
+                  <label
+                    key={o.id}
+                    className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-1.5 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      name="supportOfficeIds"
+                      value={o.id}
+                      defaultChecked={v.supportOfficeIds.includes(o.id)}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    <span className="text-slate-700">
+                      {o.name}
+                      <span className="ml-1 text-xs text-slate-400">（{o.code}）</span>
+                    </span>
+                  </label>
+                ))
+            )}
+          </div>
+        </Field>
       </Section>
 
       <Section title="シフト">

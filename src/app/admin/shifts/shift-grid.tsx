@@ -19,6 +19,7 @@ import {
   type DayShortfall,
   type GridCell,
 } from "@/lib/shift/grid-coverage";
+import { resolveCellOfficeId } from "@/lib/shifts/cell-office";
 import type { ShiftCell } from "@/lib/shifts/diff";
 
 import { saveShifts } from "./actions";
@@ -78,6 +79,12 @@ export type EmployeeRow = {
   kana: string;
   // CSV 取り込み後は空欄あり。表示・並び順以外で参照しない。
   employmentType: EmploymentType | null;
+  /** 主たる所属事業所 (primary)。応援受入れ行はこのグリッドの officeId と異なる。 */
+  primaryOfficeId: string | null;
+  /** この人が勤務しうる事業所 (primary + 応援先)。セルの事業所トグルの選択肢になる。 */
+  spannedOfficeIds: ReadonlyArray<string>;
+  /** この行をこのグリッドで編集できるか。false = 他拠点 primary の応援受入れ行 (読み取り反映)。 */
+  editable: boolean;
 };
 
 export type PatternOption = {
@@ -92,7 +99,12 @@ export type PatternOption = {
   pmCount: number;
   /** 送迎 (8:15開始) か (送迎不足アラート用)。 */
   isEarly: boolean;
+  /** 事業所固有記号なら その officeId。null = 全拠点共通記号。置くセルの事業所判定に使う。 */
+  officeId: string | null;
 };
+
+/** グリッドのトグル / バッジに出す事業所 (id → 名称 / 略称)。 */
+export type OfficeOption = { id: string; name: string; short: string };
 
 type Props = {
   officeId: string;
@@ -101,6 +113,8 @@ type Props = {
   days: ReadonlyArray<string>;
   employees: ReadonlyArray<EmployeeRow>;
   patterns: ReadonlyArray<PatternOption>;
+  /** 事業所またぎのセルトグル / バッジ用 (全拠点の id → 名称 / 略称)。 */
+  offices?: ReadonlyArray<OfficeOption>;
   initialCells: ReadonlyArray<ShiftCell>;
   /** 前月コピー用。officeId が一致する前月分のセル。 */
   prevMonthCells: ReadonlyArray<ShiftCell>;
@@ -155,6 +169,7 @@ export function ShiftGrid({
   days,
   employees,
   patterns,
+  offices,
   initialCells,
   prevMonthCells,
   autoCellKeys,
@@ -182,6 +197,20 @@ export function ShiftGrid({
     for (const p of patterns) m.set(p.id, p);
     return m;
   }, [patterns]);
+
+  // 事業所 id → 略称 (セルバッジ / トグル用)。
+  const officeShortById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const o of offices ?? []) m.set(o.id, o.short);
+    return m;
+  }, [offices]);
+
+  // 従業員 id → 行メタ (編集可否・またぎ先)。employeeIdx 依存を避けて cells 保存時に使う。
+  const rowByEmpId = useMemo(() => {
+    const m = new Map<string, EmployeeRow>();
+    for (const e of employees) m.set(e.id, e);
+    return m;
+  }, [employees]);
 
   // (employeeId:workDate) → 希望。却下済みは呼び出し側で除外して渡す想定。
   const prefByCell = useMemo(() => {
@@ -236,18 +265,39 @@ export function ShiftGrid({
     const emp = employees[employeeIdx];
     const day = days[dayIdx];
     if (!emp || !day) return;
+    // 応援受入れ行 (他拠点 primary) はこのグリッドで編集不可。
+    if (!emp.editable) {
+      setCursor({ employeeIdx, dayIdx });
+      return;
+    }
     if (!activePatternId) {
       // パレット未選択ならカーソル移動だけ
       setCursor({ employeeIdx, dayIdx });
       return;
     }
+    const pattern = patternsById.get(activePatternId);
+    const k = cellKey(emp.id, day);
+    const cellOfficeId = resolveCellOfficeId({
+      gridOfficeId: officeId,
+      spannedOfficeIds: emp.spannedOfficeIds,
+      primaryOfficeId: emp.primaryOfficeId,
+      patternOfficeId: pattern?.officeId ?? null,
+      currentOfficeId: cells.get(k)?.officeId,
+    });
+    // この人が勤務しえない事業所の記号 (別拠点の固有記号) は貼らせない。
+    if (!emp.spannedOfficeIds.includes(cellOfficeId)) {
+      setCursor({ employeeIdx, dayIdx });
+      setMessage({ kind: "err", text: `${emp.name} さんはこの記号の事業所では勤務できません。` });
+      return;
+    }
     setCursor({ employeeIdx, dayIdx });
     setCells((prev) => {
       const next = new Map(prev);
-      next.set(cellKey(emp.id, day), {
+      next.set(k, {
         employeeId: emp.id,
         workDate: day,
         shiftPatternId: activePatternId,
+        officeId: cellOfficeId,
         note: null,
       });
       return next;
@@ -259,12 +309,34 @@ export function ShiftGrid({
     const emp = employees[employeeIdx];
     const day = days[dayIdx];
     if (!emp || !day) return;
+    if (!emp.editable) return;
     const k = cellKey(emp.id, day);
     if (!cells.has(k)) return;
     setCells((prev) => {
       if (!prev.has(k)) return prev;
       const next = new Map(prev);
       next.delete(k);
+      return next;
+    });
+    setIsDirty(true);
+  }
+
+  // またぎ職員の共通記号セルの事業所を切り替える (primary ↔ 応援先を順に巡回)。
+  // 事業所固有記号は pattern が事業所を決めるので対象外。
+  function cycleCellOffice(employeeId: string, day: string): void {
+    const emp = rowByEmpId.get(employeeId);
+    if (!emp || !emp.editable || emp.spannedOfficeIds.length < 2) return;
+    const k = cellKey(employeeId, day);
+    const cur = cells.get(k);
+    if (!cur) return;
+    const pattern = patternsById.get(cur.shiftPatternId);
+    if (pattern?.officeId != null) return; // 固有記号は切替不可
+    const list = emp.spannedOfficeIds;
+    const idx = list.indexOf(cur.officeId);
+    const nextOffice = list[(idx + 1) % list.length]!;
+    setCells((prev) => {
+      const next = new Map(prev);
+      next.set(k, { ...cur, officeId: nextOffice });
       return next;
     });
     setIsDirty(true);
@@ -326,10 +398,13 @@ export function ShiftGrid({
       // 当月にその日が存在しない (例: 2/30) ものはスキップ
       if (!days.includes(targetDate)) continue;
       if (!validPatternIds.has(c.shiftPatternId)) continue;
+      // 応援受入れ行 (編集不可) にはコピーしない。
+      if (!rowByEmpId.get(c.employeeId)?.editable) continue;
       prevByEmpDay.set(cellKey(c.employeeId, targetDate), {
         employeeId: c.employeeId,
         workDate: targetDate,
         shiftPatternId: c.shiftPatternId,
+        officeId: c.officeId,
         note: c.note,
       });
     }
@@ -354,7 +429,14 @@ export function ShiftGrid({
   }
 
   function clearAll(): void {
-    setCells(new Map());
+    // 応援受入れ行 (編集不可) のセルは残す (このグリッドの管轄外)。
+    setCells((prev) => {
+      const next = new Map<string, ShiftCell>();
+      for (const [k, c] of prev) {
+        if (!rowByEmpId.get(c.employeeId)?.editable) next.set(k, c);
+      }
+      return next;
+    });
     setIsDirty(true);
     setMessage({ kind: "ok", text: `すべて消去しました (保存はまだです)。` });
   }
@@ -367,10 +449,14 @@ export function ShiftGrid({
 
   function onSave(): void {
     startTransition(async () => {
+      // 応援受入れ行 (編集不可) のセルは送らない。保存はこの拠点 primary 職員の分だけ。
+      const editableCells = Array.from(cells.values()).filter(
+        (c) => rowByEmpId.get(c.employeeId)?.editable,
+      );
       const res = await saveShifts({
         officeId,
         ym,
-        cells: Array.from(cells.values()),
+        cells: editableCells,
       });
       if (res.ok) {
         setIsDirty(false);
@@ -536,111 +622,175 @@ export function ShiftGrid({
             </tr>
           </thead>
           <tbody>
-            {employees.map((emp, ei) => (
-              <tr key={emp.id} className="border-b border-slate-100">
-                <th
-                  className="sticky left-0 z-10 border-r border-slate-200 bg-white px-3 py-1.5 text-left align-middle font-normal"
-                  scope="row"
+            {employees.map((emp, ei) => {
+              // 応援受入れ行 (他拠点 primary) はこのグリッドで編集不可 (読み取り反映)。
+              const rowInteractive = !readOnly && emp.editable;
+              const supportRow = !emp.editable;
+              const primaryShort = emp.primaryOfficeId
+                ? officeShortById.get(emp.primaryOfficeId)
+                : null;
+              return (
+                <tr
+                  key={emp.id}
+                  className={`border-b border-slate-100 ${supportRow ? "bg-slate-50/40" : ""}`}
                 >
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium text-slate-900">{emp.name}</span>
-                    <span className="rounded-sm bg-slate-100 px-1 text-[10px] text-slate-600">
-                      {emp.employmentType ? EMPLOYMENT_LABEL[emp.employmentType] : "—"}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-slate-500">
-                    {emp.kana}
-                    <span className="ml-1 font-mono text-slate-400">{emp.code}</span>
-                  </div>
-                </th>
-                {days.map((d, di) => {
-                  const k = cellKey(emp.id, d);
-                  const cell = cells.get(k);
-                  const pattern = cell ? patternsById.get(cell.shiftPatternId) : null;
-                  const pref = prefByCell.get(k) ?? null;
-                  const visual = pref ? PREF_VISUAL[pref.preferenceType] : null;
-                  const isCursor = cursor?.employeeIdx === ei && cursor?.dayIdx === di;
-                  const w = weekdayOf(d);
-                  const weekend = w === 0 || w === 6;
-                  const isAuto = autoCellKeys?.has(k) ?? false;
-                  // 出勤=色付き+太字で目立たせ、公休=淡いグレーで引っ込めて、休/出勤を一目で分ける。
-                  const kind = pattern?.shiftKind;
-                  const isOff = kind === "OFF";
-                  const isWork = kind === "WORK" || kind === "NIGHT_IN" || kind === "NIGHT_OUT";
-                  return (
-                    <td
-                      key={d}
-                      className={[
-                        "relative h-9 border-r border-slate-100 p-0 text-center align-middle",
-                        readOnly ? "" : "cursor-pointer hover:ring-2 hover:ring-slate-400/50",
-                        weekend && !pattern && !pref ? "bg-slate-50/60" : "",
-                        // 公休は淡いグレー (引っ込ませる)。申請セルはクラス側の色を優先。
-                        !pref && isOff ? "bg-slate-100" : "",
-                        visual ? visual.bg : "",
-                        pref?.status === "PENDING"
-                          ? "outline-1 -outline-offset-2 outline-slate-500 outline-dashed"
-                          : "",
-                        isCursor && !readOnly ? "ring-2 ring-slate-900 ring-inset" : "",
-                      ].join(" ")}
-                      style={
-                        // 申請・公休はクラス側で色付け。出勤は濃いめ(50%)、その他の休(有休等)は淡め(35%)。
-                        pattern && !pref && !isOff
-                          ? { backgroundColor: pattern.color + (isWork ? "80" : "59") }
-                          : undefined
-                      }
-                      onClick={() => {
-                        if (readOnly) return;
-                        gridRef.current?.focus();
-                        paintCell(ei, di);
-                      }}
-                      title={[
-                        pattern
-                          ? `${pattern.name} (${pattern.code})${isAuto ? " ・自動作成由来" : ""}`
-                          : "",
-                        pref ? prefTitle(pref) : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" / ")}
-                    >
-                      {pattern ? (
+                  <th
+                    className="sticky left-0 z-10 border-r border-slate-200 bg-white px-3 py-1.5 text-left align-middle font-normal"
+                    scope="row"
+                  >
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium text-slate-900">{emp.name}</span>
+                      <span className="rounded-sm bg-slate-100 px-1 text-[10px] text-slate-600">
+                        {emp.employmentType ? EMPLOYMENT_LABEL[emp.employmentType] : "—"}
+                      </span>
+                      {supportRow && (
                         <span
-                          className={[
-                            "block truncate px-0.5 text-[11px]",
-                            isOff
-                              ? "font-normal text-slate-400"
-                              : isWork
-                                ? "font-bold text-slate-900"
-                                : "font-medium text-slate-900",
-                          ].join(" ")}
+                          className="rounded-sm bg-amber-100 px-1 text-[10px] font-medium text-amber-800"
+                          title={`応援（主たる所属は別拠点）。編集は所属拠点の勤務表で行います。`}
                         >
-                          {pattern.name}
-                        </span>
-                      ) : visual ? (
-                        <span
-                          className={`block truncate px-0.5 text-[11px] font-bold ${visual.text}`}
-                        >
-                          {visual.short}
-                        </span>
-                      ) : (
-                        <span className="block text-slate-300">·</span>
-                      )}
-                      {isAuto && pattern && (
-                        <span
-                          aria-hidden
-                          className="pointer-events-none absolute bottom-0 left-0.5 text-[8px] leading-none text-slate-600"
-                          title="自動作成由来"
-                        >
-                          ▾
+                          応援{primaryShort ? `・${primaryShort}` : ""}
                         </span>
                       )}
-                    </td>
-                  );
-                })}
-                <td className="sticky right-0 z-10 border-l border-slate-300 bg-white px-2 py-1 text-center align-middle font-semibold text-slate-700 tabular-nums">
-                  {offCountByEmp.get(emp.id) ?? 0}
-                </td>
-              </tr>
-            ))}
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      {emp.kana}
+                      <span className="ml-1 font-mono text-slate-400">{emp.code}</span>
+                    </div>
+                  </th>
+                  {days.map((d, di) => {
+                    const k = cellKey(emp.id, d);
+                    const cell = cells.get(k);
+                    const pattern = cell ? patternsById.get(cell.shiftPatternId) : null;
+                    const pref = prefByCell.get(k) ?? null;
+                    const visual = pref ? PREF_VISUAL[pref.preferenceType] : null;
+                    const isCursor = cursor?.employeeIdx === ei && cursor?.dayIdx === di;
+                    const w = weekdayOf(d);
+                    const weekend = w === 0 || w === 6;
+                    const isAuto = autoCellKeys?.has(k) ?? false;
+                    // 出勤=色付き+太字で目立たせ、公休=淡いグレーで引っ込めて、休/出勤を一目で分ける。
+                    const kind = pattern?.shiftKind;
+                    const isOff = kind === "OFF";
+                    const isWork = kind === "WORK" || kind === "NIGHT_IN" || kind === "NIGHT_OUT";
+                    // 事業所またぎ: このセルの勤務がグリッドと別拠点なら事業所バッジを出す。
+                    // 共通記号のまたぎ行はバッジをクリックで事業所を巡回できる (固有記号は不可)。
+                    const isOtherOffice = cell != null && cell.officeId !== officeId;
+                    const canToggleOffice =
+                      rowInteractive &&
+                      emp.spannedOfficeIds.length > 1 &&
+                      cell != null &&
+                      pattern != null &&
+                      pattern.officeId == null;
+                    const officeBadge =
+                      cell && (isOtherOffice || canToggleOffice)
+                        ? (officeShortById.get(cell.officeId) ?? null)
+                        : null;
+                    return (
+                      <td
+                        key={d}
+                        className={[
+                          "relative h-9 border-r border-slate-100 p-0 text-center align-middle",
+                          rowInteractive
+                            ? "cursor-pointer hover:ring-2 hover:ring-slate-400/50"
+                            : "",
+                          weekend && !pattern && !pref ? "bg-slate-50/60" : "",
+                          // 公休は淡いグレー (引っ込ませる)。申請セルはクラス側の色を優先。
+                          !pref && isOff ? "bg-slate-100" : "",
+                          visual ? visual.bg : "",
+                          // 別拠点セルは細い枠で区別 (バッジと併せて一目で分かる)。
+                          isOtherOffice
+                            ? "outline-1 -outline-offset-1 outline-teal-500 outline-dotted"
+                            : "",
+                          pref?.status === "PENDING"
+                            ? "outline-1 -outline-offset-2 outline-slate-500 outline-dashed"
+                            : "",
+                          isCursor && rowInteractive ? "ring-2 ring-slate-900 ring-inset" : "",
+                        ].join(" ")}
+                        style={
+                          // 申請・公休はクラス側で色付け。出勤は濃いめ(50%)、その他の休(有休等)は淡め(35%)。
+                          pattern && !pref && !isOff
+                            ? { backgroundColor: pattern.color + (isWork ? "80" : "59") }
+                            : undefined
+                        }
+                        onClick={() => {
+                          if (!rowInteractive) return;
+                          gridRef.current?.focus();
+                          paintCell(ei, di);
+                        }}
+                        title={[
+                          pattern
+                            ? `${pattern.name} (${pattern.code})${isAuto ? " ・自動作成由来" : ""}`
+                            : "",
+                          cell && officeShortById.get(cell.officeId)
+                            ? `勤務先: ${officeShortById.get(cell.officeId)}`
+                            : "",
+                          pref ? prefTitle(pref) : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" / ")}
+                      >
+                        {pattern ? (
+                          <span
+                            className={[
+                              "block truncate px-0.5 text-[11px]",
+                              isOff
+                                ? "font-normal text-slate-400"
+                                : isWork
+                                  ? "font-bold text-slate-900"
+                                  : "font-medium text-slate-900",
+                            ].join(" ")}
+                          >
+                            {pattern.name}
+                          </span>
+                        ) : visual ? (
+                          <span
+                            className={`block truncate px-0.5 text-[11px] font-bold ${visual.text}`}
+                          >
+                            {visual.short}
+                          </span>
+                        ) : (
+                          <span className="block text-slate-300">·</span>
+                        )}
+                        {isAuto && pattern && (
+                          <span
+                            aria-hidden
+                            className="pointer-events-none absolute bottom-0 left-0.5 text-[8px] leading-none text-slate-600"
+                            title="自動作成由来"
+                          >
+                            ▾
+                          </span>
+                        )}
+                        {officeBadge != null &&
+                          (canToggleOffice ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                cycleCellOffice(emp.id, d);
+                              }}
+                              className="absolute top-0 right-0 rounded-bl-sm bg-teal-600 px-0.5 text-[8px] leading-tight font-bold text-white hover:bg-teal-500"
+                              title="クリックで勤務先の事業所を切り替え"
+                            >
+                              {officeBadge}
+                            </button>
+                          ) : (
+                            <span
+                              aria-hidden
+                              className="pointer-events-none absolute top-0 right-0 rounded-bl-sm bg-teal-600 px-0.5 text-[8px] leading-tight font-bold text-white"
+                              title={`勤務先: ${officeBadge}`}
+                            >
+                              {officeBadge}
+                            </span>
+                          ))}
+                      </td>
+                    );
+                  })}
+                  <td className="sticky right-0 z-10 border-l border-slate-300 bg-white px-2 py-1 text-center align-middle font-semibold text-slate-700 tabular-nums">
+                    {/* 応援受入れ行は自拠点分しか持たないので公休合計を出さない (誤解防止)。 */}
+                    {emp.editable ? (offCountByEmp.get(emp.id) ?? 0) : "–"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

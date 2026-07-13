@@ -10,6 +10,7 @@ import type { DayKind, PrismaClient } from "@prisma/client";
 import { isRegularEmployment } from "../../employee-labels";
 import { dayKindFor } from "../../calendar/holidays";
 import type { SymbolCoverage, SymbolMaster } from "../coverage";
+import { mergeCrossOfficeBusyDays } from "../cross-office";
 import { MANAGER_DUTY_PREFERENCE_TYPES, managerDutySymbolFor } from "../manager-duty";
 import {
   DEY_DEFAULT_CONFIG,
@@ -61,55 +62,83 @@ export async function loadDeyGenerateInput(
   const rangeEnd = new Date(`${lastDate}T00:00:00.000Z`);
   rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
 
-  const [employeesRaw, demandsRaw, patternsRaw, prefsRaw, dutyPrefsRaw] = await Promise.all([
-    prisma.employee.findMany({
-      where: { officeId, employmentStatus: "ACTIVE", employmentType: { not: null } },
-      select: {
-        id: true,
-        employeeCode: true,
-        employmentType: true,
-        jobCategory: true,
-        joinedAt: true,
-        retiredAt: true,
-        isManager: true,
-        shiftConstraint: { select: { targetMonthlyWorkDays: true, halfDayOnly: true } },
-      },
-    }),
-    prisma.officeCoverageDemand.findMany({
-      where: { officeId },
-      select: {
-        dayKind: true,
-        amRequired: true,
-        pmRequired: true,
-        counselorAmRequired: true,
-        counselorPmRequired: true,
-        earlyAmRequired: true,
-      },
-    }),
-    prisma.shiftPattern.findMany({
-      where: { isActive: true, OR: [{ officeId }, { officeId: null }] },
-      select: { name: true, amCount: true, pmCount: true, shiftKind: true, startTime: true },
-    }),
-    prisma.shiftPreference.findMany({
-      where: {
-        status: { not: "REJECTED" },
-        preferenceType: { in: ["REQUESTED_OFF", "UNAVAILABLE", "PAID_LEAVE"] },
-        targetDate: { gte: rangeStart, lt: rangeEnd },
-        employee: { officeId },
-      },
-      select: { employeeId: true, targetDate: true, preferenceType: true },
-    }),
-    // 管理者の事務日 / 実績周り日 (却下以外)。その日を該当勤務で固定配置する (公休を入れない)。
-    prisma.shiftPreference.findMany({
-      where: {
-        status: { not: "REJECTED" },
-        preferenceType: { in: [...MANAGER_DUTY_PREFERENCE_TYPES] },
-        targetDate: { gte: rangeStart, lt: rangeEnd },
-        employee: { officeId, isManager: true },
-      },
-      select: { employeeId: true, targetDate: true, preferenceType: true },
-    }),
-  ]);
+  // primary=この拠点 + support=この拠点に応援で入る職員。応援職員も配置対象に含める。
+  const employeeWhere = {
+    employmentStatus: "ACTIVE" as const,
+    employmentType: { not: null },
+    OR: [{ officeId }, { officeAssignments: { some: { officeId, role: "SUPPORT" as const } } }],
+  };
+
+  const [employeesRaw, demandsRaw, patternsRaw, prefsRaw, dutyPrefsRaw, crossShiftsRaw] =
+    await Promise.all([
+      prisma.employee.findMany({
+        where: employeeWhere,
+        select: {
+          id: true,
+          employeeCode: true,
+          employmentType: true,
+          jobCategory: true,
+          joinedAt: true,
+          retiredAt: true,
+          isManager: true,
+          shiftConstraint: { select: { targetMonthlyWorkDays: true, halfDayOnly: true } },
+        },
+      }),
+      prisma.officeCoverageDemand.findMany({
+        where: { officeId },
+        select: {
+          dayKind: true,
+          amRequired: true,
+          pmRequired: true,
+          counselorAmRequired: true,
+          counselorPmRequired: true,
+          earlyAmRequired: true,
+        },
+      }),
+      prisma.shiftPattern.findMany({
+        where: { isActive: true, OR: [{ officeId }, { officeId: null }] },
+        select: { name: true, amCount: true, pmCount: true, shiftKind: true, startTime: true },
+      }),
+      prisma.shiftPreference.findMany({
+        where: {
+          status: { not: "REJECTED" },
+          preferenceType: { in: ["REQUESTED_OFF", "UNAVAILABLE", "PAID_LEAVE"] },
+          targetDate: { gte: rangeStart, lt: rangeEnd },
+          employee: { officeId },
+        },
+        select: { employeeId: true, targetDate: true, preferenceType: true },
+      }),
+      // 管理者の事務日 / 実績周り日 (却下以外)。その日を該当勤務で固定配置する (公休を入れない)。
+      prisma.shiftPreference.findMany({
+        where: {
+          status: { not: "REJECTED" },
+          preferenceType: { in: [...MANAGER_DUTY_PREFERENCE_TYPES] },
+          targetDate: { gte: rangeStart, lt: rangeEnd },
+          employee: { officeId, isManager: true },
+        },
+        select: { employeeId: true, targetDate: true, preferenceType: true },
+      }),
+      // 事業所またぎ: 対象職員が別拠点で既に入っている当月シフト (勤務/公休問わず)。
+      // その日は勤務不可として扱い、二重配置を防ぐ。
+      prisma.shift.findMany({
+        where: {
+          officeId: { not: officeId },
+          workDate: { gte: rangeStart, lt: rangeEnd },
+          employee: employeeWhere,
+        },
+        select: { employeeId: true, officeId: true, workDate: true },
+      }),
+    ]);
+
+  // 別拠点で塞がっている日を従業員ごとに (unavailableDates にマージする)。
+  const crossBusyByEmp = mergeCrossOfficeBusyDays(
+    crossShiftsRaw.map((s) => ({
+      employeeId: s.employeeId,
+      officeId: s.officeId,
+      workDate: ymd(s.workDate),
+    })),
+    officeId,
+  );
 
   // 希望休 / 勤務不可 → 公休 (不可日)、有給 → 有休 (paidLeaveDates) に振り分け。
   const offByEmp = new Map<string, Set<string>>();
@@ -134,6 +163,8 @@ export async function loadDeyGenerateInput(
   const employees: DeyEmployee[] = employeesRaw.map((e) => {
     const unavailable = new Set(offByEmp.get(e.id) ?? []);
     const paidLeave = new Set(paidByEmp.get(e.id) ?? []);
+    // 他拠点で既に入っている日を不可日に (事業所またぎの二重配置防止)。
+    for (const date of crossBusyByEmp.get(e.id) ?? []) unavailable.add(date);
     // 雇用期間外 (入社前・退職後) も不可日に
     const joined = e.joinedAt ? ymd(e.joinedAt) : null;
     const retired = e.retiredAt ? ymd(e.retiredAt) : null;

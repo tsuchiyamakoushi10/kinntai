@@ -11,6 +11,11 @@ export type ShiftCell = {
   /** `YYYY-MM-DD` */
   workDate: string;
   shiftPatternId: string;
+  /**
+   * このセルの勤務が属する事業所 ID。通常はグリッドの事業所。事業所またぎ (応援) 職員は
+   * セルごとに応援先の officeId を持てる。officeId だけが変わっても upsert として検出する。
+   */
+  officeId: string;
   note: string | null;
 };
 
@@ -28,7 +33,11 @@ function keyOf(c: ShiftKey): string {
 }
 
 function cellEqual(a: ShiftCell, b: ShiftCell): boolean {
-  return a.shiftPatternId === b.shiftPatternId && (a.note ?? "") === (b.note ?? "");
+  return (
+    a.shiftPatternId === b.shiftPatternId &&
+    a.officeId === b.officeId &&
+    (a.note ?? "") === (b.note ?? "")
+  );
 }
 
 /**

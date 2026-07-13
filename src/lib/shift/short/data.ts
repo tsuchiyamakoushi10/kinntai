@@ -11,6 +11,7 @@ import type { DayKind, PrismaClient } from "@prisma/client";
 import { isRegularEmployment } from "../../employee-labels";
 import { dayKindFor } from "../../calendar/holidays";
 import type { SymbolCoverage, SymbolMaster } from "../coverage";
+import { mergeCrossOfficeBusyDays } from "../cross-office";
 import { MANAGER_DUTY_PREFERENCE_TYPES, managerDutySymbolFor } from "../manager-duty";
 import {
   SHORT_DEFAULT_CONFIG,
@@ -82,6 +83,13 @@ export async function loadShortGenerateInput(
   const ymMatch = /^(\d{4})-(\d{2})$/.exec(targetMonth)!;
   const prevMonthLastDate = new Date(Date.UTC(Number(ymMatch[1]), Number(ymMatch[2]) - 1, 0));
 
+  // primary=この拠点 + support=この拠点に応援で入る職員。応援職員も配置対象に含める。
+  const employeeWhere = {
+    employmentStatus: "ACTIVE" as const,
+    employmentType: { not: null },
+    OR: [{ officeId }, { officeAssignments: { some: { officeId, role: "SUPPORT" as const } } }],
+  };
+
   const [
     employeesRaw,
     demandsRaw,
@@ -91,9 +99,10 @@ export async function loadShortGenerateInput(
     paidPrefsRaw,
     dutyPrefsRaw,
     carryRaw,
+    crossShiftsRaw,
   ] = await Promise.all([
     prisma.employee.findMany({
-      where: { officeId, employmentStatus: "ACTIVE", employmentType: { not: null } },
+      where: employeeWhere,
       select: {
         id: true,
         employeeCode: true,
@@ -171,7 +180,26 @@ export async function loadShortGenerateInput(
       where: { officeId, workDate: prevMonthLastDate },
       select: { employeeId: true, shiftPattern: { select: { shiftKind: true } } },
     }),
+    // 事業所またぎ: 対象職員が別拠点で既に入っている当月シフト。その日は勤務不可に。
+    prisma.shift.findMany({
+      where: {
+        officeId: { not: officeId },
+        workDate: { gte: rangeStart, lt: rangeEnd },
+        employee: employeeWhere,
+      },
+      select: { employeeId: true, officeId: true, workDate: true },
+    }),
   ]);
+
+  // 別拠点で塞がっている日を従業員ごとに (unavailableDates にマージする)。
+  const crossBusyByEmp = mergeCrossOfficeBusyDays(
+    crossShiftsRaw.map((s) => ({
+      employeeId: s.employeeId,
+      officeId: s.officeId,
+      workDate: ymd(s.workDate),
+    })),
+    officeId,
+  );
 
   // 希望休 / 勤務不可 を従業員ごとの不可日に
   const offByEmp = new Map<string, Set<string>>();
@@ -226,6 +254,8 @@ export async function loadShortGenerateInput(
     .map((e) => {
       const ov = roster[e.lastName];
       const unavailable = new Set(offByEmp.get(e.id) ?? []);
+      // 他拠点で既に入っている日を不可日に (事業所またぎの二重配置防止)。
+      for (const date of crossBusyByEmp.get(e.id) ?? []) unavailable.add(date);
       // 雇用期間外 (入社前・退職後) も不可日に
       const joined = e.joinedAt ? ymd(e.joinedAt) : null;
       const retired = e.retiredAt ? ymd(e.retiredAt) : null;

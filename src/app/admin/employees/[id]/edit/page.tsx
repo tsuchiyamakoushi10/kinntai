@@ -23,7 +23,10 @@ export default async function EditEmployeePage({ params }: Props) {
   const [employee, offices] = await Promise.all([
     prisma.employee.findUnique({
       where: { id },
-      include: { user: { select: { email: true } } },
+      include: {
+        user: { select: { email: true } },
+        officeAssignments: { where: { role: "SUPPORT" }, select: { officeId: true } },
+      },
     }),
     prisma.office.findMany({
       where: { isActive: true },
@@ -55,6 +58,7 @@ export default async function EditEmployeePage({ params }: Props) {
     nightShiftOnly: employee.nightShiftOnly,
     nightRequestOnly: employee.nightRequestOnly,
     isManager: employee.isManager,
+    supportOfficeIds: employee.officeAssignments.map((a) => a.officeId),
   };
 
   const fullName = `${employee.lastName} ${employee.firstName}`;

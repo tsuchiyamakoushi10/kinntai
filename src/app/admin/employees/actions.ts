@@ -40,6 +40,8 @@ export type EmployeeFormValues = {
   nightShiftOnly: boolean;
   nightRequestOnly: boolean;
   isManager: boolean;
+  /** 応援で入る事業所 (兼務先) の officeId。primary (officeId) とは別。 */
+  supportOfficeIds: string[];
 };
 
 export type EmployeeFormState = {
@@ -50,6 +52,7 @@ export type EmployeeFormState = {
 const KANA_PATTERN = /^[゠-ヿーｦ-ﾟ\s]+$/u; // カタカナ + 長音 + 半角カナ
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_PATTERN = /^[0-9+\-()\s]{0,20}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Parsed = {
   lastName: string;
@@ -71,6 +74,8 @@ type Parsed = {
   nightShiftOnly: boolean;
   nightRequestOnly: boolean;
   isManager: boolean;
+  /** 応援先 (support)。primary (officeId) は除外済み・重複除去済み。 */
+  supportOfficeIds: string[];
 };
 
 function parseAndValidate(
@@ -154,6 +159,15 @@ function parseAndValidate(
     baseWageAmount = n;
   }
 
+  // 応援先: UUID のみ・重複除去・primary (officeId) は support から除外。
+  const primaryOfficeId = values.officeId || null;
+  const supportOfficeIds = Array.from(new Set(values.supportOfficeIds)).filter(
+    (id) => id && id !== primaryOfficeId,
+  );
+  if (supportOfficeIds.some((id) => !UUID_PATTERN.test(id))) {
+    return { ok: false, error: "応援先の事業所 ID が不正です。" };
+  }
+
   return {
     ok: true,
     data: {
@@ -176,8 +190,29 @@ function parseAndValidate(
       nightShiftOnly: values.nightShiftOnly,
       nightRequestOnly: values.nightRequestOnly,
       isManager: values.isManager,
+      supportOfficeIds,
     },
   };
+}
+
+/**
+ * 従業員の事業所配属 (employee_office_assignment) を Employee.officeId (primary) と
+ * 応援先 (support) に合わせて作り直す。primary は officeId、support は指定分。
+ * 冪等: 既存を全消しして入れ直す。primary が未設定なら primary 行は作らない。
+ */
+async function syncOfficeAssignments(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  primaryOfficeId: string | null,
+  supportOfficeIds: string[],
+): Promise<void> {
+  await tx.employeeOfficeAssignment.deleteMany({ where: { employeeId } });
+  const rows: { employeeId: string; officeId: string; role: "PRIMARY" | "SUPPORT" }[] = [];
+  if (primaryOfficeId) rows.push({ employeeId, officeId: primaryOfficeId, role: "PRIMARY" });
+  for (const officeId of supportOfficeIds) {
+    rows.push({ employeeId, officeId, role: "SUPPORT" });
+  }
+  if (rows.length > 0) await tx.employeeOfficeAssignment.createMany({ data: rows });
 }
 
 function valuesFromForm(formData: FormData): EmployeeFormValues {
@@ -202,6 +237,7 @@ function valuesFromForm(formData: FormData): EmployeeFormValues {
     nightShiftOnly: formData.get("nightShiftOnly") === "on",
     nightRequestOnly: formData.get("nightRequestOnly") === "on",
     isManager: formData.get("isManager") === "on",
+    supportOfficeIds: formData.getAll("supportOfficeIds").map((v) => String(v)),
   };
 }
 
@@ -268,6 +304,13 @@ export async function createEmployee(
           isManager: parsed.data.isManager,
         },
       });
+      // 事業所配属 (primary + 応援先) を作る。
+      await syncOfficeAssignments(
+        tx,
+        employee.id,
+        parsed.data.officeId,
+        parsed.data.supportOfficeIds,
+      );
       // メール未入力なら login User は作らない (CSV 取り込み相当の「ログインなし社員」)。
       if (parsed.data.email) {
         await tx.user.create({
@@ -354,6 +397,8 @@ export async function updateEmployee(
           isManager: parsed.data.isManager,
         },
       });
+      // 事業所配属 (primary + 応援先) を作り直す。
+      await syncOfficeAssignments(tx, id, parsed.data.officeId, parsed.data.supportOfficeIds);
       // メールが入力されているときだけ login User を作成 / 更新する。
       // 空欄なら既存アカウントはそのまま (誤って消さない)。
       if (parsed.data.email) {

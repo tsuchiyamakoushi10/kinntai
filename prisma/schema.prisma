@@ -171,6 +171,15 @@ enum ShiftPreferenceStatus {
   @@map("shift_preference_status")
 }
 
+// 従業員の事業所への配属区分。docs/employee-master.md §5.2 参照。
+// primary = 主たる所属 (Employee.office_id と同一)、support = 応援 (兼務)。
+enum OfficeAssignmentRole {
+  PRIMARY @map("primary")
+  SUPPORT @map("support")
+
+  @@map("office_assignment_role")
+}
+
 // 拠点シフト枠の日種区分。docs/database-design.md §2.11 / docs/auto-shift-design.md §3.1 参照。
 //   - sunday_holiday は「日曜 + 日本の祝日 + 振替休日」をまとめた区分
 enum DayKind {
@@ -235,8 +244,29 @@ model Office {
   shiftSetting        OfficeShiftSetting?
   coverageDemands     OfficeCoverageDemand[]
   shiftPublications   ShiftPublication[]
+  officeAssignments   EmployeeOfficeAssignment[]
 
   @@map("offices")
+}
+
+// 従業員 × 配属/兼務する事業所 (1 従業員 × 事業所ごと 1 行)。docs/employee-master.md §5.2。
+// role=primary は Employee.office_id と同一 (バックフィルで作成)。role=support が応援 (兼務)。
+// 応援職員はその事業所の勤務表に行が出て、自動生成でも配置対象に含まれる。
+// v1 は最小 3 列 (role のみ)。allowed_pattern_codes / time_scope / priority は将来追加。
+model EmployeeOfficeAssignment {
+  id         String               @id @default(uuid()) @db.Uuid
+  employeeId String               @map("employee_id") @db.Uuid
+  officeId   String               @map("office_id") @db.Uuid
+  role       OfficeAssignmentRole
+  createdAt  DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  office   Office   @relation(fields: [officeId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, officeId])
+  @@index([officeId, role])
+  @@map("employee_office_assignment")
 }
 
 // ログインアカウント。employee_id は管理者でも従業員情報を持つ場合があるため nullable。
@@ -349,7 +379,7 @@ model Employee {
   createdAt                  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                  DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  office                Office?                @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  office                Office?                    @relation(fields: [officeId], references: [id], onDelete: Restrict)
   user                  User?
   qualifications        Qualification[]
   employmentContracts   EmploymentContract[]
@@ -361,6 +391,7 @@ model Employee {
   trainingRecords       TrainingRecord[]
   shiftConstraint       ShiftConstraint?
   shiftPreferences      ShiftPreference[]
+  officeAssignments     EmployeeOfficeAssignment[]
 
   @@index([officeId, employmentStatus])
   @@map("employees")

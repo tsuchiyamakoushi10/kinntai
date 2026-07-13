@@ -28,6 +28,7 @@ const EMPTY: EmployeeFormValues = {
   nightShiftOnly: false,
   nightRequestOnly: false,
   isManager: false,
+  supportOfficeIds: [],
 };
 
 export default async function NewEmployeePage() {

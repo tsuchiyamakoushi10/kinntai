@@ -7,14 +7,17 @@ const E2 = "00000000-0000-0000-0000-000000000002";
 const P_DAY = "11111111-1111-1111-1111-111111111111";
 const P_PAID = "22222222-2222-2222-2222-222222222222";
 const P_AM_LEAVE = "33333333-3333-3333-3333-333333333333";
+const OFFICE_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+const OFFICE_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 
 function cell(
   employeeId: string,
   workDate: string,
   shiftPatternId: string,
   note: string | null = null,
+  officeId: string = OFFICE_A,
 ): ShiftCell {
-  return { employeeId, workDate, shiftPatternId, note };
+  return { employeeId, workDate, shiftPatternId, officeId, note };
 }
 
 describe("computeShiftDiff", () => {
@@ -53,6 +56,20 @@ describe("computeShiftDiff", () => {
     const baseline = [cell(E1, "2026-05-01", P_DAY, null)];
     const current = [cell(E1, "2026-05-01", P_DAY, "応援")];
     expect(computeShiftDiff(baseline, current).upserts).toHaveLength(1);
+  });
+
+  it("事業所(officeId)だけ変わっても upsert に入る（応援先への切替）", () => {
+    const baseline = [cell(E1, "2026-05-01", P_DAY, null, OFFICE_A)];
+    const current = [cell(E1, "2026-05-01", P_DAY, null, OFFICE_B)];
+    const result = computeShiftDiff(baseline, current);
+    expect(result.deletes).toEqual([]);
+    expect(result.upserts).toEqual([cell(E1, "2026-05-01", P_DAY, null, OFFICE_B)]);
+  });
+
+  it("パターン・note・officeId すべて同一なら upsert に入らない", () => {
+    const baseline = [cell(E1, "2026-05-01", P_DAY, null, OFFICE_B)];
+    const current = [cell(E1, "2026-05-01", P_DAY, null, OFFICE_B)];
+    expect(computeShiftDiff(baseline, current)).toEqual({ upserts: [], deletes: [] });
   });
 
   it("複数従業員の追加/削除/維持を混在させても正しく分類する", () => {

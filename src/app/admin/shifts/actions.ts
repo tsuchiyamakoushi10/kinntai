@@ -33,15 +33,17 @@ function validateCells(cells: unknown, ym: string): ShiftCell[] | string {
     const employeeId = String(c.employeeId ?? "");
     const workDate = String(c.workDate ?? "");
     const shiftPatternId = String(c.shiftPatternId ?? "");
+    const officeId = String(c.officeId ?? "");
     const note = c.note == null ? null : String(c.note);
     if (!UUID.test(employeeId)) return "従業員 ID の形式が不正です。";
     if (!UUID.test(shiftPatternId)) return "シフトパターン ID の形式が不正です。";
+    if (!UUID.test(officeId)) return "セルの事業所 ID の形式が不正です。";
     if (!YMD.test(workDate)) return "日付の形式が不正です。";
     if (!workDate.startsWith(`${ym}-`)) return "対象月外の日付が含まれています。";
     const key = `${employeeId}:${workDate}`;
     if (seen.has(key)) return "同じ従業員・日付の重複セルがあります。";
     seen.add(key);
-    out.push({ employeeId, workDate, shiftPatternId, note });
+    out.push({ employeeId, workDate, shiftPatternId, officeId, note });
   }
   return out;
 }
@@ -70,54 +72,85 @@ export async function saveShifts(input: SaveShiftsInput): Promise<SaveShiftsResu
 
   const range = monthRange(input.ym);
 
-  // この拠点に在籍している (退職していない、または当月内に退職した) 従業員のみ
+  // この拠点を primary (主たる所属) とする在籍者のみ編集対象。応援受入れ (support) 職員の
+  // セルはこのグリッドから保存させない (本人の所属拠点の勤務表が正)。
+  // 事業所またぎ職員のために、各人が勤務しうる事業所 (primary ∪ support) も取得する。
   const employees = await prisma.employee.findMany({
     where: {
       officeId: input.officeId,
       OR: [{ retiredAt: null }, { retiredAt: { gte: range.start } }],
     },
-    select: { id: true },
+    select: {
+      id: true,
+      officeAssignments: { select: { officeId: true } },
+    },
   });
   const employeeIds = new Set(employees.map((e) => e.id));
+  // 従業員 → 勤務しうる事業所 (primary=この拠点 + support 割当)。セルの officeId 検証に使う。
+  const spannedByEmp = new Map<string, Set<string>>();
+  const supportOfficeIds = new Set<string>();
+  for (const e of employees) {
+    const set = new Set<string>([input.officeId]);
+    for (const a of e.officeAssignments) {
+      set.add(a.officeId);
+      if (a.officeId !== input.officeId) supportOfficeIds.add(a.officeId);
+    }
+    spannedByEmp.set(e.id, set);
+  }
 
   // 不正な employeeId が混ざってないかチェック (UI バグや改竄対策)
   for (const c of cells) {
     if (!employeeIds.has(c.employeeId)) {
       return { ok: false, error: "対象拠点の従業員ではないセルが含まれています。" };
     }
+    if (!spannedByEmp.get(c.employeeId)?.has(c.officeId)) {
+      return { ok: false, error: "その従業員が勤務できない事業所のセルが含まれています。" };
+    }
   }
 
-  // 利用可能なシフトパターン (拠点固有 + 全拠点共通、有効のみ)
+  // 利用可能なシフトパターン (拠点固有 + 全拠点共通 + またぎ先の固有記号、有効のみ)
   const patterns = await prisma.shiftPattern.findMany({
     where: {
       isActive: true,
-      OR: [{ officeId: input.officeId }, { officeId: null }],
+      OR: [
+        { officeId: input.officeId },
+        { officeId: null },
+        { officeId: { in: [...supportOfficeIds] } },
+      ],
     },
-    select: { id: true, paidLeaveUnits: true },
+    select: { id: true, officeId: true, paidLeaveUnits: true },
   });
-  const patternIds = new Set(patterns.map((p) => p.id));
+  const patternById = new Map(patterns.map((p) => [p.id, p]));
   const patternUnits = new Map<string, number>(
     patterns.map((p) => [p.id, p.paidLeaveUnits.toNumber()]),
   );
 
   for (const c of cells) {
-    if (!patternIds.has(c.shiftPatternId)) {
+    const p = patternById.get(c.shiftPatternId);
+    if (!p) {
       return { ok: false, error: "選択不可のシフトパターンが含まれています。" };
+    }
+    // 事業所固有記号は、そのセルの事業所と一致していなければならない。
+    if (p.officeId != null && p.officeId !== c.officeId) {
+      return { ok: false, error: "記号とセルの事業所が一致していません。" };
     }
   }
 
-  // baseline: 当該拠点 × 当該月の既存 shifts
+  // baseline: この拠点 primary 職員の当該月の既存 shifts (全拠点分)。
+  // 応援先で入れた日 (別 officeId) も含めて読み、外した日が正しく delete に載るようにする。
+  // 応援受入れ (別拠点 primary) の人のセルは employeeIds に含まれないので触らない。
   const baselineRows = await prisma.shift.findMany({
     where: {
-      officeId: input.officeId,
+      employeeId: { in: [...employeeIds] },
       workDate: { gte: range.start, lt: range.end },
     },
-    select: { employeeId: true, workDate: true, shiftPatternId: true, note: true },
+    select: { employeeId: true, workDate: true, shiftPatternId: true, note: true, officeId: true },
   });
   const baseline: ShiftCell[] = baselineRows.map((r) => ({
     employeeId: r.employeeId,
     workDate: r.workDate.toISOString().slice(0, 10),
     shiftPatternId: r.shiftPatternId,
+    officeId: r.officeId,
     note: r.note,
   }));
 
@@ -164,12 +197,13 @@ export async function saveShifts(input: SaveShiftsInput): Promise<SaveShiftsResu
         update: {
           shiftPatternId: u.shiftPatternId,
           note: u.note,
-          officeId: input.officeId,
+          // セルの事業所 (応援なら応援先)。またぎ職員が日ごとに事業所を切り替えられる。
+          officeId: u.officeId,
           updatedBy: userId,
         },
         create: {
           employeeId: u.employeeId,
-          officeId: input.officeId,
+          officeId: u.officeId,
           workDate: fromJstYmd(u.workDate),
           shiftPatternId: u.shiftPatternId,
           note: u.note,
