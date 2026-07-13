@@ -190,6 +190,17 @@ export function ShiftGrid({
     return m;
   }, [preferences]);
 
+  // 従業員ごとの公休 (shiftKind=OFF) 日数。右端の集計列に出す。セル編集に追従する。
+  // 有休 (PAID_LEAVE)・欠勤 (ABSENCE) は公休に数えない。
+  const offCountByEmp = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of cells.values()) {
+      const pattern = patternsById.get(c.shiftPatternId);
+      if (pattern?.shiftKind === "OFF") m.set(c.employeeId, (m.get(c.employeeId) ?? 0) + 1);
+    }
+    return m;
+  }, [cells, patternsById]);
+
   // 現在の配置から日ごとのスタッフ不足を計算 (セル編集のたびに再計算)。
   const shortfalls = useMemo(() => {
     if (!coverageDemands || !dayKinds) return [];
@@ -519,6 +530,9 @@ export function ShiftGrid({
                   </th>
                 );
               })}
+              <th className="sticky right-0 z-20 min-w-10 border-b border-l border-slate-300 bg-slate-50 px-2 py-1 text-center font-medium text-slate-600">
+                公休
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -622,6 +636,9 @@ export function ShiftGrid({
                     </td>
                   );
                 })}
+                <td className="sticky right-0 z-10 border-l border-slate-300 bg-white px-2 py-1 text-center align-middle font-semibold text-slate-700 tabular-nums">
+                  {offCountByEmp.get(emp.id) ?? 0}
+                </td>
               </tr>
             ))}
           </tbody>
