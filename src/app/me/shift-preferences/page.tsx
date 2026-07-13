@@ -16,6 +16,7 @@ import {
   SHIFT_PREFERENCE_TYPE_LABELS,
 } from "@/lib/employee-labels";
 import { formatDate, toDateInputValue } from "@/lib/format";
+import { MANAGER_MONTHLY_OFFICE_DAYS, MANAGER_MONTHLY_ROUND_DAYS } from "@/lib/shift/manager-duty";
 import { NIGHT_OFFICE_CODES } from "@/lib/shift-preference-bulk";
 import { maxRequestedOffPerMonth } from "@/lib/shift-preference-limit";
 
@@ -46,18 +47,26 @@ export default async function MyShiftPreferencesPage({ searchParams }: Props) {
           lastName: true,
           firstName: true,
           employmentType: true,
+          isManager: true,
           office: { select: { code: true } },
         },
       })
     : null;
 
-  // 当月のこの社員の 希望休 / 有給 / 夜勤希望（カレンダーの初期マーク + 状況一覧）。
+  const isManager = employee?.isManager ?? false;
+
+  // 当月のこの社員の 希望休 / 有給 / 夜勤希望（+ 管理者は事務日 / 実績周り日）。
+  // カレンダーの初期マーク + 状況一覧に使う。
   const monthPrefs = employeeId
     ? await prisma.shiftPreference.findMany({
         where: {
           employeeId,
           targetDate: { gte: month.start, lt: month.end },
-          preferenceType: { in: ["REQUESTED_OFF", "PAID_LEAVE", "PREFERRED_NIGHT"] },
+          preferenceType: {
+            in: isManager
+              ? ["REQUESTED_OFF", "PAID_LEAVE", "PREFERRED_NIGHT", "OFFICE_DAY", "RECORD_ROUND"]
+              : ["REQUESTED_OFF", "PAID_LEAVE", "PREFERRED_NIGHT"],
+          },
         },
         orderBy: { targetDate: "asc" },
       })
@@ -65,7 +74,12 @@ export default async function MyShiftPreferencesPage({ searchParams }: Props) {
 
   const initialMarks = monthPrefs.map((p) => ({
     date: toDateInputValue(p.targetDate),
-    type: p.preferenceType as "REQUESTED_OFF" | "PAID_LEAVE" | "PREFERRED_NIGHT",
+    type: p.preferenceType as
+      | "REQUESTED_OFF"
+      | "PAID_LEAVE"
+      | "PREFERRED_NIGHT"
+      | "OFFICE_DAY"
+      | "RECORD_ROUND",
   }));
 
   const allowNight = employee?.office?.code != null && NIGHT_OFFICE_CODES.has(employee.office.code);
@@ -117,6 +131,9 @@ export default async function MyShiftPreferencesPage({ searchParams }: Props) {
             initialMarks={initialMarks}
             allowNight={allowNight}
             maxRequestedOff={maxRequestedOff}
+            allowManagerDuty={isManager}
+            maxOfficeDays={MANAGER_MONTHLY_OFFICE_DAYS}
+            maxRoundDays={MANAGER_MONTHLY_ROUND_DAYS}
           />
 
           <section className="rounded-2xl bg-white p-5 shadow-sm">

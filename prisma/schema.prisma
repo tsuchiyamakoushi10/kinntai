@@ -156,6 +156,8 @@ enum ShiftPreferenceType {
   PREFERRED_NIGHT @map("preferred_night")
   UNAVAILABLE     @map("unavailable")
   PAID_LEAVE      @map("paid_leave") // 有給希望 (希望休と同様に本人/管理者が申請)
+  OFFICE_DAY      @map("office_day") // 事務日 (管理者のみ)。自動生成で「事務」勤務を固定配置し公休を入れない
+  RECORD_ROUND    @map("record_round") // 実績周り日 (管理者のみ)。自動生成で「実績周り」勤務を固定配置
 
   @@map("shift_preference_type")
 }
@@ -337,6 +339,10 @@ model Employee {
   // 不足分はこのフラグの無い人に振り分けられる。日勤(日中)は通常どおり配置する点が夜勤専従と異なる。
   // (NRS/ショートの自動生成のみ適用)。
   nightRequestOnly           Boolean          @default(false) @map("night_request_only")
+  // 管理者 (施設管理者) か。true の職員はシフト希望の提出画面で「事務日 / 実績周り日」を指定でき、
+  // 自動生成ではその日を事務/実績周りの勤務で固定配置し公休を入れない (デイ/ショート/NRS のみ適用)。
+  // ログイン権限 (User.role=ADMIN) とは別軸のシフト用フラグ。
+  isManager                  Boolean          @default(false) @map("is_manager")
   // 勤務表の手動並び順 (拠点内)。0 = 未設定で、雇用形態順 → 社員コード順にフォールバックする。
   displayOrder               Int              @default(0) @map("display_order")
   notes                      String?

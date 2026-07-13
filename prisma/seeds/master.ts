@@ -63,6 +63,10 @@ type PatternSeed = {
   officeCode?: string;
   color?: string;
   sortOrder?: number;
+  // 午前/午後の在席カウントを直接指定する (勤務記号マスター CSV に無い記号用)。
+  // 指定が無ければ CSV (name 名寄せ) → 0 の順にフォールバックする。
+  amCount?: number;
+  pmCount?: number;
 };
 
 const FULL_24H: PatternSeed[] = [
@@ -139,6 +143,32 @@ const DAY_LIKE: PatternSeed[] = [
     officeCode: "SHO-CENTER",
     color: "#7dd3fc",
     sortOrder: 110,
+  },
+  // 管理者 (施設管理者) の事務日 / 実績周り日。日勤と同時間帯 (8:15-17:15) で、フロア人数にも
+  // カウントする (午前1・午後1)。自動生成では管理者が希望提出した日にこの記号で固定配置する。
+  {
+    code: "OFFICE_WORK",
+    name: "事務",
+    shiftKind: "WORK",
+    start: "08:15",
+    end: "17:15",
+    breakMinutes: 60,
+    amCount: 1,
+    pmCount: 1,
+    color: "#94a3b8",
+    sortOrder: 120,
+  },
+  {
+    code: "RECORD_ROUND",
+    name: "実績周り",
+    shiftKind: "WORK",
+    start: "08:15",
+    end: "17:15",
+    breakMinutes: 60,
+    amCount: 1,
+    pmCount: 1,
+    color: "#c4b5fd",
+    sortOrder: 130,
   },
 ];
 
@@ -497,8 +527,9 @@ export async function seedShiftPatterns(
       endTime: p.end ? t(p.end) : null,
       crossesMidnight: p.crossesMidnight ?? false,
       breakMinutes: p.breakMinutes ?? 0,
-      amCount: cov?.amCount ?? 0,
-      pmCount: cov?.pmCount ?? 0,
+      // 記号の直接指定 (CSV に無い記号) を最優先。無ければ CSV の名寄せ → 0。
+      amCount: p.amCount ?? cov?.amCount ?? 0,
+      pmCount: p.pmCount ?? cov?.pmCount ?? 0,
       paidLeaveUnits: p.paidLeaveUnits ?? 0,
       officeId,
       color: p.color ?? "#888888",

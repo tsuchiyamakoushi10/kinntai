@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { STAFF_SHIFT_PREFERENCE_TYPES } from "@/lib/employee-labels";
 import { parseDateInputValue } from "@/lib/format";
+import { MANAGER_MONTHLY_OFFICE_DAYS, MANAGER_MONTHLY_ROUND_DAYS } from "@/lib/shift/manager-duty";
 import type { BulkOffFormState } from "@/lib/shift-preference-bulk";
 import { isWithinRequestedOffLimit, maxRequestedOffPerMonth } from "@/lib/shift-preference-limit";
 
@@ -152,12 +153,28 @@ export async function bulkSetMyMonthlyPreferences(
   // クライアント側でも警告するが、改ざん・直リクエスト対策にサーバーでも必ず弾く。
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
-    select: { employmentType: true },
+    select: { employmentType: true, isManager: true },
   });
   if (!isWithinRequestedOffLimit(offDates.length, employee?.employmentType ?? null)) {
     const limit = maxRequestedOffPerMonth(employee?.employmentType ?? null);
     return {
       error: `希望休は月 ${limit} 日までです（選択 ${offDates.length} 日）。減らしてから保存してください。`,
+    };
+  }
+
+  // 事務日 / 実績周り日は管理者だけが提出できる。非管理者の値はサーバー側で無視する
+  // (改ざん・直リクエスト対策)。管理者は月あたりの上限内でのみ受け付ける。
+  const isManager = employee?.isManager ?? false;
+  const officeDates = isManager ? parseDates(String(formData.get("officeDay") ?? "")) : [];
+  const roundDates = isManager ? parseDates(String(formData.get("recordRound") ?? "")) : [];
+  if (officeDates.length > MANAGER_MONTHLY_OFFICE_DAYS) {
+    return {
+      error: `事務日は月 ${MANAGER_MONTHLY_OFFICE_DAYS} 日までです（選択 ${officeDates.length} 日）。減らしてから保存してください。`,
+    };
+  }
+  if (roundDates.length > MANAGER_MONTHLY_ROUND_DAYS) {
+    return {
+      error: `実績周り日は月 ${MANAGER_MONTHLY_ROUND_DAYS} 日までです（選択 ${roundDates.length} 日）。減らしてから保存してください。`,
     };
   }
 
@@ -172,17 +189,22 @@ export async function bulkSetMyMonthlyPreferences(
     ...offDates.map((d) => ({ date: d, type: ShiftPreferenceType.REQUESTED_OFF })),
     ...paidDates.map((d) => ({ date: d, type: ShiftPreferenceType.PAID_LEAVE })),
     ...nightDates.map((d) => ({ date: d, type: ShiftPreferenceType.PREFERRED_NIGHT })),
+    ...officeDates.map((d) => ({ date: d, type: ShiftPreferenceType.OFFICE_DAY })),
+    ...roundDates.map((d) => ({ date: d, type: ShiftPreferenceType.RECORD_ROUND })),
   ];
 
   await prisma.$transaction(async (tx) => {
     await tx.shiftPreference.deleteMany({
       where: {
         employeeId,
+        // 事務日 / 実績周り日も上書き対象に含める (管理者が外した日・降格後の残存を消す)。
         preferenceType: {
           in: [
             ShiftPreferenceType.REQUESTED_OFF,
             ShiftPreferenceType.PAID_LEAVE,
             ShiftPreferenceType.PREFERRED_NIGHT,
+            ShiftPreferenceType.OFFICE_DAY,
+            ShiftPreferenceType.RECORD_ROUND,
           ],
         },
         targetDate: { gte: monthStart, lt: monthEnd },

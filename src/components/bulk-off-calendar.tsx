@@ -5,8 +5,8 @@ import { useActionState, useMemo, useState } from "react";
 import { SHIFT_PREFERENCE_TYPE_LABELS } from "@/lib/employee-labels";
 import type { BulkOffFormState } from "@/lib/shift-preference-bulk";
 
-/** カレンダーで扱う希望種別 (希望休 / 有給 / 夜勤希望)。 */
-type PrefType = "REQUESTED_OFF" | "PAID_LEAVE" | "PREFERRED_NIGHT";
+/** カレンダーで扱う希望種別 (希望休 / 有給 / 夜勤希望 / 事務日 / 実績周り日)。 */
+type PrefType = "REQUESTED_OFF" | "PAID_LEAVE" | "PREFERRED_NIGHT" | "OFFICE_DAY" | "RECORD_ROUND";
 
 type Mark = { date: string; type: PrefType };
 
@@ -27,6 +27,12 @@ type Props = {
    * 未指定 (管理者の代理入力) のときは上限なし＝従来どおり自由に入力できる。
    */
   maxRequestedOff?: number;
+  /** 管理者のとき true。事務日 / 実績周り日の種別を出す。 */
+  allowManagerDuty?: boolean;
+  /** 事務日の月あたり上限日数 (allowManagerDuty のとき)。 */
+  maxOfficeDays?: number;
+  /** 実績周り日の月あたり上限日数 (allowManagerDuty のとき)。 */
+  maxRoundDays?: number;
 };
 
 const WEEK_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -47,6 +53,14 @@ const TYPE_STYLE: Record<PrefType, { sel: string; chip: string }> = {
     sel: "bg-indigo-300 font-bold text-indigo-900 ring-2 ring-indigo-500",
     chip: "bg-indigo-300 text-indigo-900",
   },
+  OFFICE_DAY: {
+    sel: "bg-teal-300 font-bold text-teal-900 ring-2 ring-teal-500",
+    chip: "bg-teal-300 text-teal-900",
+  },
+  RECORD_ROUND: {
+    sel: "bg-violet-300 font-bold text-violet-900 ring-2 ring-violet-500",
+    chip: "bg-violet-300 text-violet-900",
+  },
 };
 
 /**
@@ -64,6 +78,9 @@ export function BulkOffCalendar({
   initialMarks,
   allowNight = false,
   maxRequestedOff,
+  allowManagerDuty = false,
+  maxOfficeDays,
+  maxRoundDays,
 }: Props) {
   const [marks, setMarks] = useState<Map<string, PrefType>>(
     () => new Map(initialMarks.map((m) => [m.date, m.type])),
@@ -71,10 +88,13 @@ export function BulkOffCalendar({
   const [paintType, setPaintType] = useState<PrefType>("REQUESTED_OFF");
   const [state, formAction, pending] = useActionState<BulkOffFormState, FormData>(action, {});
 
-  // 表示する種別 (夜勤希望は夜勤のある拠点だけ)。
-  const visibleTypes: PrefType[] = allowNight
-    ? ["REQUESTED_OFF", "PAID_LEAVE", "PREFERRED_NIGHT"]
-    : ["REQUESTED_OFF", "PAID_LEAVE"];
+  // 表示する種別 (夜勤希望は夜勤のある拠点だけ・事務日/実績周り日は管理者だけ)。
+  const visibleTypes: PrefType[] = [
+    "REQUESTED_OFF",
+    "PAID_LEAVE",
+    ...(allowNight ? (["PREFERRED_NIGHT"] as const) : []),
+    ...(allowManagerDuty ? (["OFFICE_DAY", "RECORD_ROUND"] as const) : []),
+  ];
 
   const toggle = (date: string) => {
     setMarks((prev) => {
@@ -129,6 +149,36 @@ export function BulkOffCalendar({
     () => [...marks.values()].filter((t) => t === "PREFERRED_NIGHT").length,
     [marks],
   );
+  const officeDayCsv = useMemo(
+    () =>
+      [...marks.entries()]
+        .filter(([, t]) => t === "OFFICE_DAY")
+        .map(([d]) => d)
+        .sort()
+        .join(","),
+    [marks],
+  );
+  const recordRoundCsv = useMemo(
+    () =>
+      [...marks.entries()]
+        .filter(([, t]) => t === "RECORD_ROUND")
+        .map(([d]) => d)
+        .sort()
+        .join(","),
+    [marks],
+  );
+  const officeCount = useMemo(
+    () => [...marks.values()].filter((t) => t === "OFFICE_DAY").length,
+    [marks],
+  );
+  const roundCount = useMemo(
+    () => [...marks.values()].filter((t) => t === "RECORD_ROUND").length,
+    [marks],
+  );
+  // 事務日 / 実績周り日の上限超過 (管理者のみ・上限指定時)。
+  const overOfficeLimit = maxOfficeDays !== undefined && officeCount > maxOfficeDays;
+  const overRoundLimit = maxRoundDays !== undefined && roundCount > maxRoundDays;
+  const overLimit = overOffLimit || overOfficeLimit || overRoundLimit;
 
   // 月初の曜日に合わせて空セルを差し込む
   const leadEmpty = Array.from({ length: firstWeekday });
@@ -143,16 +193,26 @@ export function BulkOffCalendar({
       <input type="hidden" name="requestedOff" value={requestedOffCsv} />
       <input type="hidden" name="paidLeave" value={paidLeaveCsv} />
       <input type="hidden" name="preferredNight" value={preferredNightCsv} />
+      {allowManagerDuty && (
+        <>
+          <input type="hidden" name="officeDay" value={officeDayCsv} />
+          <input type="hidden" name="recordRound" value={recordRoundCsv} />
+        </>
+      )}
 
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-slate-900">
             {employeeName} さんの希望休 / 有給{allowNight ? " / 夜勤希望" : ""}
+            {allowManagerDuty ? " / 事務日 / 実績周り日" : ""}
           </p>
           <p className="text-xs text-slate-500">
             {formatYm(ym)} ／ 希望休 {offCount}
             {maxRequestedOff !== undefined ? `/${maxRequestedOff}` : ""} 日・有給 {paidCount} 日
             {allowNight ? `・夜勤希望 ${nightCount} 日` : ""}
+            {allowManagerDuty
+              ? `・事務日 ${officeCount}${maxOfficeDays !== undefined ? `/${maxOfficeDays}` : ""} 日・実績周り ${roundCount}${maxRoundDays !== undefined ? `/${maxRoundDays}` : ""} 日`
+              : ""}
           </p>
         </div>
         <div className="flex gap-2">
@@ -166,7 +226,7 @@ export function BulkOffCalendar({
           </button>
           <button
             type="submit"
-            disabled={pending || overOffLimit}
+            disabled={pending || overLimit}
             className="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
           >
             {pending ? "保存中…" : "保存"}
@@ -201,6 +261,18 @@ export function BulkOffCalendar({
         <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           希望休は月 {maxRequestedOff} 日までです（現在 {offCount} 日）。
           {offCount - maxRequestedOff!} 日減らすと保存できます。
+        </p>
+      )}
+      {overOfficeLimit && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          事務日は月 {maxOfficeDays} 日までです（現在 {officeCount} 日）。
+          {officeCount - maxOfficeDays!} 日減らすと保存できます。
+        </p>
+      )}
+      {overRoundLimit && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          実績周り日は月 {maxRoundDays} 日までです（現在 {roundCount} 日）。
+          {roundCount - maxRoundDays!} 日減らすと保存できます。
         </p>
       )}
       {state.error && (

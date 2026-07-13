@@ -100,6 +100,8 @@ export const SHIFT_PREFERENCE_TYPE_LABELS: Record<ShiftPreferenceType, string> =
   PAID_LEAVE: "有給",
   PREFERRED_NIGHT: "夜勤希望",
   UNAVAILABLE: "勤務不可",
+  OFFICE_DAY: "事務日",
+  RECORD_ROUND: "実績周り日",
 };
 
 export const SHIFT_PREFERENCE_TYPE_OPTIONS: ReadonlyArray<{

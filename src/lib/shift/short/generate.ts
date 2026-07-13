@@ -65,6 +65,12 @@ export type ShortEmployee = {
   /** 有給の日 ("YYYY-MM-DD")。必ず休みにし、セルは有休で出す (勤務・夜勤を入れない)。 */
   paidLeaveDates: ReadonlySet<string>;
   /**
+   * 管理者の事務日 / 実績周り日 ("YYYY-MM-DD" → 勤務記号名)。指定日はその記号で固定配置し
+   * 公休を入れない。勤務日数・連勤にカウントし、フロア人数 (午前/午後) にもカウントする
+   * (記号の am/pm_count に従う)。管理者 (Employee.isManager) のみ。
+   */
+  managerDutyDates?: ReadonlyMap<string, string>;
+  /**
    * 固定配置の勤務記号 (毎営業日この記号で置く。null/未指定=固定なし)。
    * NH の固定番 (田中=有日勤・木下=日勤 等) に使う。固定配置者は夜勤・通常フェーズから外す。
    */
@@ -262,6 +268,14 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
     for (const e of employees) {
       const nightSymbol = nightCellByKey.get(`${e.id}|${day.date}`);
       if (nightSymbol) today.set(e.id, nightSymbol);
+    }
+
+    // 管理者の事務日 / 実績周り日を最優先で固定配置 (公休を入れない)。夜勤が入っている日は
+    // 夜勤を優先 (通常は重ならない)。以降のフェーズは today.has で除外されるので二重配置しない。
+    // 休業日でも指定があれば置く (管理者が自分の事務日として選んだ日)。
+    for (const e of employees) {
+      const duty = e.managerDutyDates?.get(day.date);
+      if (duty && !today.has(e.id)) today.set(e.id, duty);
     }
 
     if (operating) {

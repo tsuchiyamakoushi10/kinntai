@@ -46,6 +46,12 @@ export type DeyEmployee = {
   unavailableDates: ReadonlySet<string>;
   /** 有給の日 ("YYYY-MM-DD")。必ず休みにし、セルは有休で出す (勤務は入れない)。 */
   paidLeaveDates: ReadonlySet<string>;
+  /**
+   * 管理者の事務日 / 実績周り日 ("YYYY-MM-DD" → 勤務記号名)。指定日はその記号で固定配置し
+   * 公休を入れない。勤務日数・連勤にカウントし、フロア人数 (午前/午後) にもカウントする
+   * (記号の am/pm_count に従う)。管理者 (Employee.isManager) のみ。
+   */
+  managerDutyDates?: ReadonlyMap<string, string>;
   /** 半日勤務しかしない職員か。終日(デ短/デ日)を割り当てず午前(半日)のみにする。 */
   halfDayOnly: boolean;
   /** 月の目標出勤日数 (常勤のみ使用。既定 21)。これに達したら以降は公休。 */
@@ -164,9 +170,17 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
     const operating = isOperating(demand);
     const today = new Map<string, string>(); // employeeId -> 勤務記号
 
+    // 管理者の事務日 / 実績周り日を最優先で固定配置 (公休を入れない)。以降のフェーズは
+    // eligible の today.has 判定で除外されるので二重配置・上書きしない。休業日でも指定があれば置く。
+    for (const e of employees) {
+      const duty = e.managerDutyDates?.get(day.date);
+      if (duty && !today.has(e.id)) today.set(e.id, duty);
+    }
+
     if (operating) {
       operatingSoFar++;
       const eligible = (e: DeyEmployee): boolean =>
+        !today.has(e.id) &&
         !e.unavailableDates.has(day.date) &&
         !e.paidLeaveDates.has(day.date) &&
         consecutive.get(e.id)! < config.maxConsecutiveDays &&

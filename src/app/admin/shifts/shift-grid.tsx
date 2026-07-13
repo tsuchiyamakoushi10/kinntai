@@ -41,6 +41,8 @@ const PREF_VISUAL: Record<ShiftPreferenceType, { short: string; bg: string; text
   PAID_LEAVE: { short: "有給", bg: "bg-amber-300", text: "text-amber-900" },
   PREFERRED_NIGHT: { short: "夜希", bg: "bg-indigo-300", text: "text-indigo-900" },
   UNAVAILABLE: { short: "不可", bg: "bg-rose-300", text: "text-rose-900" },
+  OFFICE_DAY: { short: "事務", bg: "bg-teal-300", text: "text-teal-900" },
+  RECORD_ROUND: { short: "実績", bg: "bg-violet-300", text: "text-violet-900" },
 };
 
 function prefTitle(p: PreferenceMark): string {

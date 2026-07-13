@@ -165,6 +165,22 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
             </span>
           </span>
         </label>
+        <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <input
+            type="checkbox"
+            name="isManager"
+            defaultChecked={v.isManager}
+            className="mt-1 h-5 w-5 rounded border-slate-300"
+          />
+          <span className="flex flex-col gap-0.5 text-sm">
+            <span className="font-medium text-slate-700">
+              管理者（事務日・実績周り日を提出する）
+            </span>
+            <span className="text-xs text-slate-500">
+              この職員はシフト希望の画面で「事務日」「実績周り日」を指定できます。自動作成では指定した日を事務・実績周りの勤務で固定し、そこに休みは入りません（月あたり事務日2日・実績周り日1日が目安）。ログインの権限とは別の設定です。
+            </span>
+          </span>
+        </label>
       </Section>
 
       <Section title="雇用契約">

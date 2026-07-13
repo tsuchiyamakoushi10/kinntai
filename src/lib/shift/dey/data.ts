@@ -10,6 +10,7 @@ import type { DayKind, PrismaClient } from "@prisma/client";
 import { isRegularEmployment } from "../../employee-labels";
 import { dayKindFor } from "../../calendar/holidays";
 import type { SymbolCoverage, SymbolMaster } from "../coverage";
+import { MANAGER_DUTY_PREFERENCE_TYPES, managerDutySymbolFor } from "../manager-duty";
 import {
   DEY_DEFAULT_CONFIG,
   DEY_DEFAULT_TARGET_WORK_DAYS,
@@ -60,7 +61,7 @@ export async function loadDeyGenerateInput(
   const rangeEnd = new Date(`${lastDate}T00:00:00.000Z`);
   rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
 
-  const [employeesRaw, demandsRaw, patternsRaw, prefsRaw] = await Promise.all([
+  const [employeesRaw, demandsRaw, patternsRaw, prefsRaw, dutyPrefsRaw] = await Promise.all([
     prisma.employee.findMany({
       where: { officeId, employmentStatus: "ACTIVE", employmentType: { not: null } },
       select: {
@@ -70,6 +71,7 @@ export async function loadDeyGenerateInput(
         jobCategory: true,
         joinedAt: true,
         retiredAt: true,
+        isManager: true,
         shiftConstraint: { select: { targetMonthlyWorkDays: true, halfDayOnly: true } },
       },
     }),
@@ -97,6 +99,16 @@ export async function loadDeyGenerateInput(
       },
       select: { employeeId: true, targetDate: true, preferenceType: true },
     }),
+    // 管理者の事務日 / 実績周り日 (却下以外)。その日を該当勤務で固定配置する (公休を入れない)。
+    prisma.shiftPreference.findMany({
+      where: {
+        status: { not: "REJECTED" },
+        preferenceType: { in: [...MANAGER_DUTY_PREFERENCE_TYPES] },
+        targetDate: { gte: rangeStart, lt: rangeEnd },
+        employee: { officeId, isManager: true },
+      },
+      select: { employeeId: true, targetDate: true, preferenceType: true },
+    }),
   ]);
 
   // 希望休 / 勤務不可 → 公休 (不可日)、有給 → 有休 (paidLeaveDates) に振り分け。
@@ -107,6 +119,16 @@ export async function loadDeyGenerateInput(
     const set = target.get(p.employeeId) ?? new Set<string>();
     set.add(ymd(p.targetDate));
     target.set(p.employeeId, set);
+  }
+
+  // 管理者の事務日 / 実績周り日を従業員ごとに (日付 → 勤務記号名)。
+  const dutyByEmp = new Map<string, Map<string, string>>();
+  for (const p of dutyPrefsRaw) {
+    const symbol = managerDutySymbolFor(p.preferenceType);
+    if (!symbol) continue;
+    const map = dutyByEmp.get(p.employeeId) ?? new Map<string, string>();
+    map.set(ymd(p.targetDate), symbol);
+    dutyByEmp.set(p.employeeId, map);
   }
 
   const employees: DeyEmployee[] = employeesRaw.map((e) => {
@@ -125,6 +147,8 @@ export async function loadDeyGenerateInput(
       isCounselor: e.jobCategory === "LIFE_COUNSELOR",
       unavailableDates: unavailable,
       paidLeaveDates: paidLeave,
+      // 管理者の事務日 / 実績周り日 (日付 → 勤務記号名)。管理者以外は空。
+      managerDutyDates: dutyByEmp.get(e.id) ?? new Map<string, string>(),
       halfDayOnly: e.shiftConstraint?.halfDayOnly ?? false,
       targetWorkDays: e.shiftConstraint?.targetMonthlyWorkDays ?? DEY_DEFAULT_TARGET_WORK_DAYS,
     };
