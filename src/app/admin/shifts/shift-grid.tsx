@@ -46,6 +46,24 @@ const PREF_VISUAL: Record<ShiftPreferenceType, { short: string; bg: string; text
   RECORD_ROUND: { short: "実績", bg: "bg-violet-300", text: "text-violet-900" },
 };
 
+/**
+ * パターン 1 つの「セルでの見え方」(背景クラス + インライン背景色)。
+ * パレットの凡例チップと勤務表セルの両方で共用し、
+ * 「選んだ色」と「実際にセルに出る色」を必ず一致させる。
+ * 公休(OFF)は淡いグレーで引っ込め、出勤系は濃いめ(50%)・その他の休は淡め(35%)。
+ */
+function patternCellVisual(pattern: { shiftKind: ShiftKind; color: string }): {
+  className: string;
+  style?: { backgroundColor: string };
+} {
+  if (pattern.shiftKind === "OFF") return { className: "bg-slate-100" };
+  const isWork =
+    pattern.shiftKind === "WORK" ||
+    pattern.shiftKind === "NIGHT_IN" ||
+    pattern.shiftKind === "NIGHT_OUT";
+  return { className: "", style: { backgroundColor: pattern.color + (isWork ? "80" : "59") } };
+}
+
 function prefTitle(p: PreferenceMark): string {
   return `${SHIFT_PREFERENCE_TYPE_LABELS[p.preferenceType]}（${SHIFT_PREFERENCE_STATUS_LABELS[p.status]}）の申請`;
 }
@@ -508,8 +526,8 @@ export function ShiftGrid({
                 >
                   <span
                     aria-hidden
-                    className="inline-block size-3 rounded-sm"
-                    style={{ backgroundColor: p.color }}
+                    className={`inline-block size-3 rounded-sm border border-slate-200 ${patternCellVisual(p).className}`}
+                    style={patternCellVisual(p).style}
                   />
                   <span className="font-medium text-slate-900">{p.name}</span>
                 </button>
@@ -671,6 +689,10 @@ export function ShiftGrid({
                     const kind = pattern?.shiftKind;
                     const isOff = kind === "OFF";
                     const isWork = kind === "WORK" || kind === "NIGHT_IN" || kind === "NIGHT_OUT";
+                    // セルの色はパレットの凡例チップと同一ロジックで算出 (選んだ色=出る色)。
+                    // パターンを貼ったセルはこの色を優先し、希望オーバーレイ(visual)は
+                    // パターン未配置のセルにだけ出す (希望休→日勤に塗り替えたら色も追従する)。
+                    const cellVisual = pattern ? patternCellVisual(pattern) : null;
                     // 事業所またぎ: このセルの勤務がグリッドと別拠点なら事業所バッジを出す。
                     // 共通記号のまたぎ行はバッジをクリックで事業所を巡回できる (固有記号は不可)。
                     const isOtherOffice = cell != null && cell.officeId !== officeId;
@@ -693,9 +715,10 @@ export function ShiftGrid({
                             ? "cursor-pointer hover:ring-2 hover:ring-slate-400/50"
                             : "",
                           weekend && !pattern && !pref ? "bg-slate-50/60" : "",
-                          // 公休は淡いグレー (引っ込ませる)。申請セルはクラス側の色を優先。
-                          !pref && isOff ? "bg-slate-100" : "",
-                          visual ? visual.bg : "",
+                          // パターンが貼られたセルはパターン色 (OFF は bg-slate-100) を優先。
+                          cellVisual?.className ?? "",
+                          // 希望オーバーレイの色はパターン未配置のセルにだけ。
+                          !pattern && visual ? visual.bg : "",
                           // 別拠点セルは細い枠で区別 (バッジと併せて一目で分かる)。
                           isOtherOffice
                             ? "outline-1 -outline-offset-1 outline-teal-500 outline-dotted"
@@ -705,12 +728,7 @@ export function ShiftGrid({
                             : "",
                           isCursor && rowInteractive ? "ring-2 ring-slate-900 ring-inset" : "",
                         ].join(" ")}
-                        style={
-                          // 申請・公休はクラス側で色付け。出勤は濃いめ(50%)、その他の休(有休等)は淡め(35%)。
-                          pattern && !pref && !isOff
-                            ? { backgroundColor: pattern.color + (isWork ? "80" : "59") }
-                            : undefined
-                        }
+                        style={cellVisual?.style}
                         onClick={() => {
                           if (!rowInteractive) return;
                           gridRef.current?.focus();
