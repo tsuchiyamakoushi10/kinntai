@@ -40,6 +40,13 @@ export type DeyEmployee = {
   employeeCode: string;
   /** 常勤か (v1 は雇用形態由来。正社員/契約=常勤)。 */
   isFullTime: boolean;
+  /**
+   * 正社員 (雇用形態 FULL_TIME) か。true の人は月の所定労働日数を「厳守」する。
+   * 有休は所定労働日数に含める方針なので、実勤務目標 = targetWorkDays - 当月有休日数 を
+   * 上限かつ下限として扱う (デイは Phase 1 が常勤を毎営業日フル配置するので下限は自然に満ちる)。
+   * false (パート等) は従来どおり targetWorkDays を上限としてのみ扱う。未指定は false。
+   */
+  isRegular?: boolean;
   /** 生活相談員か。各営業日に必要数だけ最優先で配置する (Phase 0)。 */
   isCounselor: boolean;
   /** 入れない日 ("YYYY-MM-DD")。希望休 / 勤務不可 / 雇用期間外をまとめて渡す (→ 公休)。 */
@@ -152,6 +159,22 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
   const fillPool = employees.filter((e) => !(e.isFullTime && !e.halfDayOnly));
   const counselorIds = new Set(employees.filter((e) => e.isCounselor).map((e) => e.id));
 
+  // 正社員の実効目標: 有休は所定労働日数に含めるので、実勤務目標 = 目標 - 当月有休日数。
+  // これを上限かつ下限として扱う。非正社員は目標をそのまま上限としてのみ使う (従来どおり)。
+  const monthDateSet = new Set(input.days.map((d) => d.date));
+  const paidLeaveInMonth = (e: DeyEmployee): number => {
+    let n = 0;
+    for (const dte of e.paidLeaveDates) if (monthDateSet.has(dte)) n += 1;
+    return n;
+  };
+  const targetOf = new Map<string, number>(
+    employees.map((e) => [
+      e.id,
+      e.isRegular ? Math.max(0, e.targetWorkDays - paidLeaveInMonth(e)) : e.targetWorkDays,
+    ]),
+  );
+  const target = (e: DeyEmployee): number => targetOf.get(e.id)!;
+
   const workDays = new Map<string, number>(employees.map((e) => [e.id, 0]));
   const consecutive = new Map<string, number>(employees.map((e) => [e.id, 0]));
 
@@ -186,7 +209,8 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
         consecutive.get(e.id)! < config.maxConsecutiveDays &&
         // 月の総勤務日数 (目標) を超えない (ハード上限)。相談員確保・穴埋めもこれを超えない。
         // デイは夜勤が無いので workDays = 日中の出勤日数。超える日は不足のまま (人が手動調整)。
-        workDays.get(e.id)! < e.targetWorkDays;
+        // 正社員は有休を差し引いた実効目標 (所定 - 有休) を上限にする。
+        workDays.get(e.id)! < target(e);
 
       // Phase 0: 相談員の充足を最優先で確保する。
       // 職種で判定し、常勤/非常勤を問わず、その日の必要数 (counselorAm/Pm の多い方) まで先に置く。
@@ -198,8 +222,8 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
           .filter((e) => e.isCounselor && eligible(e))
           .sort((a, b) => {
             // 目標未達を優先 (なるべく超過させない) → 累計少ない順 (負担分散) → 常勤優先 → コード順。
-            const overA = workDays.get(a.id)! >= a.targetWorkDays ? 1 : 0;
-            const overB = workDays.get(b.id)! >= b.targetWorkDays ? 1 : 0;
+            const overA = workDays.get(a.id)! >= target(a) ? 1 : 0;
+            const overB = workDays.get(b.id)! >= target(b) ? 1 : 0;
             if (overA !== overB) return overA - overB;
             const cntA = workDays.get(a.id)!;
             const cntB = workDays.get(b.id)!;
@@ -223,14 +247,14 @@ export function generateDey(input: GenerateDeyInput): GenerateDeyResult {
       // ただし営業日に常勤の公休は最大1人 (強制休み重複時を除く)。2人以上が休みになりそうなら
       // ペース超過でも出勤させる。
       const idealWorkDaysBy = (e: DeyEmployee): number =>
-        totalOperating > 0 ? Math.round((e.targetWorkDays * operatingSoFar) / totalOperating) : 0;
+        totalOperating > 0 ? Math.round((target(e) * operatingSoFar) / totalOperating) : 0;
       const ftNotPlaced = fullPool.filter((e) => !today.has(e.id));
       const ftEligible = ftNotPlaced.filter((e) => eligible(e));
       // 希望休/有給/連勤上限で強制的に休む常勤の数
       const forcedRestCount = ftNotPlaced.length - ftEligible.length;
       // 目標日数に達した常勤は休ませる (目標超過させてまで出勤はしない)。
-      const atTarget = ftEligible.filter((e) => workDays.get(e.id)! >= e.targetWorkDays);
-      const underTarget = ftEligible.filter((e) => workDays.get(e.id)! < e.targetWorkDays);
+      const atTarget = ftEligible.filter((e) => workDays.get(e.id)! >= target(e));
+      const underTarget = ftEligible.filter((e) => workDays.get(e.id)! < target(e));
       // 目標内でペース的に休んでよい人 (ideal 到達済)。
       const ahead = underTarget.filter((e) => workDays.get(e.id)! >= idealWorkDaysBy(e));
       // 営業日に休ませてよい常勤は最大1人。強制休み・目標到達休みを差し引く。

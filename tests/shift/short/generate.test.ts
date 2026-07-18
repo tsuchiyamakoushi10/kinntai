@@ -36,6 +36,7 @@ function emp(
     id: code,
     employeeCode: code,
     isFullTime: opts.isFullTime ?? true,
+    isRegular: opts.isRegular ?? false,
     isCounselor: opts.isCounselor ?? false,
     isNurse: opts.isNurse ?? false,
     unavailableDates: opts.unavailableDates ?? new Set(),
@@ -451,5 +452,56 @@ describe("generateShort", () => {
     const r2 = generateShort(input(d, emps));
     expect(r1.assignments).toEqual(r2.assignments);
     expect(r1.nightCountByEmployee).toEqual(r2.nightCountByEmployee);
+  });
+
+  it("正社員は所定労働日数を厳守する (配置基準が少なくても下限まで出勤)", () => {
+    // 営業30日・配置基準は午前午後2 と少なめ・夜勤なし。正社員5名は必要数(2)を満たすと
+    // 従来は多くが休まされ 21 日に届かなかった。isRegular=true でフロアを効かせ、dayCap(2) を
+    // 超えるオーバースタッフを許容してでも全員ちょうど 21 日にする。
+    const d = days(30);
+    const demand: Partial<Record<DayKind, ShortDemand>> = {
+      WEEKDAY: { am: 2, pm: 2, counselorAm: 0, counselorPm: 0, nurseAm: 0, nursePm: 0, nightIn: 0 },
+    };
+    const emps = ["A", "B", "C", "D", "E"].map((c) => emp(c, { isRegular: true }));
+    const r = generateShort(input(d, emps, demand));
+    for (const c of ["A", "B", "C", "D", "E"]) {
+      expect(r.workDaysByEmployee[c]).toBe(21); // 上限かつ下限 = ちょうど所定21日
+    }
+  });
+
+  it("正社員の有休は所定労働日数(21)に含める (実勤務=21-有休・公休数は不変)", () => {
+    // 有休を 2 日取る正社員は 実勤務19 + 有休2 = 所定21。公休は 30-21 = 9 で有休の有無に依らない。
+    const d = days(30);
+    const demand: Partial<Record<DayKind, ShortDemand>> = {
+      WEEKDAY: { am: 2, pm: 2, counselorAm: 0, counselorPm: 0, nurseAm: 0, nursePm: 0, nightIn: 0 },
+    };
+    const emps = [
+      emp("A", { isRegular: true, paidLeaveDates: new Set(["2026-06-10", "2026-06-20"]) }),
+      emp("B", { isRegular: true }),
+      emp("C", { isRegular: true }),
+      emp("D", { isRegular: true }),
+    ];
+    const r = generateShort(input(d, emps, demand));
+    const m = byDate(r);
+    expect(r.workDaysByEmployee["A"]).toBe(19); // 実勤務は有休分だけ減る
+    expect(m.get("2026-06-10")!.get("A")).toBe("有休");
+    expect(m.get("2026-06-20")!.get("A")).toBe("有休");
+    // 公休数 = 30 - 実勤務19 - 有休2 = 9 (有休を取らない B と同じ)。
+    const offCount = (id: string) => d.filter((day) => m.get(day.date)!.get(id) === "公休").length;
+    expect(offCount("A")).toBe(9);
+    expect(offCount("B")).toBe(30 - 21);
+  });
+
+  it("isRegular=false の常勤は下限保証されない (目標は上限のみ・従来どおり)", () => {
+    // 同じ低需要でも isRegular=false なら必要数を満たしたら休み、21 日には届かない。
+    const d = days(30);
+    const demand: Partial<Record<DayKind, ShortDemand>> = {
+      WEEKDAY: { am: 2, pm: 2, counselorAm: 0, counselorPm: 0, nurseAm: 0, nursePm: 0, nightIn: 0 },
+    };
+    const emps = ["A", "B", "C", "D", "E"].map((c) => emp(c, { isRegular: false }));
+    const r = generateShort(input(d, emps, demand));
+    expect(
+      Math.max(...["A", "B", "C", "D", "E"].map((c) => r.workDaysByEmployee[c] ?? 0)),
+    ).toBeLessThan(21);
   });
 });

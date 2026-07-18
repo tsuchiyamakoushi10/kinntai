@@ -38,6 +38,7 @@ function emp(code: string, isFullTime: boolean, opts: Partial<DeyEmployee> = {})
     id: code,
     employeeCode: code,
     isFullTime,
+    isRegular: opts.isRegular ?? false,
     isCounselor: opts.isCounselor ?? false,
     unavailableDates: opts.unavailableDates ?? new Set(),
     paidLeaveDates: opts.paidLeaveDates ?? new Set(),
@@ -328,6 +329,27 @@ describe("generateDey — 送迎(earlyAm) / 半日のみ / 常勤の休み分散
       ).length;
       expect(resting).toBeLessThanOrEqual(1);
     }
+  });
+
+  it("正社員の有休は所定労働日数(21)に含める (実勤務=21-有休・公休は不変)", () => {
+    // 有休を2日取る正社員は 実勤務19 + 有休2 = 所定21。公休は 26-21 = 5 で、有休を取らない
+    // 正社員と同じ (有休が公休を削らない)。isRegular=true のみ厳守対象。
+    const employees = [
+      emp("F1", true, { isRegular: true, paidLeaveDates: new Set(["2026-06-10", "2026-06-20"]) }),
+      emp("F2", true, { isRegular: true }),
+      emp("F3", true, { isRegular: true }),
+      ...["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"].map((c) => emp(c, false)),
+    ];
+    const r = generateDey(baseInput({ days: weekdays(26), employees }));
+    expect(r.workDaysByEmployee["F1"]).toBe(19); // 実勤務は有休分だけ減る
+    expect(symbolsOn(r, "2026-06-10").get("F1")).toBe("有休");
+    expect(symbolsOn(r, "2026-06-20").get("F1")).toBe("有休");
+    // 公休数: 有休ありの F1 も 有休なしの F2 も 26-21 = 5 で不変。
+    const offCount = (id: string) =>
+      r.assignments.filter((a) => a.employeeId === id && a.baseSymbol === "公休").length;
+    expect(offCount("F1")).toBe(5);
+    expect(offCount("F2")).toBe(5);
+    expect(r.workDaysByEmployee["F2"]).toBe(21);
   });
 });
 

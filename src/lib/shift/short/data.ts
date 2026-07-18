@@ -266,6 +266,9 @@ export async function loadShortGenerateInput(
         id: e.id,
         employeeCode: e.employeeCode,
         isFullTime: isRegularEmployment(e.employmentType),
+        // 正社員 (FULL_TIME) のみ所定労働日数を厳守 (有休込みでちょうど所定日数)。
+        // パート社保あり等は常勤扱いだが厳守対象外 (目標は上限のみ)。
+        isRegular: e.employmentType === "FULL_TIME",
         // 相談員: roster 指定を優先 (DB の職種が未整備でも相談員として扱える)。
         isCounselor: ov?.isCounselor ?? e.jobCategory === "LIFE_COUNSELOR",
         isNurse: e.jobCategory === "NURSE",

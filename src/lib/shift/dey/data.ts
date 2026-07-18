@@ -175,6 +175,8 @@ export async function loadDeyGenerateInput(
       id: e.id,
       employeeCode: e.employeeCode,
       isFullTime: isRegularEmployment(e.employmentType),
+      // 正社員 (FULL_TIME) のみ所定労働日数を厳守 (有休込みでちょうど所定日数)。
+      isRegular: e.employmentType === "FULL_TIME",
       isCounselor: e.jobCategory === "LIFE_COUNSELOR",
       unavailableDates: unavailable,
       paidLeaveDates: paidLeave,

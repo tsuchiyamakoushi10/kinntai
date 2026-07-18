@@ -50,6 +50,14 @@ export type ShortEmployee = {
   employeeCode: string;
   /** 常勤か (正社員/契約=常勤)。 */
   isFullTime: boolean;
+  /**
+   * 正社員 (雇用形態 FULL_TIME) か。true の人は月の所定労働日数を「厳守」する。
+   * 有休は所定労働日数に含める方針なので、実勤務目標 = targetWorkDays - 当月有休日数 を
+   * 上限かつ下限として配置し、ちょうど所定日数になるようにする (配置基準 dayCap を超える
+   * オーバースタッフも許容してフロアを満たす)。false (パート等) は従来どおり targetWorkDays を
+   * 上限としてのみ扱う (下限保証なし)。未指定は false。
+   */
+  isRegular?: boolean;
   /** 生活相談員か。各営業日に必要数を最優先で確保する。 */
   isCounselor: boolean;
   /** 看護師 (看護職員) か。各営業日に必要数を最優先で確保する。 */
@@ -205,6 +213,23 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
   const counselorIds = new Set(employees.filter((e) => e.isCounselor).map((e) => e.id));
   const nurseIds = new Set(employees.filter((e) => e.isNurse).map((e) => e.id));
 
+  // 正社員の実効目標: 有休は所定労働日数に含めるので、実勤務目標 = 目標 - 当月有休日数。
+  // これを上限かつ下限として厳守する (Phase 3f のフロア + dayBudget の上限)。
+  // 非正社員は目標をそのまま上限としてのみ使う (下限保証なし = 従来どおり)。
+  const monthDateSet = new Set(input.days.map((d) => d.date));
+  const paidLeaveInMonth = (e: ShortEmployee): number => {
+    let n = 0;
+    for (const dte of e.paidLeaveDates) if (monthDateSet.has(dte)) n += 1;
+    return n;
+  };
+  const targetOf = new Map<string, number>(
+    employees.map((e) => [
+      e.id,
+      e.isRegular ? Math.max(0, e.targetWorkDays - paidLeaveInMonth(e)) : e.targetWorkDays,
+    ]),
+  );
+  const target = (e: ShortEmployee): number => targetOf.get(e.id)!;
+
   // 正社員のペース配分用 (デイと同じ): 総営業日数と経過営業日数。
   const totalOperating = input.days.reduce(
     (n, d) => n + (isOperating(input.demandByDayKind[d.dayKind]) ? 1 : 0),
@@ -229,7 +254,8 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
     // 夜勤チェッカーも「希望日まで」しか夜勤に入れない (希望外日は増やさない)。
     nightRequestOnly: e.isNightRequestOnly ?? false,
     // 月の総勤務日数のハード上限。夜勤コマもこれを消費する (超える夜勤は置かない)。
-    targetWorkDays: e.targetWorkDays,
+    // 正社員は有休を差し引いた実効目標 (所定 - 有休) を上限にする。
+    targetWorkDays: target(e),
   }));
   const night = assignNightCycle(nightDays, nightEmployees, config.night, input.carryover);
 
@@ -251,7 +277,7 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
     nightDaysTotal.set(a.employeeId, (nightDaysTotal.get(a.employeeId) ?? 0) + 1);
   }
   const dayBudget = (e: ShortEmployee): number =>
-    Math.max(0, e.targetWorkDays - (nightDaysTotal.get(e.id) ?? 0));
+    Math.max(0, target(e) - (nightDaysTotal.get(e.id) ?? 0));
   const dayWorkDays = new Map<string, number>(employees.map((e) => [e.id, 0]));
   const withinDayBudget = (e: ShortEmployee): boolean => dayWorkDays.get(e.id)! < dayBudget(e);
 
@@ -291,7 +317,7 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
 
       // 月内ペース配分の理想累計 (目標×経過/総営業日)。固定配置・常勤の休み分散に使う。
       const idealWorkDaysBy = (e: ShortEmployee): number =>
-        totalOperating > 0 ? Math.round((e.targetWorkDays * operatingSoFar) / totalOperating) : 0;
+        totalOperating > 0 ? Math.round((target(e) * operatingSoFar) / totalOperating) : 0;
 
       // Phase 1: 固定配置 (fixedSymbol を持つ職員。NH の固定番など)。毎営業日その記号で置くが、
       // 目標日数までペース配分して公休を月内に分散し、連勤上限・不可日・希望休・有給は尊重する。
@@ -327,8 +353,8 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
         const cands = employees
           .filter((e) => pred(e) && eligible(e))
           .sort((a, b) => {
-            const overA = workDays.get(a.id)! >= a.targetWorkDays ? 1 : 0;
-            const overB = workDays.get(b.id)! >= b.targetWorkDays ? 1 : 0;
+            const overA = workDays.get(a.id)! >= target(a) ? 1 : 0;
+            const overB = workDays.get(b.id)! >= target(b) ? 1 : 0;
             if (overA !== overB) return overA - overB;
             const cntA = workDays.get(a.id)!;
             const cntB = workDays.get(b.id)!;
@@ -430,6 +456,18 @@ export function generateShort(input: GenerateShortInput): GenerateShortResult {
           if (cands.length === 0) break; // 出せる常勤が居ない → 非常勤/不足表示に委ねる
           placeDay(cands[0]!, config.symbols.fullDay);
         }
+      }
+
+      // Phase 3f: 正社員の勤務日数フロア (所定日数 厳守)。配置基準 (dayCap) が満ちて日中が
+      // 止まっても、正社員はペース配分の理想累計まで出勤させる (dayCap 超過=オーバースタッフを
+      // 許容)。上限 (target = 所定 - 有休) は eligible の withinDayBudget で厳守するので超えない。
+      // これで「必要人数は足りているが正社員が所定日数に届かない」状態を解消する。連勤上限・
+      // 希望休・有給・夜勤・夜明の翌日 (preferredOff) は eligible が引き続き厳守する。
+      for (const e of fullTimers) {
+        if (!e.isRegular || today.has(e.id)) continue;
+        if (!eligible(e)) continue;
+        if (workDays.get(e.id)! >= idealWorkDaysBy(e)) continue;
+        placeDay(e, config.symbols.fullDay);
       }
 
       // Phase 4: 非常勤で午前/午後不足を穴埋め (日勤上限内)。
