@@ -403,6 +403,8 @@ PII を含むため、ファイル本体は外部オブジェクトストレー�
 
 ### 2.19 `company_profile` — 会社マスタ (Phase 1-I で実装)
 
+> Phase 1-J (労働条件通知書 新フォーマット) で列を追加する。追加列と新規テーブル `labor_notices` / `side_jobs` / `shift_acknowledgements` は [labor-notice.md §6](labor-notice.md) を参照。
+
 労働条件通知書 / 雇用契約書 PDF 出力 ([employment-contract-printable.md](employment-contract-printable.md)) で参照する、全契約共通の条項を保持する単一行テーブル。
 
 | カラム                    | 型          | 説明                                     |

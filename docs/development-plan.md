@@ -134,6 +134,17 @@
 - **1-I-4 PDF 出力**: `src/lib/employment-contract/` に HTML テンプレ (React) + Playwright Chromium で PDF 化。S-A-04 雇用契約タブから出力ボタン。S-A-15 と S-A-18 は同一書式・タイトルだけ切替で兼用。
 - **1-I-5 必須項目チェック + テスト**: 出力前に missing items を検出。HTML テンプレのスナップショットテストで書式項目を網羅。
 
+#### 1-J. 労働条件通知書 新フォーマット（2026-10-08 追加）
+
+> クロスハート様 仕様書 v0.2。5 項目入力で通知書 2 枚 + 同意書 兼 受領書 1 枚を作る。発行すると雇用契約・従業員の条件も同時に更新し、社長の二重入力をなくす。詳細設計は [docs/labor-notice.md](labor-notice.md)。
+
+- **1-J-1 計算モジュール + 受け入れテスト** (`src/lib/labor-notice/`)
+- **1-J-2 スキーマ**: `labor_notices` / `side_jobs` / `shift_acknowledgements`、`company_profile` / `offices` の列追加、`wage_type` に daily
+- **1-J-3 帳票 HTML (3 枚) + PDF**
+- **1-J-4 S-A-31 作成画面 + 発行処理**
+- **1-J-5 S-A-30 一覧 / S-A-32 詳細**: 無期切替・更新・署名済みアップロード・無効化
+- **1-J-6 S-A-33 副業の届出 + 勤務表確定時の合算チェック**
+
 ### Phase 1 完了の定義
 
 - 全 Phase 1 画面が動作し、シード環境で 1 か月分のシフト自動作成 → 手動調整 → 確定 まで通る
