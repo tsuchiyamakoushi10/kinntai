@@ -33,7 +33,7 @@ export type ContractViewModel = {
     employmentType: string | null;
     workingHoursPerDay: number | null;
     workingDaysPerWeek: number | null;
-    wageType: "HOURLY" | "MONTHLY" | null;
+    wageType: "HOURLY" | "MONTHLY" | "DAILY" | null;
     wageAmount: number | null;
     hasEmploymentInsurance: boolean | null;
     hasSocialInsurance: boolean | null;

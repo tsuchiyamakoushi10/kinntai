@@ -76,6 +76,8 @@ enum EmploymentStatus {
 enum WageType {
   HOURLY  @map("hourly")
   MONTHLY @map("monthly")
+  // 日給 (夜勤専従の 1 回あたり総額)。docs/labor-notice.md §6.1
+  DAILY   @map("daily")
 
   @@map("wage_type")
 }
@@ -212,6 +214,24 @@ enum WeeklyHoursCategory {
 }
 
 // 有期雇用特別措置法の対象種別。docs/employment-contract-printable.md §2.2 参照。
+// 労働条件通知書 (新フォーマット) の区分。EmploymentType とは別軸。docs/labor-notice.md §2
+enum LaborNoticeType {
+  FULL_TIME  @map("full_time")
+  PART_TIME  @map("part_time")
+  NIGHT_ONLY @map("night_only")
+
+  @@map("labor_notice_type")
+}
+
+enum LaborNoticeStatus {
+  DRAFT  @map("draft")
+  ISSUED @map("issued")
+  SIGNED @map("signed")
+  VOID   @map("void")
+
+  @@map("labor_notice_status")
+}
+
 enum SpecialMeasureType {
   NONE            @map("none")
   HIGH_SKILL      @map("high_skill")
@@ -227,14 +247,18 @@ enum SpecialMeasureType {
 // 拠点
 // TODO(multi-tenant): tenant_id を追加する際は (tenant_id, code) の複合一意に切り替える
 model Office {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  code      String   @unique
-  address   String?
-  timezone  String   @default("Asia/Tokyo")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  code        String   @unique
+  address     String?
+  // 労働条件通知書の相談窓口 (配属先の管理者・電話) と最低賃金の都道府県。docs/labor-notice.md §6.1
+  managerName String?  @map("manager_name")
+  phone       String?
+  prefecture  String   @default("埼玉県")
+  timezone    String   @default("Asia/Tokyo")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   employees           Employee[]
   shiftPatterns       ShiftPattern[]
@@ -245,6 +269,7 @@ model Office {
   coverageDemands     OfficeCoverageDemand[]
   shiftPublications   ShiftPublication[]
   officeAssignments   EmployeeOfficeAssignment[]
+  laborNotices        LaborNotice[]
 
   @@map("offices")
 }
@@ -301,6 +326,8 @@ model User {
   reviewedShiftPrefs  ShiftPreference[]    @relation("ShiftPreferenceReviewedBy")
   shiftGenerationRuns ShiftGenerationRun[] @relation("ShiftGenerationRunGeneratedBy")
   shiftPublications   ShiftPublication[]   @relation("ShiftPublicationPublishedBy")
+  createdLaborNotices LaborNotice[]        @relation("LaborNoticeCreatedBy")
+  issuedLaborNotices  LaborNotice[]        @relation("LaborNoticeIssuedBy")
 
   @@map("users")
 }
@@ -392,6 +419,7 @@ model Employee {
   shiftConstraint       ShiftConstraint?
   shiftPreferences      ShiftPreference[]
   officeAssignments     EmployeeOfficeAssignment[]
+  laborNotices          LaborNotice[]
 
   @@index([officeId, employmentStatus])
   @@map("employees")
@@ -446,9 +474,10 @@ model EmploymentContract {
   createdAt                    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                    DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  employee   Employee                      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  documents  EmployeeDocument[]
-  allowances EmploymentContractAllowance[]
+  employee     Employee                      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  documents    EmployeeDocument[]
+  allowances   EmploymentContractAllowance[]
+  laborNotices LaborNotice[]
 
   @@index([employeeId, contractStartOn(sort: Desc)])
   @@map("employment_contracts")
@@ -643,6 +672,7 @@ model EmployeeDocument {
   trainingRecord TrainingRecord?     @relation(fields: [trainingRecordId], references: [id], onDelete: SetNull)
   uploadedBy     User                @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
   accessLogs     DocumentAccessLog[]
+  laborNotices   LaborNotice[]
 
   @@index([employeeId, documentType])
   @@index([expiresOn])
@@ -848,33 +878,42 @@ model ShiftPublication {
 // レコードは常に 1 行。将来マルチテナント化する際は id を tenant_id として
 // 再利用し、複数行を許す形に拡張する (列追加で済む形にしてある)。
 model CompanyProfile {
-  id                     String   @id @default(uuid()) @db.Uuid
-  legalName              String   @map("legal_name")
-  address                String
-  phone                  String
-  representativeTitle    String   @map("representative_title")
-  representativeName     String   @map("representative_name")
-  retirementAge          Int      @map("retirement_age")
-  continuedEmploymentAge Int      @map("continued_employment_age")
-  resignNoticeDays       Int      @map("resign_notice_days")
-  wageCutoffDay          String   @map("wage_cutoff_day")
-  wagePaymentDay         String   @map("wage_payment_day")
-  wagePaymentMethod      String   @map("wage_payment_method")
-  salaryRaisePeriod      String   @map("salary_raise_period")
-  overtimeRateUnder60h   Int      @map("overtime_rate_under_60h")
-  overtimeRateOver60h    Int      @map("overtime_rate_over_60h")
-  overtimeRateWithin     Int      @map("overtime_rate_within")
-  holidayLegalRate       Int      @map("holiday_legal_rate")
-  nightRate              Int      @map("night_rate")
-  breakRuleText          String   @map("break_rule_text")
-  workRulesName          String   @map("work_rules_name")
-  partTimeWorkRulesName  String   @map("part_time_work_rules_name")
-  contactDepartment      String   @map("contact_department")
-  contactPersonTitle     String   @map("contact_person_title")
-  contactPersonName      String   @map("contact_person_name")
-  contactPhone           String   @map("contact_phone")
-  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                                String            @id @default(uuid()) @db.Uuid
+  legalName                         String            @map("legal_name")
+  address                           String
+  phone                             String
+  representativeTitle               String            @map("representative_title")
+  representativeName                String            @map("representative_name")
+  retirementAge                     Int               @map("retirement_age")
+  continuedEmploymentAge            Int               @map("continued_employment_age")
+  resignNoticeDays                  Int               @map("resign_notice_days")
+  wageCutoffDay                     String            @map("wage_cutoff_day")
+  wagePaymentDay                    String            @map("wage_payment_day")
+  wagePaymentMethod                 String            @map("wage_payment_method")
+  salaryRaisePeriod                 String            @map("salary_raise_period")
+  overtimeRateUnder60h              Int               @map("overtime_rate_under_60h")
+  overtimeRateOver60h               Int               @map("overtime_rate_over_60h")
+  overtimeRateWithin                Int               @map("overtime_rate_within")
+  holidayLegalRate                  Int               @map("holiday_legal_rate")
+  nightRate                         Int               @map("night_rate")
+  breakRuleText                     String            @map("break_rule_text")
+  workRulesName                     String            @map("work_rules_name")
+  partTimeWorkRulesName             String            @map("part_time_work_rules_name")
+  contactDepartment                 String            @map("contact_department")
+  contactPersonTitle                String            @map("contact_person_title")
+  contactPersonName                 String            @map("contact_person_name")
+  contactPhone                      String            @map("contact_phone")
+  // 労働条件通知書 新フォーマット用 (docs/labor-notice.md §6.1)
+  employeeCount                     Int?              @map("employee_count")
+  hasSecondTypeCertification        Boolean           @default(false) @map("has_second_type_certification")
+  fulltimeWeeklyHours               Decimal           @default(37) @map("fulltime_weekly_hours") @db.Decimal(4, 1)
+  fulltimeMonthlyDays               Decimal           @default(21) @map("fulltime_monthly_days") @db.Decimal(4, 1)
+  variableHoursAgreementCoversNight Boolean           @default(false) @map("variable_hours_agreement_covers_night")
+  rehireContinueAfter65             Boolean           @default(true) @map("rehire_continue_after_65")
+  jobPostingIndefiniteTypes         LaborNoticeType[] @default([]) @map("job_posting_indefinite_types")
+  noticeNumberPrefix                String            @default("CH") @map("notice_number_prefix")
+  createdAt                         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("company_profile")
 }
@@ -895,4 +934,44 @@ model EmploymentContractAllowance {
 
   @@index([contractId, sortOrder])
   @@map("employment_contract_allowances")
+}
+
+// 労働条件通知書 (新フォーマット 3 枚構成) の発行記録。契約の中身は employment_contracts が正で、
+// 発行時にここから契約を作成/更新する。snapshot は発行時の表示値で、マスタが変わっても同じ PDF を再生成できる。
+// docs/labor-notice.md §6.2。tenant_id はマルチテナント化時に追加する。
+model LaborNotice {
+  id               String            @id @default(uuid()) @db.Uuid
+  // 発行時に採番 (CH-2026-0001)。下書きは NULL。void も欠番として残す
+  noticeNo         String?           @unique @map("notice_no")
+  employeeId       String            @map("employee_id") @db.Uuid
+  officeId         String            @map("office_id") @db.Uuid
+  contractId       String?           @map("contract_id") @db.Uuid
+  noticeType       LaborNoticeType   @map("notice_type")
+  status           LaborNoticeStatus @default(DRAFT)
+  input            Json
+  snapshot         Json?
+  // 警告の確認記録 [{code, reason, acknowledgedBy, acknowledgedAt}]
+  acknowledgements Json              @default("[]")
+  templateVersion  String            @map("template_version")
+  contractStartOn  DateTime          @map("contract_start_on") @db.Date
+  contractEndOn    DateTime?         @map("contract_end_on") @db.Date
+  issuedAt         DateTime?         @map("issued_at") @db.Timestamptz(6)
+  signedAt         DateTime?         @map("signed_at") @db.Timestamptz(6)
+  voidedAt         DateTime?         @map("voided_at") @db.Timestamptz(6)
+  signedDocumentId String?           @map("signed_document_id") @db.Uuid
+  createdById      String            @map("created_by") @db.Uuid
+  issuedById       String?           @map("issued_by") @db.Uuid
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee       Employee            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  office         Office              @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  contract       EmploymentContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  signedDocument EmployeeDocument?   @relation(fields: [signedDocumentId], references: [id], onDelete: SetNull)
+  createdBy      User                @relation("LaborNoticeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  issuedBy       User?               @relation("LaborNoticeIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, contractStartOn(sort: Desc)])
+  @@index([status, contractEndOn])
+  @@map("labor_notices")
 }

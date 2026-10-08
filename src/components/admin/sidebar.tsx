@@ -27,6 +27,7 @@ const SECTIONS: Section[] = [
     items: [
       { label: "ダッシュボード", href: "/admin" },
       { label: "従業員", href: "/admin/employees" },
+      { label: "労働条件通知書", href: "/admin/labor-notices" },
     ],
   },
   {

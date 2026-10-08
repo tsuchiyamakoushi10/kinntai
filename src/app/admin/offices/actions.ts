@@ -13,6 +13,9 @@ export type OfficeFormState = {
     code: string;
     name: string;
     address: string;
+    managerName: string;
+    phone: string;
+    prefecture: string;
     isActive: boolean;
   };
 };
@@ -27,6 +30,9 @@ function parse(formData: FormData): NonNullable<OfficeFormState["values"]> {
       .toUpperCase(),
     name: String(formData.get("name") ?? "").trim(),
     address: String(formData.get("address") ?? "").trim(),
+    managerName: String(formData.get("managerName") ?? "").trim(),
+    phone: String(formData.get("phone") ?? "").trim(),
+    prefecture: String(formData.get("prefecture") ?? "").trim(),
     isActive: formData.get("isActive") === "on",
   };
 }
@@ -40,6 +46,9 @@ function validate(v: NonNullable<OfficeFormState["values"]>): string | null {
   if (!v.name) return "名称を入力してください。";
   if (v.name.length > 100) return "名称は 100 文字以内で入力してください。";
   if (v.address.length > 200) return "住所は 200 文字以内で入力してください。";
+  if (v.managerName.length > 50) return "管理者名は 50 文字以内で入力してください。";
+  if (v.phone.length > 20) return "電話番号は 20 文字以内で入力してください。";
+  if (!v.prefecture) return "都道府県を入力してください。";
   return null;
 }
 
@@ -58,6 +67,9 @@ export async function createOffice(
         code: v.code,
         name: v.name,
         address: v.address || null,
+        managerName: v.managerName || null,
+        phone: v.phone || null,
+        prefecture: v.prefecture,
         isActive: v.isActive,
       },
     });
@@ -89,6 +101,9 @@ export async function updateOffice(
         code: v.code,
         name: v.name,
         address: v.address || null,
+        managerName: v.managerName || null,
+        phone: v.phone || null,
+        prefecture: v.prefecture,
         isActive: v.isActive,
       },
     });

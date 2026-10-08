@@ -21,7 +21,15 @@ export default async function NewOfficePage() {
       <h1 className="text-2xl font-bold text-slate-900">拠点を新規追加</h1>
       <OfficeForm
         action={createOffice}
-        initial={{ code: "", name: "", address: "", isActive: true }}
+        initial={{
+          code: "",
+          name: "",
+          address: "",
+          managerName: "",
+          phone: "",
+          prefecture: "埼玉県",
+          isActive: true,
+        }}
         submitLabel="追加する"
       />
     </div>

@@ -10,8 +10,15 @@
 import type { ContractViewModel } from "./data";
 import { renderContractHtml } from "./html-template";
 
-const PDF_OPTIONS = {
-  format: "A4" as const,
+type PdfOptions = {
+  format: "A4";
+  printBackground: boolean;
+  margin?: { top: string; bottom: string; left: string; right: string };
+  preferCSSPageSize?: boolean;
+};
+
+const PDF_OPTIONS: PdfOptions = {
+  format: "A4",
   printBackground: true,
   margin: { top: "16mm", bottom: "16mm", left: "14mm", right: "14mm" },
 };
@@ -22,24 +29,31 @@ function isServerless(): boolean {
 
 /** 1 契約分の PDF を Buffer で返す。 */
 export async function renderContractPdf(vm: ContractViewModel): Promise<Buffer> {
-  const fullHtml = renderContractHtml(vm);
-  return isServerless() ? renderWithPuppeteer(fullHtml) : renderWithPlaywright(fullHtml);
+  return renderHtmlToPdf(renderContractHtml(vm), PDF_OPTIONS);
 }
 
-async function renderWithPlaywright(html: string): Promise<Buffer> {
+/**
+ * 任意の HTML 文書を PDF にする。余白を CSS の @page で決める帳票は
+ * `{ format: "A4", printBackground: true, preferCSSPageSize: true }` を渡す。
+ */
+export async function renderHtmlToPdf(html: string, options: PdfOptions): Promise<Buffer> {
+  return isServerless() ? renderWithPuppeteer(html, options) : renderWithPlaywright(html, options);
+}
+
+async function renderWithPlaywright(html: string, options: PdfOptions): Promise<Buffer> {
   const { chromium } = await import("@playwright/test");
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle" });
     await page.evaluate(() => document.fonts.ready);
-    return await page.pdf(PDF_OPTIONS);
+    return await page.pdf(options);
   } finally {
     await browser.close();
   }
 }
 
-async function renderWithPuppeteer(html: string): Promise<Buffer> {
+async function renderWithPuppeteer(html: string, options: PdfOptions): Promise<Buffer> {
   const [{ default: chromium }, puppeteer] = await Promise.all([
     import("@sparticuz/chromium"),
     import("puppeteer-core"),
@@ -55,7 +69,7 @@ async function renderWithPuppeteer(html: string): Promise<Buffer> {
     // load + document.fonts.ready で Google Fonts (Noto Sans JP) の到着を待つ
     await page.setContent(html, { waitUntil: "load" });
     await page.evaluate(() => document.fonts.ready);
-    const pdf = await page.pdf(PDF_OPTIONS);
+    const pdf = await page.pdf(options);
     return Buffer.from(pdf);
   } finally {
     await browser.close();

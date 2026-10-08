@@ -49,6 +49,7 @@ export const EMPLOYMENT_STATUS_LABELS: Record<EmploymentStatus, string> = {
 export const WAGE_TYPE_LABELS: Record<WageType, string> = {
   HOURLY: "時給",
   MONTHLY: "月給",
+  DAILY: "日給",
 };
 
 export const QUALIFICATION_TYPE_LABELS: Record<QualificationType, string> = {

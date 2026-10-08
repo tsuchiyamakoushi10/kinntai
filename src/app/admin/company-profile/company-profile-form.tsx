@@ -34,7 +34,21 @@ const EMPTY: CompanyProfileInput = {
   contactPersonTitle: "",
   contactPersonName: "",
   contactPhone: "",
+  employeeCount: null,
+  hasSecondTypeCertification: false,
+  fulltimeWeeklyHours: 37,
+  fulltimeMonthlyDays: 21,
+  variableHoursAgreementCoversNight: false,
+  rehireContinueAfter65: true,
+  jobPostingIndefiniteTypes: [],
+  noticeNumberPrefix: "CH",
 };
+
+const NOTICE_TYPE_OPTIONS = [
+  { value: "FULL_TIME", label: "正社員" },
+  { value: "PART_TIME", label: "パート" },
+  { value: "NIGHT_ONLY", label: "夜勤専従" },
+] as const;
 
 export function CompanyProfileForm({ initial }: Props) {
   const [values, setValues] = useState<CompanyProfileInput>(() => ({
@@ -53,6 +67,24 @@ export function CompanyProfileForm({ initial }: Props) {
   function setNumber<K extends keyof CompanyProfileInput>(key: K, value: string): void {
     const n = Number.parseInt(value, 10);
     setValues((prev) => ({ ...prev, [key]: Number.isFinite(n) ? n : 0 }) as CompanyProfileInput);
+  }
+
+  function setDecimal<K extends keyof CompanyProfileInput>(key: K, value: string): void {
+    const n = Number.parseFloat(value);
+    setValues((prev) => ({ ...prev, [key]: Number.isFinite(n) ? n : 0 }) as CompanyProfileInput);
+  }
+
+  function setFlag<K extends keyof CompanyProfileInput>(key: K, value: boolean): void {
+    setValues((prev) => ({ ...prev, [key]: value }) as CompanyProfileInput);
+  }
+
+  function toggleJobPostingType(type: CompanyProfileInput["jobPostingIndefiniteTypes"][number]) {
+    setValues((prev) => ({
+      ...prev,
+      jobPostingIndefiniteTypes: prev.jobPostingIndefiniteTypes.includes(type)
+        ? prev.jobPostingIndefiniteTypes.filter((t) => t !== type)
+        : [...prev.jobPostingIndefiniteTypes, type],
+    }));
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
@@ -330,6 +362,86 @@ export function CompanyProfileForm({ initial }: Props) {
         </Field>
       </fieldset>
 
+      <fieldset className="grid gap-4 sm:grid-cols-3">
+        <legend className="col-span-full text-base font-semibold text-slate-900">
+          労働条件通知書の判定に使う設定
+        </legend>
+        <Field label="従業員数（社会保険の加入判定に使います。空欄なら判定しません）">
+          <input
+            type="number"
+            min={0}
+            value={values.employeeCount ?? ""}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              setValues((prev) => ({ ...prev, employeeCount: Number.isFinite(n) ? n : null }));
+            }}
+            className={inputCls}
+          />
+        </Field>
+        <Field label="正社員の1週の勤務時間">
+          <input
+            type="number"
+            step="0.5"
+            min={1}
+            max={40}
+            value={values.fulltimeWeeklyHours}
+            onChange={(e) => setDecimal("fulltimeWeeklyHours", e.target.value)}
+            className={inputCls}
+          />
+        </Field>
+        <Field label="正社員の1か月の勤務日数">
+          <input
+            type="number"
+            step="0.5"
+            min={1}
+            max={31}
+            value={values.fulltimeMonthlyDays}
+            onChange={(e) => setDecimal("fulltimeMonthlyDays", e.target.value)}
+            className={inputCls}
+          />
+        </Field>
+        <Field label="通知書番号の頭文字">
+          <input
+            type="text"
+            value={values.noticeNumberPrefix}
+            onChange={(e) => setText("noticeNumberPrefix", e.target.value.toUpperCase())}
+            className={`${inputCls} font-mono uppercase`}
+          />
+        </Field>
+        <div className="col-span-full flex flex-col gap-2 text-sm text-slate-700">
+          <Check
+            checked={values.variableHoursAgreementCoversNight}
+            onChange={(v) => setFlag("variableHoursAgreementCoversNight", v)}
+            label="夜勤専従も「1か月単位の変形労働時間制」の労使協定の対象にしている"
+          />
+          <Check
+            checked={values.hasSecondTypeCertification}
+            onChange={(v) => setFlag("hasSecondTypeCertification", v)}
+            label="定年後の再雇用について、無期転換の特例の認定（第二種計画認定）を受けている"
+          />
+          <Check
+            checked={values.rehireContinueAfter65}
+            onChange={(v) => setFlag("rehireContinueAfter65", v)}
+            label="65歳以降も本人の希望と会社の判断で継続雇用できる"
+          />
+        </div>
+        <div className="col-span-full flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-slate-600">
+            求人票で「契約期間の定めなし」と書いている区分（有期の通知書を作るときに注意を出します）
+          </span>
+          <div className="flex flex-wrap gap-4">
+            {NOTICE_TYPE_OPTIONS.map((o) => (
+              <Check
+                key={o.value}
+                checked={values.jobPostingIndefiniteTypes.includes(o.value)}
+                onChange={() => toggleJobPostingType(o.value)}
+                label={o.label}
+              />
+            ))}
+          </div>
+        </div>
+      </fieldset>
+
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="submit"
@@ -373,6 +485,28 @@ function Field({
         {required && <span className="ml-1 text-rose-500">*</span>}
       </span>
       {children}
+    </label>
+  );
+}
+
+function Check({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label className="flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="size-4 rounded border-slate-300"
+      />
+      {label}
     </label>
   );
 }

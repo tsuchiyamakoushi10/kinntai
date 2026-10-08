@@ -38,6 +38,9 @@ export default async function EditOfficePage({ params }: Props) {
           code: office.code,
           name: office.name,
           address: office.address ?? "",
+          managerName: office.managerName ?? "",
+          phone: office.phone ?? "",
+          prefecture: office.prefecture,
           isActive: office.isActive,
         }}
         submitLabel="保存する"

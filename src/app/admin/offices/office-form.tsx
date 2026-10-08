@@ -51,6 +51,32 @@ export function OfficeForm({ action, initial, submitLabel, lockCode = false }: P
         />
       </Field>
 
+      <Field label="都道府県" hint="最低賃金の確認に使います（例: 埼玉県）">
+        <input
+          name="prefecture"
+          defaultValue={v.prefecture}
+          required
+          className="rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
+        />
+      </Field>
+
+      <Field label="管理者名" hint="労働条件通知書の相談窓口に印字します（例: 管理者　山田 太郎）">
+        <input
+          name="managerName"
+          defaultValue={v.managerName}
+          className="rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
+        />
+      </Field>
+
+      <Field label="電話番号" hint="相談窓口の電話として印字します">
+        <input
+          name="phone"
+          defaultValue={v.phone}
+          inputMode="tel"
+          className="rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
+        />
+      </Field>
+
       <label className="flex items-center gap-2 text-sm text-slate-700">
         <input
           type="checkbox"

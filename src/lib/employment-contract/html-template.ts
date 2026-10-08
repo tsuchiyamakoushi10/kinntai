@@ -68,7 +68,12 @@ export function renderContractHtml(vm: ContractViewModel): string {
 
   // 賃金 / 期間が未入力の契約は本来 validation で弾く前提。万一通った場合のフォールバック表示。
   const wageAmount = c.wageAmount?.toLocaleString() ?? "（未入力）";
-  const wageRow = c.wageType === "MONTHLY" ? h`月給 ${wageAmount} 円` : h`時給 ${wageAmount} 円`;
+  const wageRow =
+    c.wageType === "MONTHLY"
+      ? h`月給 ${wageAmount} 円`
+      : c.wageType === "DAILY"
+        ? h`日給 ${wageAmount} 円`
+        : h`時給 ${wageAmount} 円`;
 
   const startText = c.contractStartOn ? formatReiwa(c.contractStartOn) : "（未入力）";
   const periodText = c.contractEndOn
