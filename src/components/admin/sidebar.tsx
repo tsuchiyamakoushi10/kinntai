@@ -53,6 +53,7 @@ const SECTIONS: Section[] = [
     collapsible: true,
     items: [
       { label: "会社情報", href: "/admin/company-profile" },
+      { label: "労働条件通知書の設定", href: "/admin/labor-notice-settings" },
       { label: "拠点", href: "/admin/offices" },
       { label: "シフトパターン", href: "/admin/shift-patterns" },
       { label: "自動作成の設定", href: "/admin/shift-settings" },

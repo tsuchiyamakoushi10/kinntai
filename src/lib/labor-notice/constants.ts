@@ -8,9 +8,10 @@
 import type {
   MinWage,
   NoticeEmploymentType,
+  NoticePreset,
   NoticeQualification,
   NoticeWorkPattern,
-  PresetTexts,
+  QualificationAllowances,
 } from "./types";
 
 /** 文言の世代。文言を変えたら上げる (発行済み通知書の再描画に使う)。 */
@@ -22,12 +23,11 @@ export const EMPLOYMENT_TYPE_LABEL: Record<NoticeEmploymentType, string> = {
   NIGHT_ONLY: "夜勤専従",
 };
 
-export type EmploymentPreset = {
-  texts: PresetTexts;
-  /** 有期の既定月数。null = 期間の定めなし */
-  defaultFixedTermMonths: number | null;
-  convertsToIndefinite: boolean;
-  defaultPatternCodes: ReadonlyArray<string>;
+const NO_QUALIFICATION_AMOUNTS: QualificationAllowances = {
+  CARE_WORKER: null,
+  INITIAL_TRAINING: null,
+  NURSE: null,
+  ASSISTANT_NURSE: null,
 };
 
 const COMMON_SCOPE = {
@@ -36,7 +36,11 @@ const COMMON_SCOPE = {
   workplaceScope: "変更なし",
 };
 
-export const EMPLOYMENT_PRESETS: Record<NoticeEmploymentType, EmploymentPreset> = {
+/**
+ * 区分ごとの既定値。DB (labor_notice_presets) に行が無い区分はこれを使う。
+ * 社長が S-A-34 で保存すると DB の値が優先される。
+ */
+export const EMPLOYMENT_PRESETS: Record<NoticeEmploymentType, NoticePreset> = {
   FULL_TIME: {
     texts: {
       ...COMMON_SCOPE,
@@ -53,6 +57,20 @@ export const EMPLOYMENT_PRESETS: Record<NoticeEmploymentType, EmploymentPreset> 
     defaultFixedTermMonths: null,
     convertsToIndefinite: false,
     defaultPatternCodes: ["EARLY", "DAY", "LATE", "NIGHT"],
+    allowanceRows: [
+      { label: "夜勤手当", body: "1回 6,000円 × 夜勤回数" },
+      { label: "休日手当", body: "1日 1,000円" },
+      { label: "年末年始手当", body: "1日 1,000円〜3,000円（12/30〜1/3）" },
+      { label: "会議手当", body: "1回 1,000円" },
+      { label: "通勤手当", body: "会社の定めによる実費" },
+    ],
+    // TODO(要確認): 介護福祉士以外の金額は根拠資料待ち。推測で埋めないこと
+    qualificationAllowances: {
+      CARE_WORKER: 10_000,
+      INITIAL_TRAINING: null,
+      NURSE: null,
+      ASSISTANT_NURSE: null,
+    },
   },
   PART_TIME: {
     texts: {
@@ -70,6 +88,18 @@ export const EMPLOYMENT_PRESETS: Record<NoticeEmploymentType, EmploymentPreset> 
     defaultFixedTermMonths: 6,
     convertsToIndefinite: true,
     defaultPatternCodes: ["DAY", "SHORT_DAY", "HALF_DAY"],
+    allowanceRows: [
+      { label: "休日手当", body: "1時間あたり 100円加算" },
+      { label: "年末年始手当", body: "1日 1,000円〜3,000円（12/30〜1/3）" },
+      {
+        label: "夜勤手当（夜勤に入る場合）",
+        body: "1回 5,000円（月6回目以降は1回 18,000円）",
+        onlyIfWorksNight: true,
+      },
+      { label: "会議手当", body: "1回 1,000円" },
+      { label: "通勤手当", body: "会社の定めによる実費" },
+    ],
+    qualificationAllowances: NO_QUALIFICATION_AMOUNTS,
   },
   NIGHT_ONLY: {
     texts: {
@@ -88,6 +118,8 @@ export const EMPLOYMENT_PRESETS: Record<NoticeEmploymentType, EmploymentPreset> 
     defaultFixedTermMonths: 6,
     convertsToIndefinite: false,
     defaultPatternCodes: ["NIGHT", "SHORT_NIGHT"],
+    allowanceRows: [{ label: "通勤手当", body: "会社の定めによる実費" }],
+    qualificationAllowances: NO_QUALIFICATION_AMOUNTS,
   },
 };
 
@@ -181,18 +213,6 @@ export const RENEWAL_CRITERIA_TO_INDEFINITE: ReadonlyArray<string> = [
   "会社の経営状況",
 ];
 
-/**
- * 資格手当の既定額 (月額)。null = 金額未確定。手入力が必要。
- * TODO(要確認): 介護福祉士 (正社員) 以外の金額は根拠資料待ち。推測で埋めないこと。
- */
-export const QUALIFICATION_ALLOWANCE_YEN: Record<
-  "FULL_TIME" | "PART_TIME",
-  Record<Exclude<NoticeQualification, "NONE">, number | null>
-> = {
-  FULL_TIME: { CARE_WORKER: 10_000, INITIAL_TRAINING: null, NURSE: null, ASSISTANT_NURSE: null },
-  PART_TIME: { CARE_WORKER: null, INITIAL_TRAINING: null, NURSE: null, ASSISTANT_NURSE: null },
-};
-
 export const QUALIFICATION_LABEL: Record<NoticeQualification, string> = {
   NONE: "なし",
   CARE_WORKER: "介護福祉士",
@@ -204,32 +224,6 @@ export const QUALIFICATION_LABEL: Record<NoticeQualification, string> = {
 /** ひとり親手当: 子 1 人あたり月額と上限 */
 export const SINGLE_PARENT_ALLOWANCE_PER_CHILD_YEN = 5_000;
 export const SINGLE_PARENT_ALLOWANCE_CAP_YEN = 10_000;
-
-/** 区分ごとに固定で印字する手当行 (帳票の文言そのまま) */
-export const FIXED_ALLOWANCE_ROWS: Record<
-  NoticeEmploymentType,
-  ReadonlyArray<{ label: string; body: string; onlyIfWorksNight?: boolean }>
-> = {
-  FULL_TIME: [
-    { label: "夜勤手当", body: "1回 6,000円 × 夜勤回数" },
-    { label: "休日手当", body: "1日 1,000円" },
-    { label: "年末年始手当", body: "1日 1,000円〜3,000円（12/30〜1/3）" },
-    { label: "会議手当", body: "1回 1,000円" },
-    { label: "通勤手当", body: "会社の定めによる実費" },
-  ],
-  PART_TIME: [
-    { label: "休日手当", body: "1時間あたり 100円加算" },
-    { label: "年末年始手当", body: "1日 1,000円〜3,000円（12/30〜1/3）" },
-    {
-      label: "夜勤手当（夜勤に入る場合）",
-      body: "1回 5,000円（月6回目以降は1回 18,000円）",
-      onlyIfWorksNight: true,
-    },
-    { label: "会議手当", body: "1回 1,000円" },
-    { label: "通勤手当", body: "会社の定めによる実費" },
-  ],
-  NIGHT_ONLY: [{ label: "通勤手当", body: "会社の定めによる実費" }],
-};
 
 /** 最低賃金 (都道府県別・発効日つき)。改定のたびに行を足す。 */
 export const MIN_WAGES: ReadonlyArray<MinWage> = [

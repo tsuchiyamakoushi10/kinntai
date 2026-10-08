@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { computeNotice } from "@/lib/labor-notice/compute";
 import { toContractData, toEmployeeSnapshot } from "@/lib/labor-notice/contract-mapping";
+import { EMPLOYMENT_PRESETS } from "@/lib/labor-notice/constants";
 import { applyPreset, nextContractInput, todayJst } from "@/lib/labor-notice/defaults";
 import { parseAcknowledgements, parseNoticeInput } from "@/lib/labor-notice/parse";
 
@@ -35,7 +36,11 @@ describe("parseNoticeInput", () => {
 
 describe("プリセットと次の契約", () => {
   it("区分を選ぶと既定の契約期間・勤務パターンが入り、従業員や日付は引き継ぐ", () => {
-    const next = applyPreset("NIGHT_ONLY", partTimeInput({ overrides: { holidays: "x" } }));
+    const next = applyPreset(
+      "NIGHT_ONLY",
+      partTimeInput({ overrides: { holidays: "x" } }),
+      EMPLOYMENT_PRESETS.NIGHT_ONLY,
+    );
     expect(next.fixedTermMonths).toBe(6);
     expect(next.convertsToIndefinite).toBe(false);
     expect(next.patternCodes).toEqual(["NIGHT", "SHORT_NIGHT"]);

@@ -1,7 +1,7 @@
 /**
  * 労働条件通知書テスト用の架空データ。実在の従業員名は使わない。
  */
-import { MIN_WAGES, NOTICE_WORK_PATTERNS } from "@/lib/labor-notice/constants";
+import { EMPLOYMENT_PRESETS, MIN_WAGES, NOTICE_WORK_PATTERNS } from "@/lib/labor-notice/constants";
 import type { NoticeInput, NoticeMasters } from "@/lib/labor-notice/types";
 
 export function masters(overrides: Partial<NoticeMasters["company"]> = {}): NoticeMasters {
@@ -34,6 +34,7 @@ export function masters(overrides: Partial<NoticeMasters["company"]> = {}): Noti
         prefecture: "埼玉県",
       },
     ],
+    presets: EMPLOYMENT_PRESETS,
     patterns: NOTICE_WORK_PATTERNS,
     minWages: MIN_WAGES,
   };

@@ -2,13 +2,15 @@
  * 作成画面の初期値づくり (純関数)。区分を選んだときのプリセット流し込み、
  * 更新版・無期切替の「前回の入力をコピー」を扱う。
  */
-import {
-  EMPLOYMENT_PRESETS,
-  NIGHT_ONLY_DEFAULT_NIGHT_HOURS,
-  NIGHT_ONLY_DEFAULT_TOTAL_YEN,
-} from "./constants";
+import { NIGHT_ONLY_DEFAULT_NIGHT_HOURS, NIGHT_ONLY_DEFAULT_TOTAL_YEN } from "./constants";
 import { addDays } from "./dates";
-import type { InsuranceSet, NoticeEmploymentType, NoticeInput, NoticeWageInput } from "./types";
+import type {
+  InsuranceSet,
+  NoticeEmploymentType,
+  NoticeInput,
+  NoticePreset,
+  NoticeWageInput,
+} from "./types";
 
 /** JST の今日 ("YYYY-MM-DD") */
 export function todayJst(now: Date = new Date()): string {
@@ -68,8 +70,8 @@ export function applyPreset(
     | "isPostRetirementRehire"
     | "isStudent"
   >,
+  preset: NoticePreset,
 ): NoticeInput {
-  const preset = EMPLOYMENT_PRESETS[type];
   return {
     ...keep,
     employmentType: type,

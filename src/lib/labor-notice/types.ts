@@ -68,6 +68,23 @@ export type PresetTexts = {
   workplaceScope: string;
 };
 
+/** 書面の賃金欄に載せる手当行 (文言そのまま) */
+export type AllowanceRow = { label: string; body: string; onlyIfWorksNight?: boolean };
+
+/** 資格手当の月額。null = 金額未確定 (通知書作成時に手入力が必要) */
+export type QualificationAllowances = Record<Exclude<NoticeQualification, "NONE">, number | null>;
+
+/** 区分ごとの初期値。S-A-34 で編集でき、未設定なら constants.ts の既定値 */
+export type NoticePreset = {
+  texts: PresetTexts;
+  /** 有期の既定月数。null = 期間の定めなし */
+  defaultFixedTermMonths: number | null;
+  convertsToIndefinite: boolean;
+  defaultPatternCodes: ReadonlyArray<string>;
+  allowanceRows: ReadonlyArray<AllowanceRow>;
+  qualificationAllowances: QualificationAllowances;
+};
+
 export type NoticeInput = {
   employmentType: NoticeEmploymentType;
   /** 労働者の氏名 (帳票印字用。ログには出さないこと) */
@@ -146,6 +163,7 @@ export type MinWage = { prefecture: string; yen: number; effectiveFrom: string }
 
 export type NoticeMasters = {
   company: NoticeCompany;
+  presets: Record<NoticeEmploymentType, NoticePreset>;
   offices: ReadonlyArray<NoticeOffice>;
   patterns: ReadonlyArray<NoticeWorkPattern>;
   minWages: ReadonlyArray<MinWage>;

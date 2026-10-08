@@ -4,13 +4,10 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import { computeNotice } from "@/lib/labor-notice/compute";
-import {
-  EMPLOYMENT_PRESETS,
-  EMPLOYMENT_TYPE_LABEL,
-  QUALIFICATION_LABEL,
-} from "@/lib/labor-notice/constants";
+import { EMPLOYMENT_TYPE_LABEL, QUALIFICATION_LABEL } from "@/lib/labor-notice/constants";
 import { applyPreset } from "@/lib/labor-notice/defaults";
 import { renderNoticeDocument } from "@/lib/labor-notice/html";
+import { PRESET_TEXT_LABEL } from "@/lib/labor-notice/masters";
 import type {
   InsuranceSet,
   NoticeEmploymentType,
@@ -54,18 +51,9 @@ const QUALIFICATIONS: ReadonlyArray<NoticeQualification> = [
   "ASSISTANT_NURSE",
 ];
 
-const TEXT_FIELDS: ReadonlyArray<{ key: keyof PresetTexts; label: string }> = [
-  { key: "workingTimeSystem", label: "勤務時間の決め方" },
-  { key: "holidays", label: "休日" },
-  { key: "trialPeriod", label: "試用期間" },
-  { key: "overtime", label: "残業" },
-  { key: "holidayWork", label: "休日出勤" },
-  { key: "raise", label: "昇給" },
-  { key: "bonus", label: "賞与" },
-  { key: "retirementAllowance", label: "退職金" },
-  { key: "workplaceScope", label: "勤務先が変わる可能性" },
-  { key: "jobScope", label: "仕事内容が変わる可能性" },
-];
+const TEXT_FIELDS: ReadonlyArray<{ key: keyof PresetTexts; label: string }> = (
+  Object.keys(PRESET_TEXT_LABEL) as (keyof PresetTexts)[]
+).map((key) => ({ key, label: PRESET_TEXT_LABEL[key] }));
 
 function initialFor(
   employee: EditorEmployee | undefined,
@@ -73,16 +61,20 @@ function initialFor(
   masters: NoticeMasters,
 ): NoticeInput {
   const type = employee?.defaultType ?? "PART_TIME";
-  return applyPreset(type, {
-    employeeName: employee?.name ?? "",
-    issuedOn: today,
-    contractStartOn: today,
-    officeId: employee?.officeId ?? masters.offices[0]?.id ?? "",
-    jobDescription: employee?.jobDescription ?? "",
-    priorFixedTermMonths: employee?.priorFixedTermMonths ?? 0,
-    isPostRetirementRehire: false,
-    isStudent: false,
-  });
+  return applyPreset(
+    type,
+    {
+      employeeName: employee?.name ?? "",
+      issuedOn: today,
+      contractStartOn: today,
+      officeId: employee?.officeId ?? masters.offices[0]?.id ?? "",
+      jobDescription: employee?.jobDescription ?? "",
+      priorFixedTermMonths: employee?.priorFixedTermMonths ?? 0,
+      isPostRetirementRehire: false,
+      isStudent: false,
+    },
+    masters.presets[type],
+  );
 }
 
 export function NoticeEditor(props: Props) {
@@ -104,7 +96,7 @@ export function NoticeEditor(props: Props) {
     () => (result.view ? renderNoticeDocument(result.view, { noticeNo: null, preview: true }) : ""),
     [result.view],
   );
-  const preset = EMPLOYMENT_PRESETS[input.employmentType];
+  const preset = masters.presets[input.employmentType];
   const texts = { ...preset.texts, ...input.overrides };
 
   const set = (patch: Partial<NoticeInput>) => setInput((prev) => ({ ...prev, ...patch }));
@@ -120,7 +112,7 @@ export function NoticeEditor(props: Props) {
   }
 
   function chooseType(type: NoticeEmploymentType) {
-    setInput((prev) => applyPreset(type, prev));
+    setInput((prev) => applyPreset(type, prev, masters.presets[type]));
     setAcks({});
   }
 

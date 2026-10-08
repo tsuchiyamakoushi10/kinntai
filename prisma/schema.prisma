@@ -975,3 +975,52 @@ model LaborNotice {
   @@index([status, contractEndOn])
   @@map("labor_notices")
 }
+
+// 労働条件通知書: 区分ごとの初期値 (S-A-34)。行が無い区分は src/lib/labor-notice/constants.ts の既定値を使う。
+// docs/labor-notice.md §2.1
+model LaborNoticePreset {
+  noticeType              LaborNoticeType @id @map("notice_type")
+  // PresetTexts (休日・試用期間・昇給・賞与 などの文言)
+  texts                   Json
+  defaultFixedTermMonths  Int?            @map("default_fixed_term_months")
+  convertsToIndefinite    Boolean         @map("converts_to_indefinite")
+  defaultPatternCodes     String[]        @map("default_pattern_codes")
+  // 書面に載せる手当行 [{label, body, onlyIfWorksNight?}]
+  allowanceRows           Json            @map("allowance_rows")
+  // 資格手当の月額 {CARE_WORKER: 10000 | null, ...}。null は金額未確定 (手入力が必要)
+  qualificationAllowances Json            @map("qualification_allowances")
+  updatedAt               DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("labor_notice_presets")
+}
+
+// 労働条件通知書に載せる勤務パターン (S-A-34)。勤務表の記号とは別 (夜勤は 1 行)。
+// 0 行なら constants.ts の既定値を使う。docs/labor-notice.md §2.1
+model LaborNoticeWorkPattern {
+  id           String   @id @default(uuid()) @db.Uuid
+  code         String   @unique
+  label        String
+  // "HH:MM"
+  startTime    String   @map("start_time")
+  endTime      String   @map("end_time")
+  endsNextDay  Boolean  @default(false) @map("ends_next_day")
+  breakMinutes Int      @default(0) @map("break_minutes")
+  sortOrder    Int      @default(0) @map("sort_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("labor_notice_work_patterns")
+}
+
+// 最低賃金 (都道府県別・発効日つき)。0 行なら constants.ts の既定値を使う。docs/labor-notice.md §2.1
+model MinWage {
+  id            String   @id @default(uuid()) @db.Uuid
+  prefecture    String
+  yen           Int
+  effectiveFrom DateTime @map("effective_from") @db.Date
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([prefecture, effectiveFrom])
+  @@map("min_wages")
+}

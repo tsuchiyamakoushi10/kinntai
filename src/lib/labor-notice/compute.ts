@@ -15,13 +15,10 @@ import {
   workHours,
 } from "./calc";
 import {
-  EMPLOYMENT_PRESETS,
   EMPLOYMENT_TYPE_LABEL,
-  FIXED_ALLOWANCE_ROWS,
   INDEFINITE_CONVERSION_MONTHS,
   LEGAL_DAILY_HOURS,
   PREMIUM_RATES,
-  QUALIFICATION_ALLOWANCE_YEN,
   QUALIFICATION_LABEL,
   RENEWAL_CRITERIA_FIXED,
   RENEWAL_CRITERIA_TO_INDEFINITE,
@@ -51,7 +48,7 @@ function isBlank(s: string | null | undefined): boolean {
 export function computeNotice(input: NoticeInput, masters: NoticeMasters): NoticeResult {
   const errors: NoticeError[] = [];
   const warnings: NoticeWarning[] = [];
-  const preset = EMPLOYMENT_PRESETS[input.employmentType];
+  const preset = masters.presets[input.employmentType];
   const texts = { ...preset.texts, ...input.overrides };
   const { company } = masters;
 
@@ -168,9 +165,7 @@ export function computeNotice(input: NoticeInput, masters: NoticeMasters): Notic
 
     let qualificationYen = 0;
     if (w.qualification !== "NONE") {
-      const typeKey = input.employmentType === "FULL_TIME" ? "FULL_TIME" : "PART_TIME";
-      const amount =
-        w.qualificationAllowanceYen ?? QUALIFICATION_ALLOWANCE_YEN[typeKey][w.qualification];
+      const amount = w.qualificationAllowanceYen ?? preset.qualificationAllowances[w.qualification];
       if (amount === null || amount === undefined) {
         errors.push({
           field: "qualificationAllowanceYen",
@@ -220,7 +215,7 @@ export function computeNotice(input: NoticeInput, masters: NoticeMasters): Notic
       }
     }
 
-    for (const row of FIXED_ALLOWANCE_ROWS[input.employmentType]) {
+    for (const row of preset.allowanceRows) {
       if (row.onlyIfWorksNight && !(w.kind === "HOURLY" && w.worksNight)) continue;
       wageRows.push({ label: row.label, body: row.body });
     }
@@ -253,8 +248,7 @@ export function computeNotice(input: NoticeInput, masters: NoticeMasters): Notic
       label: "日給（1回あたり）",
       body: `${formatYen(w.totalYen)}（勤務パターンにかかわらず同額）`,
     });
-    for (const row of FIXED_ALLOWANCE_ROWS.NIGHT_ONLY)
-      wageRows.push({ label: row.label, body: row.body });
+    for (const row of preset.allowanceRows) wageRows.push({ label: row.label, body: row.body });
     if (!variable) {
       warnings.push({
         code: "NIGHT_VARIABLE_HOURS",
