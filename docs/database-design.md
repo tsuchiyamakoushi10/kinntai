@@ -401,6 +401,8 @@ PII を含むため、ファイル本体は外部オブジェクトストレー�
 | shift_id                | uuid (nullable) | 紐付くシフト                         |
 | created_at / updated_at | timestamptz     |                                      |
 
+> 研修アンケート (`training_surveys` / `training_survey_questions` / `training_survey_targets` / `training_survey_responses`) は [training-survey.md §4](training-survey.md) を参照。
+
 ### 2.19 `company_profile` — 会社マスタ (Phase 1-I で実装)
 
 > Phase 1-J (労働条件通知書 新フォーマット) で列を追加する。追加列と新規テーブル `labor_notices` / `side_jobs` / `shift_acknowledgements` は [labor-notice.md §6](labor-notice.md) を参照。

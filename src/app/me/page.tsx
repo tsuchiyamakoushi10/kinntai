@@ -11,7 +11,9 @@ import {
   deriveState,
   type PunchAction,
 } from "@/lib/attendance/punch";
+import { prisma } from "@/lib/db";
 import { ATTENDANCE_ENABLED, EMPLOYEE_LEAVE_VIEW_ENABLED } from "@/lib/feature-flags";
+import { toDateInputValue } from "@/lib/format";
 
 import { punch } from "./actions";
 
@@ -40,6 +42,20 @@ export default async function MyHomePage({ searchParams }: PageProps) {
     ATTENDANCE_ENABLED && employeeId ? await findRelevantAttendance(employeeId, todayDate) : null;
   const state = deriveState(attendance, attendance?.breakRecords ?? []);
   const actions = ATTENDANCE_ENABLED ? allowedActions(state) : [];
+  // 未回答の研修アンケート (受付中・期限内・自分が対象・まだ答えていない)
+  const pendingSurveys = employeeId
+    ? await prisma.trainingSurvey.count({
+        where: {
+          status: "OPEN",
+          OR: [
+            { answerUntil: null },
+            { answerUntil: { gte: new Date(`${toDateInputValue(new Date())}T00:00:00.000Z`) } },
+          ],
+          targets: { some: { employeeId } },
+          responses: { none: { employeeId } },
+        },
+      })
+    : 0;
   const openBreakStart =
     attendance?.breakRecords.find((b) => b.breakEndAt === null)?.breakStartAt ?? null;
 
@@ -107,6 +123,20 @@ export default async function MyHomePage({ searchParams }: PageProps) {
           </div>
         ))}
 
+      {pendingSurveys > 0 && (
+        <Link
+          href="/me/surveys"
+          className="flex items-center justify-between rounded-2xl bg-amber-50 px-5 py-4 shadow-sm ring-2 ring-amber-300"
+        >
+          <span className="text-base font-bold text-slate-900">
+            研修アンケートが {pendingSurveys}件 あります
+          </span>
+          <span className="rounded-full bg-amber-500 px-3 py-1 text-sm font-bold text-white">
+            答える
+          </span>
+        </Link>
+      )}
+
       <nav className="mt-2 grid grid-cols-1 gap-2">
         {ATTENDANCE_ENABLED && (
           <Link
@@ -144,6 +174,15 @@ export default async function MyHomePage({ searchParams }: PageProps) {
           className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
         >
           <span>シフト希望を出す</span>
+          <span aria-hidden className="text-slate-400">
+            →
+          </span>
+        </Link>
+        <Link
+          href="/me/surveys"
+          className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
+        >
+          <span>研修アンケート</span>
           <span aria-hidden className="text-slate-400">
             →
           </span>
