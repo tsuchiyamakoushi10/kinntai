@@ -188,6 +188,15 @@ export default async function MyHomePage({ searchParams }: PageProps) {
           </span>
         </Link>
         <Link
+          href="/me/manual"
+          className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
+        >
+          <span>使い方（説明動画）</span>
+          <span aria-hidden className="text-slate-400">
+            →
+          </span>
+        </Link>
+        <Link
           href="/me/profile"
           className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
         >

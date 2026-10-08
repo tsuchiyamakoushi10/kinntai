@@ -2,7 +2,7 @@
  * 認証 / ロールに応じた経路ガード。
  *
  * - 未認証なら /login に飛ばす（戻り先は ?from= に積む）
- * - /admin 配下は role=ADMIN のみ
+ * - /admin 配下と管理者向けマニュアル (/manual/admin/) は role=ADMIN のみ
  * - /me 配下は role=EMPLOYEE のみ（管理者は /admin にリダイレクト）
  * - /tablet 配下は Auth.js セッション不要（共有端末用）。ただし /tablet/setup は
  *   管理者ログイン必須（拠点登録の発行者を管理者に限定）。打刻フロー本体の
@@ -74,7 +74,11 @@ export default auth((req) => {
     return NextResponse.redirect(url);
   }
 
-  if (pathname.startsWith("/admin") && user.role !== "ADMIN") {
+  // 管理者向けマニュアル (public/manual/admin) は管理者だけ。職員向けはログインしていれば誰でも。
+  if (
+    (pathname.startsWith("/admin") || pathname.startsWith("/manual/admin/")) &&
+    user.role !== "ADMIN"
+  ) {
     return NextResponse.redirect(new URL("/me", nextUrl));
   }
   if (pathname.startsWith("/me") && user.role !== "EMPLOYEE") {

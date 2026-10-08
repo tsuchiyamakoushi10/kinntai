@@ -21,6 +21,7 @@
     "manual:capture": "tsx scripts/manual/capture.ts",
     "manual:video": "tsx scripts/manual/make-videos.ts",
     "manual:pdf": "tsx scripts/manual/build-pdf.ts",
+    "manual:publish": "tsx scripts/manual/publish.ts",
     "prepare": "husky",
     "prisma:format": "prisma format",
     "prisma:validate": "prisma validate",
