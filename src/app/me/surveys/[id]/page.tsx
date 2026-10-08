@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { formatDate, toDateInputValue } from "@/lib/format";
+import { toSurveyQuestion } from "@/lib/training-survey/from-db";
 import { canAnswer, type Answers } from "@/lib/training-survey/logic";
 
 import { AnswerForm } from "./answer-form";
@@ -60,13 +61,7 @@ export default async function AnswerSurveyPage({ params }: Props) {
       </header>
       <AnswerForm
         surveyId={survey.id}
-        questions={survey.questions.map((q) => ({
-          id: q.id,
-          kind: q.kind,
-          label: q.label,
-          options: q.options,
-          required: q.required,
-        }))}
+        questions={survey.questions.map(toSurveyQuestion)}
         initial={previous}
         open={open}
       />

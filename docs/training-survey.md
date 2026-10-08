@@ -19,16 +19,34 @@
 
 ## 2. 質問の種類
 
-| 種類           | コード          | 回答の形                                                                                     | まとめの見せ方                    |
-| -------------- | --------------- | -------------------------------------------------------------------------------------------- | --------------------------------- |
-| 5段階評価      | `RATING_5`      | 1〜5 の整数 (大きなボタン 5 つ。両端に「よくなかった / とてもよかった」など文言を付けられる) | 平均点と、1〜5 それぞれの人数の棒 |
-| ひとつ選ぶ     | `SINGLE_CHOICE` | 選択肢の 1 つ                                                                                | 選択肢ごとの人数と割合の棒        |
-| いくつでも選ぶ | `MULTI_CHOICE`  | 選択肢の 0 個以上                                                                            | 選択肢ごとの人数と割合の棒        |
-| 自由記述       | `TEXT`          | 文字 (1,000 文字まで)                                                                        | 名前つきで縦に並べる              |
+2026-10-08 追加要望で Google フォームに近い組み立てにした (§2.1)。
 
-- 質問ごとに「必須」を付けられる。
-- 選択肢は 2〜10 個。
-- 前回のアンケートを **複製** して作れる (毎回同じ質問を打ち直さない)。
+| 種類           | コード          | 回答の形 (`answers[question_id]`)                                         | まとめの見せ方                                                               |
+| -------------- | --------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| 見出し・説明   | `SECTION`       | なし (回答しない区切り。見出しと説明文だけ)                               | 区切りとして表示                                                             |
+| 一行の答え     | `SHORT_TEXT`    | 文字 (200 文字まで)                                                       | 名前つきで縦に並べる                                                         |
+| 自由記述       | `TEXT`          | 文字 (1,000 文字まで)                                                     | 名前つきで縦に並べる                                                         |
+| ひとつ選ぶ     | `SINGLE_CHOICE` | 選択肢の 1 つ                                                             | 選択肢ごとの人数と割合の棒                                                   |
+| プルダウン     | `DROPDOWN`      | 選択肢の 1 つ                                                             | 同上                                                                         |
+| いくつでも選ぶ | `MULTI_CHOICE`  | 選択肢の配列                                                              | 同上                                                                         |
+| 数の評価       | `SCALE`         | `min`〜`max` の整数 (min は 0 か 1、max は 2〜10。両端の文言を付けられる) | 平均と、各数字の人数の棒                                                     |
+| 日付           | `DATE`          | `YYYY-MM-DD`                                                              | 名前つきで並べる                                                             |
+| 表形式         | `GRID`          | `{ [行]: 列 }` (行ごとに列を 1 つ選ぶ)                                    | 行ごとに列の人数                                                             |
+| (旧) 5段階評価 | `RATING_5`      | 1〜5 の整数                                                               | 平均と内訳。新規作成では使わず、編集画面で開くと `SCALE` (1〜5) に置き換わる |
+
+- 質問ごとに「必須」と **補足説明** を付けられる。
+- 選択式 (ひとつ / プルダウン / いくつでも) は選択肢 2〜20 個。ひとつ・いくつでもは **「その他（自由記述）」** を付けられる。
+  - その他を選んだときは値に `__other__` を入れ、書いた文字は `answers["{question_id}.other"]` に入れる。
+- 表形式は行 1〜20・列 2〜10。
+
+### 2.1 組み立て (S-A-36)
+
+- 質問のカードを **ドラッグで並べ替え** (マウスと指の両方。左端のつまみを持つ)。
+- 各カードに「複製」「削除」、カードとカードの間に「＋ ここに追加」。
+- 質問の種類を後から変えられる (選択肢など入力済みの内容はできるだけ引き継ぐ)。
+- 番号は見出しを飛ばして Q1, Q2… と振る。
+- **ひな形**: 今の質問一式に名前を付けて保存し (`training_survey_templates`)、作成時に選べる。前回のアンケートの「複製」も引き続き使える。
+- 回答が 1 件でも来たら質問は変更できない (回答と質問がずれるのを防ぐ)。
 
 ## 3. 流れ
 
@@ -59,8 +77,15 @@ training_surveys                 -- 研修アンケート
 
 training_survey_questions
   id uuid PK, survey_id FK (cascade), sort_order int,
-  kind enum training_survey_question_kind (rating_5 / single_choice / multi_choice / text),
-  label text, options text[] (選択肢、RATING_5 は [低い側の文言, 高い側の文言]), required boolean
+  kind enum training_survey_question_kind
+    (section / short_text / text / single_choice / dropdown / multi_choice / scale / date / grid / rating_5)
+  label text, description text null (補足説明),
+  options text[] (選択式の選択肢、表形式の列。RATING_5 は [低い側の文言, 高い側の文言]),
+  config jsonb null (SCALE: {min, max, minLabel, maxLabel} / GRID: {rows} / 選択式: {allowOther}),
+  required boolean
+
+training_survey_templates        -- ひな形 (質問一式を名前つきで保存)
+  id uuid PK, name text, questions jsonb (SurveyQuestion の配列。id は空), created_at, updated_at
 
 training_survey_targets          -- 配信対象 (未回答の判定に使う)
   survey_id FK (cascade), employee_id FK, created_at
@@ -68,7 +93,7 @@ training_survey_targets          -- 配信対象 (未回答の判定に使う)
 
 training_survey_responses        -- 回答 (1 人 1 件)
   id uuid PK, survey_id FK (cascade), employee_id FK,
-  answers jsonb  -- { [question_id]: number | string | string[] }
+  answers jsonb  -- { [question_id]: number | string | string[] | {[行]: 列}, "{question_id}.other": string }
   training_record_id uuid null FK training_records (set null)
   submitted_at timestamptz, updated_at
   unique (survey_id, employee_id)

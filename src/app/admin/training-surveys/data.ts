@@ -1,10 +1,7 @@
 /**
  * 研修アンケート画面で使うデータ読み込み (サーバ専用)。
  */
-import type { TrainingSurveyQuestion } from "@prisma/client";
-
 import { prisma } from "@/lib/db";
-import type { SurveyQuestion } from "@/lib/training-survey/logic";
 
 import type { EditorOffice } from "./survey-editor";
 
@@ -40,6 +37,4 @@ export async function loadTargetOffices(): Promise<EditorOffice[]> {
   return groups.filter((g) => g.employees.length > 0);
 }
 
-export function toSurveyQuestion(q: TrainingSurveyQuestion): SurveyQuestion {
-  return { id: q.id, kind: q.kind, label: q.label, options: q.options, required: q.required };
-}
+export { toSurveyQuestion } from "@/lib/training-survey/from-db";

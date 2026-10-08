@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { toDateInputValue } from "@/lib/format";
+import { toSurveyQuestion } from "@/lib/training-survey/from-db";
 import { canAnswer, checkAnswers } from "@/lib/training-survey/logic";
 
 export type AnswerResult = { ok: true } | { ok: false; error: string };
@@ -42,16 +43,7 @@ export async function submitSurveyAnswer(surveyId: string, raw: unknown): Promis
     return { ok: false, error: "このアンケートの受付は終わりました" };
   }
 
-  const checked = checkAnswers(
-    survey.questions.map((q) => ({
-      id: q.id,
-      kind: q.kind,
-      label: q.label,
-      options: q.options,
-      required: q.required,
-    })),
-    raw,
-  );
+  const checked = checkAnswers(survey.questions.map(toSurveyQuestion), raw);
   if (!checked.ok) return checked;
   const answers = checked.value as Prisma.InputJsonValue;
   const existing = survey.responses[0];

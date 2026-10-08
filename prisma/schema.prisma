@@ -242,10 +242,17 @@ enum TrainingSurveyStatus {
 }
 
 enum TrainingSurveyQuestionKind {
+  // 旧 5 段階評価。新規作成では SCALE を使う (編集画面で開くと SCALE 1〜5 に置き換わる)
   RATING_5      @map("rating_5")
   SINGLE_CHOICE @map("single_choice")
   MULTI_CHOICE  @map("multi_choice")
   TEXT          @map("text")
+  SECTION       @map("section")
+  SHORT_TEXT    @map("short_text")
+  DROPDOWN      @map("dropdown")
+  SCALE         @map("scale")
+  DATE          @map("date")
+  GRID          @map("grid")
 
   @@map("training_survey_question_kind")
 }
@@ -1079,14 +1086,18 @@ model TrainingSurvey {
 }
 
 model TrainingSurveyQuestion {
-  id        String                     @id @default(uuid()) @db.Uuid
-  surveyId  String                     @map("survey_id") @db.Uuid
-  sortOrder Int                        @map("sort_order")
-  kind      TrainingSurveyQuestionKind
-  label     String
-  // 選択肢。RATING_5 は [低い側の文言, 高い側の文言]
-  options   String[]
-  required  Boolean                    @default(true)
+  id          String                     @id @default(uuid()) @db.Uuid
+  surveyId    String                     @map("survey_id") @db.Uuid
+  sortOrder   Int                        @map("sort_order")
+  kind        TrainingSurveyQuestionKind
+  label       String
+  // 補足説明 (質問の下に小さく出す)
+  description String?
+  // 選択式の選択肢、表形式の列。RATING_5 は [低い側の文言, 高い側の文言]
+  options     String[]
+  // SCALE: {min, max, minLabel, maxLabel} / GRID: {rows} / 選択式: {allowOther}
+  config      Json?
+  required    Boolean                    @default(true)
 
   survey TrainingSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
 
@@ -1124,4 +1135,16 @@ model TrainingSurveyResponse {
 
   @@unique([surveyId, employeeId])
   @@map("training_survey_responses")
+}
+
+// 研修アンケートのひな形 (質問一式を名前つきで保存して使い回す)。docs/training-survey.md §2.1
+model TrainingSurveyTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  // SurveyQuestion の配列 (id は空)
+  questions Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("training_survey_templates")
 }

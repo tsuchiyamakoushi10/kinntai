@@ -1,12 +1,13 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { parseDateInputValue } from "@/lib/format";
-import { checkSurveyDraft } from "@/lib/training-survey/logic";
+import { checkQuestions, checkSurveyDraft } from "@/lib/training-survey/logic";
 
 export type SurveySaveResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -76,7 +77,10 @@ export async function saveTrainingSurvey(
           sortOrder: i,
           kind: q.kind,
           label: q.label,
+          description: q.description || null,
           options: [...q.options],
+          config:
+            Object.keys(q.config).length > 0 ? (q.config as Prisma.InputJsonValue) : undefined,
           required: q.required,
         })),
       });
@@ -140,4 +144,36 @@ export async function deleteTrainingSurvey(surveyId: string): Promise<void> {
   await prisma.trainingSurvey.deleteMany({ where: { id: surveyId, status: "DRAFT" } });
   refresh();
   redirect("/admin/training-surveys");
+}
+
+/** 今の質問一式を「ひな形」として保存する。同じ名前があれば上書き */
+export async function saveSurveyTemplate(
+  name: string,
+  questions: unknown,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireAdmin();
+  const trimmed = name.trim();
+  if (trimmed === "" || trimmed.length > 50) {
+    return { ok: false, error: "ひな形の名前を 50 文字以内で入力してください" };
+  }
+  const checked = checkQuestions(questions);
+  if (!checked.ok) return checked;
+  const data = checked.value.map((q) => ({ ...q, id: "" })) as unknown as Prisma.InputJsonValue;
+  const existing = await prisma.trainingSurveyTemplate.findFirst({ where: { name: trimmed } });
+  if (existing) {
+    await prisma.trainingSurveyTemplate.update({
+      where: { id: existing.id },
+      data: { questions: data },
+    });
+  } else {
+    await prisma.trainingSurveyTemplate.create({ data: { name: trimmed, questions: data } });
+  }
+  revalidatePath("/admin/training-surveys/new");
+  return { ok: true };
+}
+
+export async function deleteSurveyTemplate(templateId: string): Promise<void> {
+  await requireAdmin();
+  await prisma.trainingSurveyTemplate.deleteMany({ where: { id: templateId } });
+  revalidatePath("/admin/training-surveys/new");
 }

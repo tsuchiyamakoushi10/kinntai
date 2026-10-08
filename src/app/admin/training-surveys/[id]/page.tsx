@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import {
   formatAnswer,
+  questionNumbers,
+  scaleOf,
   summarize,
   type Answers,
   type QuestionSummary,
@@ -65,6 +67,7 @@ export default async function TrainingSurveyResultPage({ params, searchParams }:
   if (!survey) notFound();
 
   const questions: SurveyQuestion[] = survey.questions.map(toSurveyQuestion);
+  const numbers = questionNumbers(questions);
   const people = survey.targets
     .map((t) => t.employee)
     .sort((a, b) => a.employeeCode.localeCompare(b.employeeCode));
@@ -152,7 +155,12 @@ export default async function TrainingSurveyResultPage({ params, searchParams }:
         ) : (
           <div className="flex flex-col gap-4">
             {summaries.map((s, i) => (
-              <SummaryCard key={s.questionId} n={i + 1} s={s} total={responders.length} />
+              <SummaryCard
+                key={s.questionId}
+                n={numbers[i] ?? null}
+                s={s}
+                total={responders.length}
+              />
             ))}
           </div>
         ))}
@@ -164,6 +172,7 @@ export default async function TrainingSurveyResultPage({ params, searchParams }:
           <PeopleView
             base={base}
             questions={questions}
+            numbers={numbers}
             people={responders.map((p) => {
               const r = responseOf.get(p.id)!;
               return {
@@ -218,7 +227,17 @@ function Bar({ label, count, total }: { label: string; count: number; total: num
   );
 }
 
-function SummaryCard({ n, s, total }: { n: number; s: QuestionSummary; total: number }) {
+function SummaryCard({ n, s, total }: { n: number | null; s: QuestionSummary; total: number }) {
+  if (s.kind === "SECTION") {
+    return (
+      <div className="mt-2 border-l-4 border-sky-600 pl-3">
+        <h2 className="text-lg font-bold text-slate-900">{s.label}</h2>
+        {s.description && (
+          <p className="mt-0.5 text-sm whitespace-pre-wrap text-slate-600">{s.description}</p>
+        )}
+      </div>
+    );
+  }
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5">
       <h2 className="text-base font-bold text-slate-900">
@@ -227,37 +246,104 @@ function SummaryCard({ n, s, total }: { n: number; s: QuestionSummary; total: nu
       </h2>
       <p className="mt-0.5 text-xs text-slate-500">{s.answered}人が回答</p>
       <div className="mt-3">
-        {s.kind === "RATING_5" && (
+        {s.kind === "SCALE" && (
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <div className="shrink-0 text-center sm:w-32">
               <p className="text-4xl font-bold text-slate-900 tabular-nums">{s.average ?? "—"}</p>
-              <p className="text-xs text-slate-500">平均（5点満点）</p>
+              <p className="text-xs text-slate-500">平均（{s.min + s.counts.length - 1}点満点）</p>
             </div>
             <div className="flex flex-1 flex-col gap-1.5">
-              {[5, 4, 3, 2, 1].map((v) => (
-                <Bar
-                  key={v}
-                  label={`${v}${v === 5 && s.highLabel ? `（${s.highLabel}）` : v === 1 && s.lowLabel ? `（${s.lowLabel}）` : ""}`}
-                  count={s.counts[v - 1]!}
-                  total={s.answered}
-                />
-              ))}
+              {s.counts
+                .map((count, k) => ({ v: s.min + k, count }))
+                .reverse()
+                .map(({ v, count }) => {
+                  const max = s.min + s.counts.length - 1;
+                  const note =
+                    v === max && s.maxLabel
+                      ? `（${s.maxLabel}）`
+                      : v === s.min && s.minLabel
+                        ? `（${s.minLabel}）`
+                        : "";
+                  return <Bar key={v} label={`${v}${note}`} count={count} total={s.answered} />;
+                })}
             </div>
           </div>
         )}
-        {(s.kind === "SINGLE_CHOICE" || s.kind === "MULTI_CHOICE") && (
+        {s.kind === "CHOICE" && (
           <div className="flex flex-col gap-1.5">
             {s.counts.map((c) => (
               <Bar
                 key={c.option}
                 label={c.option}
                 count={c.count}
-                total={s.kind === "MULTI_CHOICE" ? total : s.answered}
+                total={s.multiple ? total : s.answered}
               />
             ))}
+            {s.other && (
+              <>
+                <Bar label="その他" count={s.other.count} total={s.multiple ? total : s.answered} />
+                {s.other.texts.length > 0 && (
+                  <ul className="mt-1 ml-4 flex flex-col gap-1 border-l-2 border-slate-200 pl-3">
+                    {s.other.texts.map((t, i) => (
+                      <li key={i} className="text-sm">
+                        <span className="mr-2 text-xs font-semibold text-slate-500">
+                          {t.employeeName}
+                        </span>
+                        {t.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
           </div>
         )}
-        {s.kind === "TEXT" &&
+        {s.kind === "GRID" && (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[28rem] text-sm">
+              <thead>
+                <tr className="text-xs text-slate-500">
+                  <th className="px-2 py-1 text-left font-medium" />
+                  {s.columns.map((c) => (
+                    <th key={c} className="px-2 py-1 text-center font-medium">
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {s.rows.map((r) => {
+                  const rowTotal = r.counts.reduce((a, b) => a + b, 0);
+                  const top = Math.max(...r.counts);
+                  return (
+                    <tr key={r.row} className="border-t border-slate-100">
+                      <th className="px-2 py-2 text-left font-semibold text-slate-800">{r.row}</th>
+                      {r.counts.map((c, k) => {
+                        const pct = rowTotal > 0 ? Math.round((c / rowTotal) * 100) : 0;
+                        return (
+                          <td key={k} className="px-2 py-2 text-center tabular-nums">
+                            <span
+                              className={`inline-block min-w-14 rounded-md px-2 py-1 ${
+                                c > 0 && c === top
+                                  ? "bg-sky-600 font-bold text-white"
+                                  : c > 0
+                                    ? "bg-sky-100 text-sky-900"
+                                    : "text-slate-400"
+                              }`}
+                            >
+                              {c}人<span className="ml-1 text-xs opacity-75">{pct}%</span>
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {s.kind === "TEXTS" &&
           (s.texts.length === 0 ? (
             <p className="text-sm text-slate-500">記入はありません。</p>
           ) : (
@@ -278,11 +364,13 @@ function SummaryCard({ n, s, total }: { n: number; s: QuestionSummary; total: nu
 function PeopleView({
   base,
   questions,
+  numbers,
   people,
   selectedId,
 }: {
   base: string;
   questions: SurveyQuestion[];
+  numbers: (number | null)[];
   people: ReadonlyArray<{
     id: string;
     name: string;
@@ -351,21 +439,41 @@ function PeopleView({
         </header>
         <dl className="flex flex-col divide-y divide-slate-100">
           {questions.map((q, i) => {
+            if (q.kind === "SECTION") {
+              return (
+                <div key={q.id} className="pt-4 pb-1">
+                  <dt className="border-l-4 border-sky-600 pl-2 text-base font-bold text-slate-900">
+                    {q.label}
+                  </dt>
+                </div>
+              );
+            }
             const v = person.answers[q.id];
+            const scale = q.kind === "SCALE" || q.kind === "RATING_5" ? scaleOf(q) : null;
             return (
               <div key={q.id} className="py-3">
                 <dt className="text-sm text-slate-500">
-                  <span className="mr-2 text-slate-400">Q{i + 1}</span>
+                  <span className="mr-2 text-slate-400">Q{numbers[i]}</span>
                   {q.label}
                 </dt>
                 <dd className="mt-1 text-base font-semibold whitespace-pre-wrap text-slate-900">
-                  {q.kind === "RATING_5" && typeof v === "number" ? (
-                    <span className="flex items-center gap-1" aria-label={`${v} / 5`}>
-                      {[1, 2, 3, 4, 5].map((k) => (
+                  {scale && typeof v === "number" ? (
+                    <span
+                      className="flex flex-wrap items-center gap-1"
+                      aria-label={`${v} / ${scale.max}`}
+                    >
+                      {Array.from(
+                        { length: scale.max - scale.min + 1 },
+                        (_, k) => scale.min + k,
+                      ).map((k) => (
                         <span
                           key={k}
                           className={`flex size-7 items-center justify-center rounded-md text-sm ${
-                            k <= v ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-400"
+                            k === v
+                              ? "bg-sky-600 text-white"
+                              : k < v
+                                ? "bg-sky-100 text-sky-800"
+                                : "bg-slate-100 text-slate-400"
                           }`}
                         >
                           {k}
@@ -373,7 +481,7 @@ function PeopleView({
                       ))}
                     </span>
                   ) : (
-                    formatAnswer(q, v)
+                    formatAnswer(q, person.answers)
                   )}
                 </dd>
               </div>
