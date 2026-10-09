@@ -175,7 +175,7 @@ export function renderContractHtml(vm: ContractViewModel): string {
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <title>${escapeHtml(vm.documentTitle)} - ${escapeHtml(vm.employee.fullName)}</title>
+    <title>${escapeHtml(vm.documentTitle)}</title>
     <style>${CSS}</style>
   </head>
   <body>

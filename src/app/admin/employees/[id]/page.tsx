@@ -609,12 +609,12 @@ function ContractsTab({
                 <td className="px-4 py-3 text-right">
                   <div className="flex justify-end gap-3">
                     <a
-                      href={`/admin/employees/${employeeId}/contracts/${c.id}/pdf?type=notice`}
+                      href={`/admin/employees/${employeeId}/contracts/${c.id}/print?type=notice`}
                       target="_blank"
                       rel="noopener"
                       className="text-sm text-slate-700 hover:underline"
                     >
-                      通知書 PDF
+                      通知書を印刷
                     </a>
                     <Link
                       href={`/admin/employees/${employeeId}/contracts/${c.id}/edit`}

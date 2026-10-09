@@ -86,10 +86,12 @@ export default async function LaborNoticeDetailPage({ params }: Props) {
         )}
         {notice.status !== "DRAFT" && (
           <a
-            href={`/admin/labor-notices/${id}/pdf`}
+            href={`/admin/labor-notices/${id}/print`}
+            target="_blank"
+            rel="noopener"
             className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
           >
-            PDF をダウンロード（3枚）
+            印刷する（3枚）
           </a>
         )}
         {isIssued && fixed && !canConvert && (

@@ -18,24 +18,6 @@ if (codespaceName) {
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // Chromium 系は Node ランタイムで動的に起動する重い依存なので、webpack の
-  // バンドル対象から外してネイティブモジュールの解決失敗を防ぐ。
-  // (S-A-15 / S-A-18 PDF 出力用、route handler から動的 import される)
-  // - Playwright: ローカル / Codespaces / 自前サーバ用
-  // - @sparticuz/chromium + puppeteer-core: Vercel/Lambda の serverless 用
-  serverExternalPackages: [
-    "@playwright/test",
-    "playwright",
-    "playwright-core",
-    "@sparticuz/chromium",
-    "puppeteer-core",
-  ],
-  // @sparticuz/chromium は Chromium 本体 (bin/*.br) の場所を実行時に組み立てるため、
-  // Next のファイルトレースが拾えず Vercel に同梱されない (PDF が 500 になる)。
-  // PDF を返す route にだけ明示的に含める。
-  outputFileTracingIncludes: {
-    "/admin/**/pdf": ["./node_modules/@sparticuz/chromium/bin/**"],
-  },
   experimental: {
     serverActions: {
       allowedOrigins: serverActionAllowedOrigins,

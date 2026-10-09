@@ -1,25 +1,24 @@
 /**
- * 労働条件通知書 / 雇用契約書 PDF 出力エンドポイント。
+ * 労働条件通知書 / 雇用契約書の印刷画面。
  *
- * GET /admin/employees/[id]/contracts/[contractId]/pdf?type=notice|contract
+ * GET /admin/employees/[id]/contracts/[contractId]/print?type=notice|contract
  *
  * - 管理者ガード必須
  * - クエリ `type` でタイトルだけ切り替え (notice = 労働条件通知書、contract = 雇用契約書)
  * - 必須項目が未入力なら 422 + JSON で missing items を返す
- * - ファイル名: 労働条件通知書_{employee_code}_{contract_start_on}.pdf
+ * - 開いたタブで印刷画面を出す。PDF は印刷画面の「PDF に保存」で作る
  */
 import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { loadContractViewModel } from "@/lib/employment-contract/data";
-import { renderContractPdf } from "@/lib/employment-contract/pdf";
+import { renderContractHtml } from "@/lib/employment-contract/html-template";
 import { canRenderContract } from "@/lib/employment-contract/validation";
+import { printHtmlResponse } from "@/lib/print-html";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-// 初回は Chromium の展開と Web フォント読み込みで数秒〜十数秒かかる
-export const maxDuration = 60;
 
 type Params = { id: string; contractId: string };
 
@@ -71,7 +70,7 @@ export async function GET(
   });
   if (!validation.ok) {
     return NextResponse.json(
-      { error: "PDF を出力できません。", missing: validation.missing },
+      { error: "印刷できません。", missing: validation.missing },
       { status: 422 },
     );
   }
@@ -81,26 +80,5 @@ export async function GET(
     return NextResponse.json({ error: "契約情報の取得に失敗しました。" }, { status: 500 });
   }
 
-  const pdf = await renderContractPdf(vm);
-
-  // ファイル名: 労働条件通知書_E0001_2026-06-01.pdf
-  const employee = await prisma.employee.findUnique({
-    where: { id },
-    select: { employeeCode: true },
-  });
-  const stamp =
-    vm.contract.contractStartOn !== null
-      ? vm.contract.contractStartOn.toISOString().slice(0, 10)
-      : "no-date";
-  const baseName = type === "contract" ? "雇用契約書" : "労働条件通知書";
-  const filename = `${baseName}_${employee?.employeeCode ?? id}_${stamp}.pdf`;
-
-  return new Response(new Uint8Array(pdf), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      "Cache-Control": "no-store",
-    },
-  });
+  return printHtmlResponse(renderContractHtml(vm));
 }

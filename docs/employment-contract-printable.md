@@ -147,7 +147,7 @@ employment_contract_allowances
 
 ### 3.3 S-A-15 / S-A-18 PDF 出力 — 一本化
 
-- ルート: `/admin/employees/[id]/contracts/[contractId]/pdf`
+- ルート: `/admin/employees/[id]/contracts/[contractId]/print` (2026-10 にサーバー PDF 生成を廃止し、ブラウザの印刷画面方式へ変更。§4 は当初設計)
 - クエリ `?type=notice` (労働条件通知書) / `?type=contract` (雇用契約書) でタイトルだけ切り替え。本文は共通。
 - ボタン配置: S-A-04 雇用契約タブ → 契約行の右端「PDF」リンク。
 - 必須項目が埋まっていない場合は出力ボタンを `disabled` にし、不足項目のリストを下に出す。

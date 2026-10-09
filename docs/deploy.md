@@ -135,14 +135,15 @@ Vercel は自動でビルドする。`package.json` の `build` スクリプト�
 
 ビルド完了後、`APP_BASE_URL` の URL でログイン画面が出る。
 
-### 5.3 PDF 出力 (労働条件通知書 / 雇用契約書) の挙動
+### 5.3 労働条件通知書 / 雇用契約書の印刷
 
-`src/lib/employment-contract/pdf.ts` は環境で Chromium を切り替える:
+サーバーで PDF は作らない。印刷用 route (`/admin/labor-notices/[id]/print`、
+`/admin/employees/[id]/contracts/[contractId]/print`) が帳票 HTML を返し、開いたタブで
+ブラウザの印刷画面を自動で出す (`src/lib/print-html.ts`)。PDF が必要なら印刷画面の送り先で
+「PDF に保存」を選ぶ。
 
-- **Vercel / Lambda** (`VERCEL` または `AWS_LAMBDA_FUNCTION_NAME` がセット): `@sparticuz/chromium` + `puppeteer-core` で軽量 Chromium を起動
-- **ローカル / Codespaces / 自前サーバ**: Playwright の Chromium を起動 (システムフォント込み)
-
-日本語フォントは Google Fonts (Noto Sans JP) を `@import` で読み込み、`document.fonts.ready` を待ってから `page.pdf()` を実行する。Lambda 側にフォントが入っていなくても豆腐化しない。
+以前はサーバーで Chromium (`@sparticuz/chromium`) を起動して PDF を作っていたが、Vercel で
+Chromium 本体がデプロイに含まれず 500 になったため廃止した (2026-10)。
 
 ---
 
@@ -153,7 +154,7 @@ Vercel は自動でビルドする。`package.json` の `build` スクリプト�
 3. **S-A-28 会社情報**: クライアントと一緒に値を確認し、必要なら編集
 4. **S-A-02 拠点設定**: シード済み 5 拠点を確認し、不要なものを非表示化 (今回は全件残す想定)
 5. **S-A-03 → S-A-05 従業員 新規登録**: クライアントが入力
-6. (任意) **S-A-21 雇用契約** を 1 名分入力し、**労働条件通知書 PDF 出力** までの一連の流れを確認
+6. (任意) **S-A-21 雇用契約** を 1 名分入力し、**労働条件通知書の印刷** までの一連の流れを確認
 
 ---
 
@@ -186,9 +187,7 @@ Vercel は自動でビルドする。`package.json` の `build` スクリプト�
 `db:seed:prod` は upsert なので通常起きない。schema 更新を本番に流す前に
 ローカルマイグレーションを掛けた状態か確認する。
 
-### 8.5 労働条件通知書 PDF が 500 / 文字化け
+### 8.5 労働条件通知書 / 雇用契約書の印刷画面が出ない
 
-- 500 (「このページは動作していません」): `@sparticuz/chromium` の Chromium 本体 (`bin/*.br`) がデプロイに含まれていない。実行時にパスを組み立てるため Next のファイルトレースが拾えないので、`next.config.ts` の `outputFileTracingIncludes` で PDF route (`/admin/**/pdf`) に明示的に含めている。PDF route を別パスに追加したら、この glob に合うか確認する
-- タイムアウト: 初回は Chromium 展開 + Web フォント読み込みで時間がかかるため、各 PDF route で `export const maxDuration = 60` を指定している
-- 文字化け (豆腐): Google Fonts への egress が遮断されている。`VERCEL` 環境変数下で動いているか確認し、必要なら `chromium.args` で Web 通信用のフラグを追加
-- バイナリ展開エラー: `@sparticuz/chromium` のメジャー更新後は `puppeteer-core` 側もバージョン整合を確認 (149 系 ⇄ 25 系で動作確認済)
+- タブは開くが印刷画面が出ない: ブラウザのポップアップ / 自動印刷ブロックを確認。タブ上で Ctrl+P (Mac は ⌘+P) でも印刷できる
+- 文字が別フォントになる: Google Fonts に繋がらない回線。帳票は読めるが書体が変わる

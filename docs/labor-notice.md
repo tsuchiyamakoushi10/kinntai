@@ -15,15 +15,15 @@
 
 ### 1.1 仕様書 v0.2 からの読み替え
 
-| 仕様書                                                     | kinntai                                                                                                                                               | 理由                                                                                  |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Supabase (SQL・RLS) / `staff` / `facilities`               | Prisma / `employees` / `offices`。権限はアプリ側の `requireAdmin()`                                                                                   | 既存構成                                                                              |
-| `company_settings` 新設                                    | 既存 `company_profile` に列を追加                                                                                                                     | 会社マスタを 2 つにしない                                                             |
-| `shift_codes` に時刻・休憩を追加                           | 通知書用の勤務パターンを `labor_notice_work_patterns` で持つ (§2.1)                                                                                   | 勤務表は夜勤を `夜入` / `夜明` の 2 記号に分けており、書面の「夜勤 1 回」と単位が違う |
-| `employment_presets` / `allowances` / `min_wages` テーブル | `labor_notice_presets` (区分ごとの文言・手当を 1 行に) / `labor_notice_work_patterns` / `min_wages` を S-A-34 で編集 (§2.1)。社保しきい値は定数のまま | 2026-10-08 追加要望: 社長が画面から初期値を変えたい。社保しきい値は法令値なので定数   |
-| `notice_acknowledgements` テーブル                         | `labor_notices.acknowledgements` (jsonb)                                                                                                              | 通知書と 1 対多で、単独で検索しない                                                   |
-| Fly.io の Chromium ワーカー + Storage に PDF 保存          | 既存 `src/lib/employment-contract/pdf.ts` (Vercel は @sparticuz/chromium) を流用。PDF は保存せず `snapshot` から毎回再生成                            | 追加インフラ不要。snapshot と `template_version` があれば同じ PDF を再現できる        |
-| 区分「夜勤専従」                                           | 通知書側の区分 `NIGHT_ONLY`。従業員側は既存の `employees.night_shift_only` を立てる。`EmploymentType` enum は増やさない                               | 勤務表の自動作成が既にこのフラグで夜勤専従を扱っている                                |
+| 仕様書                                                     | kinntai                                                                                                                                                  | 理由                                                                                  |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Supabase (SQL・RLS) / `staff` / `facilities`               | Prisma / `employees` / `offices`。権限はアプリ側の `requireAdmin()`                                                                                      | 既存構成                                                                              |
+| `company_settings` 新設                                    | 既存 `company_profile` に列を追加                                                                                                                        | 会社マスタを 2 つにしない                                                             |
+| `shift_codes` に時刻・休憩を追加                           | 通知書用の勤務パターンを `labor_notice_work_patterns` で持つ (§2.1)                                                                                      | 勤務表は夜勤を `夜入` / `夜明` の 2 記号に分けており、書面の「夜勤 1 回」と単位が違う |
+| `employment_presets` / `allowances` / `min_wages` テーブル | `labor_notice_presets` (区分ごとの文言・手当を 1 行に) / `labor_notice_work_patterns` / `min_wages` を S-A-34 で編集 (§2.1)。社保しきい値は定数のまま    | 2026-10-08 追加要望: 社長が画面から初期値を変えたい。社保しきい値は法令値なので定数   |
+| `notice_acknowledgements` テーブル                         | `labor_notices.acknowledgements` (jsonb)                                                                                                                 | 通知書と 1 対多で、単独で検索しない                                                   |
+| Fly.io の Chromium ワーカー + Storage に PDF 保存          | 帳票 HTML を返してブラウザの印刷画面で印刷 / 「PDF に保存」。PDF は保存せず `snapshot` から毎回作る (サーバー PDF 生成は Vercel で動かず 2026-10 に廃止) | 追加インフラ不要。snapshot と `template_version` があれば同じ PDF を再現できる        |
+| 区分「夜勤専従」                                           | 通知書側の区分 `NIGHT_ONLY`。従業員側は既存の `employees.night_shift_only` を立てる。`EmploymentType` enum は増やさない                                  | 勤務表の自動作成が既にこのフラグで夜勤専従を扱っている                                |
 
 ## 2. 雇用区分とプリセット
 
@@ -190,7 +190,7 @@ shift_acknowledgements
 | ------ | -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | S-A-30 | 労働条件通知書 一覧  | 従業員・区分・状態・契約終了日で絞り込み。終了 30 日前の有期をハイライトし「更新版を作成」(パートは「無期の通知書を作成」) ボタン |
 | S-A-31 | 労働条件通知書 作成  | 左に 5 項目フォーム、右に A4 ライブプレビュー、上部にエラー・警告。警告は確認チェック + 理由。下書き保存 / 発行                   |
-| S-A-32 | 労働条件通知書 詳細  | PDF ダウンロード、署名済み 3 枚目のアップロード (→ signed)、無効化 (→ void、作り直し)                                             |
+| S-A-32 | 労働条件通知書 詳細  | 印刷 (3 枚、ブラウザの印刷画面。PDF 保存も可)、署名済み 3 枚目のアップロード (→ signed)、無効化 (→ void、作り直し)                |
 | S-A-33 | 副業の届出           | 従業員詳細のタブ                                                                                                                  |
 | S-A-34 | 労働条件通知書の設定 | 区分ごとの初期値・手当・資格手当、勤務パターン、最低賃金 (§2.1)                                                                   |
 
@@ -218,7 +218,7 @@ shift_acknowledgements
 
 1. **計算モジュール** `src/lib/labor-notice/` + 受け入れテスト (`tests/labor-notice/`) ← 完了
 2. スキーマ (§6.1・`labor_notices`) とマイグレーション、拠点・会社情報の画面に新項目 ← 完了
-3. 帳票 HTML (3 枚、`html.ts`) と PDF 出力 (`/admin/labor-notices/[id]/pdf`) ← 完了
+3. 帳票 HTML (3 枚、`html.ts`) と印刷画面 (`/admin/labor-notices/[id]/print`) ← 完了
 4. 作成画面 (S-A-31) と発行処理 (契約・従業員の更新を含む) ← 完了
 5. 一覧 (S-A-30)・詳細 (S-A-32)・パートの無期切替・夜勤専従の更新・署名済みアップロード・無効化と作り直し ← 完了
 6. 通知書の設定マスター (S-A-34、§2.1) ← 完了
