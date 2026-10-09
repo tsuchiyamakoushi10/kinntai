@@ -188,6 +188,7 @@ Vercel は自動でビルドする。`package.json` の `build` スクリプト�
 
 ### 8.5 労働条件通知書 PDF が 500 / 文字化け
 
-- 500: Vercel のサーバレス関数タイムアウト (デフォルト 10s) に引っかかる可能性。`vercel.json` で `functions["src/app/admin/employees/[id]/contracts/[contractId]/pdf/route.ts"].maxDuration` を 30〜60 秒に上げる
+- 500 (「このページは動作していません」): `@sparticuz/chromium` の Chromium 本体 (`bin/*.br`) がデプロイに含まれていない。実行時にパスを組み立てるため Next のファイルトレースが拾えないので、`next.config.ts` の `outputFileTracingIncludes` で PDF route (`/admin/**/pdf`) に明示的に含めている。PDF route を別パスに追加したら、この glob に合うか確認する
+- タイムアウト: 初回は Chromium 展開 + Web フォント読み込みで時間がかかるため、各 PDF route で `export const maxDuration = 60` を指定している
 - 文字化け (豆腐): Google Fonts への egress が遮断されている。`VERCEL` 環境変数下で動いているか確認し、必要なら `chromium.args` で Web 通信用のフラグを追加
 - バイナリ展開エラー: `@sparticuz/chromium` のメジャー更新後は `puppeteer-core` 側もバージョン整合を確認 (149 系 ⇄ 25 系で動作確認済)

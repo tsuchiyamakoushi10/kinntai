@@ -18,6 +18,8 @@ import { canRenderContract } from "@/lib/employment-contract/validation";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// 初回は Chromium の展開と Web フォント読み込みで数秒〜十数秒かかる
+export const maxDuration = 60;
 
 type Params = { id: string; contractId: string };
 

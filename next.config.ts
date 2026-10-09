@@ -30,6 +30,12 @@ const nextConfig: NextConfig = {
     "@sparticuz/chromium",
     "puppeteer-core",
   ],
+  // @sparticuz/chromium は Chromium 本体 (bin/*.br) の場所を実行時に組み立てるため、
+  // Next のファイルトレースが拾えず Vercel に同梱されない (PDF が 500 になる)。
+  // PDF を返す route にだけ明示的に含める。
+  outputFileTracingIncludes: {
+    "/admin/**/pdf": ["./node_modules/@sparticuz/chromium/bin/**"],
+  },
   experimental: {
     serverActions: {
       allowedOrigins: serverActionAllowedOrigins,
