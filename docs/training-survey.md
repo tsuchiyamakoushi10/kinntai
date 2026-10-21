@@ -48,6 +48,30 @@
 - **ひな形**: 今の質問一式に名前を付けて保存し (`training_survey_templates`)、作成時に選べる。前回のアンケートの「複製」も引き続き使える。
 - 回答が 1 件でも来たら質問は変更できない (回答と質問がずれるのを防ぐ)。
 
+## 2.2 研修資料 (2026-10-21 追加要望)
+
+研修で使った資料と研修動画を、アンケートと一緒に配る。
+
+- 管理者は作成 / 編集画面の「研修資料」で、次の 2 種類を何個でも付けられる (20 個まで)。
+  - **ファイル**: PDF・Word・Excel・PowerPoint・画像 (png / jpg)。1 ファイル 20MB まで。
+  - **リンク**: YouTube などの URL。表示名を付けられる (例「感染症対策 前編」)。
+- 資料ごとに **「見ないと回答できない」** (既定オン) を付けられる。
+  - ファイル / YouTube 以外のリンク: 職員が開いたら「見た」になる。
+  - YouTube: 回答画面の中で再生し、**最後まで再生したら**「見た」になる。
+  - 見ていない資料が残っているあいだは送信ボタンを押せない (サーバー側でも確認する)。
+  - 動画を差し替えた (URL を変えた) ときは、その資料の「見た」記録を消す。
+- 職員の回答画面では質問より上に資料を並べ、見たものに ✓ を付ける。
+- 結果画面に資料ごとの「見た人数」を出す。未回答タブでは、資料を見ていない人が分かるようにする。
+- 回答が来たあとでも資料は追加・削除・変更できる (質問と違い、回答とずれないため)。
+- 動画ファイルそのもののアップロードはしない (重く通信量がかさむため)。YouTube の限定公開 URL で載せる運用にする。
+- ひな形には資料を含めない。「複製」では資料も引き継ぐ (ファイル本体は共有し、どのアンケートからも使われなくなったときに消す)。
+
+ファイルの置き場所:
+
+- 本番 (Vercel) はサーバー内にファイルを残せないため、**Supabase Storage** の非公開バケットに置く (`STORAGE_DRIVER=supabase`)。
+- ブラウザから Supabase へ **直接アップロード** する (Vercel の関数はリクエストの大きさに 4.5MB の上限があるため)。サーバーは署名つきのアップロード URL を発行するだけ。
+- 開くときは `/api/training-materials/<id>/open` を通す。ログインと配信対象かを確かめ、「見た」を記録してから、5 分だけ有効な署名つき URL へ転送する。
+
 ## 3. 流れ
 
 1. 管理者: 「研修アンケート」→「新しく作る」→ 研修名・研修日・回答期限・質問・対象者を入れる → **下書き保存**
@@ -83,6 +107,19 @@ training_survey_questions
   options text[] (選択式の選択肢、表形式の列。RATING_5 は [低い側の文言, 高い側の文言]),
   config jsonb null (SCALE: {min, max, minLabel, maxLabel} / GRID: {rows} / 選択式: {allowOther}),
   required boolean
+
+training_survey_materials        -- 研修資料 (§2.2)
+  id uuid PK, survey_id FK (cascade), sort_order int,
+  kind enum training_survey_material_kind (file / link),
+  title text                       -- 表示名
+  url text null                    -- link のとき
+  storage_key text null, file_name text null, mime_type text null, size_bytes int null  -- file のとき
+  must_view boolean                -- 見ないと回答できない
+  created_at, updated_at
+
+training_survey_material_views   -- 職員が資料を見た記録
+  material_id FK (cascade), employee_id FK (cascade), viewed_at timestamptz
+  PK (material_id, employee_id)
 
 training_survey_templates        -- ひな形 (質問一式を名前つきで保存)
   id uuid PK, name text, questions jsonb (SurveyQuestion の配列。id は空), created_at, updated_at
@@ -121,6 +158,7 @@ training_survey_responses        -- 回答 (1 人 1 件)
 - `checkAnswers(questions, raw)` — 回答の検証。必須の未回答、範囲外の評価、存在しない選択肢を弾く。
 - `canAnswer(survey, today)` — 状態が open で、期限 (JST の日付) を過ぎていないか。
 - `summarize(questions, responses)` — まとめ画面用の集計 (評価の平均と内訳、選択肢の人数、自由記述の一覧)。
+- `materials.ts` — `checkMaterials` (資料の入力の検証)、`checkMaterialFile` (ファイルの種類と大きさ)、`youTubeId` (URL から動画 ID)、`unviewedMaterials` (見ていない必須資料)。
 - いずれも純関数でテストを書く。
 
 ## 7. 実装ステップ

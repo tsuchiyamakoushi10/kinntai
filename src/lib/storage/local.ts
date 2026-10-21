@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type { ObjectStorage, StoragePutResult } from "./index";
+import type { ObjectStat, ObjectStorage, StoragePutResult, UploadTarget } from "./index";
+import { createSignedToken } from "./signed-token";
 
 /**
  * ローカルファイルシステムに置く実装。開発と社内検証用。
@@ -62,6 +63,44 @@ export class LocalFileStorage implements ObjectStorage {
       fs.rm(filePath, { force: true }),
       fs.rm(`${filePath}.meta.json`, { force: true }),
     ]);
+  }
+
+  async stat(key: string): Promise<ObjectStat | null> {
+    const filePath = this.resolveSafe(key);
+    try {
+      const [st, meta] = await Promise.all([
+        fs.stat(filePath),
+        fs.readFile(`${filePath}.meta.json`, "utf8").catch(() => null),
+      ]);
+      const contentType =
+        (meta ? (JSON.parse(meta) as { contentType?: string }).contentType : undefined) ??
+        "application/octet-stream";
+      return { size: st.size, contentType };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
+  }
+
+  /** 開発用。`/api/storage/local` が署名を確かめて書き込む */
+  async createUploadUrl(key: string, contentType: string): Promise<UploadTarget> {
+    this.resolveSafe(key);
+    const token = createSignedToken(`put:${key}`);
+    return {
+      url: `/api/storage/local?key=${encodeURIComponent(key)}&token=${encodeURIComponent(token)}`,
+      headers: { "Content-Type": contentType },
+    };
+  }
+
+  async createDownloadUrl(
+    key: string,
+    opts: { fileName: string; inline: boolean; ttlSeconds: number },
+  ): Promise<string> {
+    this.resolveSafe(key);
+    const token = createSignedToken(`get:${key}`, { ttlSeconds: opts.ttlSeconds });
+    const q = new URLSearchParams({ key, token, name: opts.fileName });
+    if (opts.inline) q.set("inline", "1");
+    return `/api/storage/local?${q.toString()}`;
   }
 
   private resolveSafe(key: string): string {

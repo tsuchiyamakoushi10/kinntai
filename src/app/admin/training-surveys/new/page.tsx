@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { toDateInputValue } from "@/lib/format";
 import { checkQuestions, type SurveyDraft } from "@/lib/training-survey/logic";
 
-import { loadTargetOffices, toSurveyQuestion } from "../data";
+import { loadTargetOffices, toSurveyMaterial, toSurveyQuestion } from "../data";
 import { SurveyEditor } from "../survey-editor";
 import { TemplatePicker } from "../template-picker";
 
@@ -60,6 +60,7 @@ export default async function NewTrainingSurveyPage({ searchParams }: Props) {
     trainingType: "COMPANY_PAID",
     officeId: null,
     questions: pickedQuestions?.ok ? pickedQuestions.value : DEFAULT_QUESTIONS,
+    materials: [],
     employeeIds: [],
   };
   if (copy) {
@@ -67,6 +68,7 @@ export default async function NewTrainingSurveyPage({ searchParams }: Props) {
       where: { id: copy },
       include: {
         questions: { orderBy: { sortOrder: "asc" } },
+        materials: { orderBy: { sortOrder: "asc" } },
         targets: { select: { employeeId: true } },
       },
     });
@@ -79,6 +81,8 @@ export default async function NewTrainingSurveyPage({ searchParams }: Props) {
         trainingType: src.trainingType,
         officeId: src.officeId,
         questions: src.questions.map(toSurveyQuestion),
+        // 資料も引き継ぐ (新しい資料として作る。ファイル本体は元のアンケートと共有)
+        materials: src.materials.map((m) => ({ ...toSurveyMaterial(m), id: "" })),
         employeeIds: src.targets.map((t) => t.employeeId),
       };
     }

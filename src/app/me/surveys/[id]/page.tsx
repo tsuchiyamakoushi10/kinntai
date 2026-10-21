@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { toSurveyQuestion } from "@/lib/training-survey/from-db";
 import { canAnswer, type Answers } from "@/lib/training-survey/logic";
+import { fileDetail, youTubeId } from "@/lib/training-survey/materials";
 
 import { AnswerForm } from "./answer-form";
 
@@ -26,6 +27,10 @@ export default async function AnswerSurveyPage({ params }: Props) {
     include: {
       questions: { orderBy: { sortOrder: "asc" } },
       responses: { where: { employeeId }, select: { answers: true } },
+      materials: {
+        orderBy: { sortOrder: "asc" },
+        include: { views: { where: { employeeId }, select: { materialId: true } } },
+      },
     },
   });
   if (!survey) notFound();
@@ -64,6 +69,15 @@ export default async function AnswerSurveyPage({ params }: Props) {
         questions={survey.questions.map(toSurveyQuestion)}
         initial={previous}
         open={open}
+        materials={survey.materials.map((m) => ({
+          id: m.id,
+          kind: m.kind,
+          title: m.title,
+          detail: m.kind === "FILE" ? fileDetail(m.fileName ?? "", m.sizeBytes ?? 0) : "",
+          youTubeId: m.kind === "LINK" ? youTubeId(m.url ?? "") : null,
+          mustView: m.mustView,
+        }))}
+        viewedIds={survey.materials.filter((m) => m.views.length > 0).map((m) => m.id)}
       />
     </main>
   );

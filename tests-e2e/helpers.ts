@@ -44,7 +44,7 @@ export async function loginAs(
   creds: { email: string; password: string },
 ): Promise<void> {
   await page.goto("/login");
-  await page.getByLabel("メールアドレス").fill(creds.email);
+  await page.getByLabel("ID（職員番号またはメール）").fill(creds.email);
   await page.getByLabel("パスワード").fill(creds.password);
   await page.getByRole("button", { name: "ログイン" }).click();
   // ログイン後、middleware が role に応じてリダイレクトする。

@@ -16,6 +16,7 @@ import {
 } from "@/lib/training-survey/logic";
 
 import { saveSurveyTemplate, saveTrainingSurvey } from "./actions";
+import { type EditableMaterial, MaterialsEditor, newMaterialKey } from "./materials-editor";
 
 export type EditorOffice = {
   id: string;
@@ -115,6 +116,10 @@ export function SurveyEditor(props: Props) {
       required: q.required,
     })),
   );
+  const [materials, setMaterials] = useState<EditableMaterial[]>(() =>
+    d.materials.map((m) => ({ ...m, key: newMaterialKey(), progress: null })),
+  );
+  const uploading = materials.some((m) => m.progress !== null);
   const [targets, setTargets] = useState<Set<string>>(() => new Set(d.employeeIds));
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
@@ -218,6 +223,17 @@ export function SurveyEditor(props: Props) {
         trainingType,
         officeId,
         questions: payloadQuestions(),
+        materials: materials.map((m) => ({
+          id: m.id,
+          kind: m.kind,
+          title: m.title,
+          url: m.url,
+          storageKey: m.storageKey,
+          fileName: m.fileName,
+          mimeType: m.mimeType,
+          sizeBytes: m.sizeBytes,
+          mustView: m.mustView,
+        })),
         employeeIds: [...targets],
       });
       if (!r.ok) return setMessage({ ok: false, text: r.error });
@@ -294,6 +310,12 @@ export function SurveyEditor(props: Props) {
           回答した職員には、この研修名と研修日で研修記録が自動で付きます。
         </p>
       </section>
+
+      <MaterialsEditor
+        materials={materials}
+        setMaterials={setMaterials}
+        canOpenSaved={props.surveyId !== null}
+      />
 
       <section className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-2">
@@ -424,10 +446,10 @@ export function SurveyEditor(props: Props) {
         <button
           type="button"
           onClick={save}
-          disabled={pending}
+          disabled={pending || uploading}
           className="rounded-lg bg-slate-900 px-6 py-3 text-base font-semibold text-white hover:bg-slate-800 disabled:bg-slate-400"
         >
-          {pending ? "保存中…" : "保存する"}
+          {pending ? "保存中…" : uploading ? "アップロード中…" : "保存する"}
         </button>
         {message && (
           <span

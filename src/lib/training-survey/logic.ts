@@ -4,6 +4,8 @@
  * DB や画面に依存しないので、管理画面・職員画面・テストのどこからでも使う。
  */
 
+import { checkMaterials, type SurveyMaterial } from "./materials";
+
 export type QuestionKind =
   | "SECTION"
   | "SHORT_TEXT"
@@ -237,6 +239,8 @@ export type SurveyDraft = {
   officeId: string | null;
   /** id は既存の質問なら DB の id、新しい質問は空文字 */
   questions: SurveyQuestion[];
+  /** 研修資料 (§2.2) */
+  materials: SurveyMaterial[];
   employeeIds: string[];
 };
 
@@ -264,6 +268,8 @@ export function checkSurveyDraft(v: unknown): Checked<SurveyDraft> {
   const officeId = typeof v.officeId === "string" && v.officeId !== "" ? v.officeId : null;
   const questions = checkQuestions(v.questions);
   if (!questions.ok) return questions;
+  const materials = checkMaterials(v.materials);
+  if (!materials.ok) return materials;
   const employeeIds = Array.isArray(v.employeeIds)
     ? [...new Set(v.employeeIds.filter((x): x is string => typeof x === "string"))]
     : [];
@@ -278,6 +284,7 @@ export function checkSurveyDraft(v: unknown): Checked<SurveyDraft> {
       trainingType,
       officeId,
       questions: questions.value,
+      materials: materials.value,
       employeeIds,
     },
   };

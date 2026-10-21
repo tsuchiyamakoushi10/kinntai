@@ -37,4 +37,4 @@ export async function loadTargetOffices(): Promise<EditorOffice[]> {
   return groups.filter((g) => g.employees.length > 0);
 }
 
-export { toSurveyQuestion } from "@/lib/training-survey/from-db";
+export { toSurveyMaterial, toSurveyQuestion } from "@/lib/training-survey/from-db";

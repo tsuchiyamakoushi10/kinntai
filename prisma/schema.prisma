@@ -257,6 +257,13 @@ enum TrainingSurveyQuestionKind {
   @@map("training_survey_question_kind")
 }
 
+enum TrainingSurveyMaterialKind {
+  FILE @map("file")
+  LINK @map("link")
+
+  @@map("training_survey_material_kind")
+}
+
 enum SpecialMeasureType {
   NONE            @map("none")
   HIGH_SKILL      @map("high_skill")
@@ -433,7 +440,7 @@ model Employee {
   createdAt                  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                  DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  office                Office?                    @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  office                Office?                      @relation(fields: [officeId], references: [id], onDelete: Restrict)
   user                  User?
   qualifications        Qualification[]
   employmentContracts   EmploymentContract[]
@@ -448,6 +455,7 @@ model Employee {
   officeAssignments     EmployeeOfficeAssignment[]
   laborNotices          LaborNotice[]
   surveyTargets         TrainingSurveyTarget[]
+  surveyMaterialViews   TrainingSurveyMaterialView[]
   surveyResponses       TrainingSurveyResponse[]
 
   @@index([officeId, employmentStatus])
@@ -1080,6 +1088,7 @@ model TrainingSurvey {
   questions TrainingSurveyQuestion[]
   targets   TrainingSurveyTarget[]
   responses TrainingSurveyResponse[]
+  materials TrainingSurveyMaterial[]
 
   @@index([status, trainedOn(sort: Desc)])
   @@map("training_surveys")
@@ -1135,6 +1144,49 @@ model TrainingSurveyResponse {
 
   @@unique([surveyId, employeeId])
   @@map("training_survey_responses")
+}
+
+// 研修資料 (ファイル / リンク)。docs/training-survey.md §2.2
+// tenant_id: マルチテナント化時に追加 (CLAUDE.md §3.3)
+model TrainingSurveyMaterial {
+  id         String                     @id @default(uuid()) @db.Uuid
+  surveyId   String                     @map("survey_id") @db.Uuid
+  sortOrder  Int                        @map("sort_order")
+  kind       TrainingSurveyMaterialKind
+  // 表示名
+  title      String
+  // LINK のとき
+  url        String?
+  // FILE のとき。本体は object storage (training-materials/<uuid>)。複製したアンケートと共有することがある
+  storageKey String?                    @map("storage_key")
+  fileName   String?                    @map("file_name")
+  mimeType   String?                    @map("mime_type")
+  sizeBytes  Int?                       @map("size_bytes")
+  // 見ないと回答できない
+  mustView   Boolean                    @default(true) @map("must_view")
+  createdAt  DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  survey TrainingSurvey               @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  views  TrainingSurveyMaterialView[]
+
+  @@index([surveyId, sortOrder])
+  @@index([storageKey])
+  @@map("training_survey_materials")
+}
+
+// 職員が研修資料を見た記録 (最初に見た日時)
+model TrainingSurveyMaterialView {
+  materialId String   @map("material_id") @db.Uuid
+  employeeId String   @map("employee_id") @db.Uuid
+  viewedAt   DateTime @default(now()) @map("viewed_at") @db.Timestamptz(6)
+
+  material TrainingSurveyMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  employee Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@id([materialId, employeeId])
+  @@index([employeeId])
+  @@map("training_survey_material_views")
 }
 
 // 研修アンケートのひな形 (質問一式を名前つきで保存して使い回す)。docs/training-survey.md §2.1

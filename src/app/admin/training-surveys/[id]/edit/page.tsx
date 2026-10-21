@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { toDateInputValue } from "@/lib/format";
 
-import { loadTargetOffices, toSurveyQuestion } from "../../data";
+import { loadTargetOffices, toSurveyMaterial, toSurveyQuestion } from "../../data";
 import { SurveyEditor } from "../../survey-editor";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +20,7 @@ export default async function EditTrainingSurveyPage({ params }: Props) {
     where: { id },
     include: {
       questions: { orderBy: { sortOrder: "asc" } },
+      materials: { orderBy: { sortOrder: "asc" } },
       targets: { select: { employeeId: true } },
       responses: { select: { employeeId: true } },
     },
@@ -50,6 +51,7 @@ export default async function EditTrainingSurveyPage({ params }: Props) {
           trainingType: survey.trainingType,
           officeId: survey.officeId,
           questions: survey.questions.map(toSurveyQuestion),
+          materials: survey.materials.map(toSurveyMaterial),
           employeeIds: survey.targets.map((t) => t.employeeId),
         }}
         offices={await loadTargetOffices()}

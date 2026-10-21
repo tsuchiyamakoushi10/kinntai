@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { toDateInputValue } from "@/lib/format";
 import { toSurveyQuestion } from "@/lib/training-survey/from-db";
 import { canAnswer, checkAnswers } from "@/lib/training-survey/logic";
+import { unviewedMaterials } from "@/lib/training-survey/materials";
 
 export type AnswerResult = { ok: true } | { ok: false; error: string };
 
@@ -26,6 +27,10 @@ export async function submitSurveyAnswer(surveyId: string, raw: unknown): Promis
       questions: { orderBy: { sortOrder: "asc" } },
       targets: { where: { employeeId }, select: { employeeId: true } },
       responses: { where: { employeeId }, select: { id: true, trainingRecordId: true } },
+      materials: {
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, title: true, mustView: true, views: { where: { employeeId } } },
+      },
     },
   });
   if (!survey || survey.targets.length === 0) {
@@ -41,6 +46,17 @@ export async function submitSurveyAnswer(surveyId: string, raw: unknown): Promis
     )
   ) {
     return { ok: false, error: "このアンケートの受付は終わりました" };
+  }
+
+  const unviewed = unviewedMaterials(
+    survey.materials,
+    new Set(survey.materials.filter((m) => m.views.length > 0).map((m) => m.id)),
+  );
+  if (unviewed.length > 0) {
+    return {
+      ok: false,
+      error: `先に研修資料を見てください（${unviewed.map((m) => m.title).join("、")}）`,
+    };
   }
 
   const checked = checkAnswers(survey.questions.map(toSurveyQuestion), raw);
@@ -86,5 +102,29 @@ export async function submitSurveyAnswer(surveyId: string, raw: unknown): Promis
   revalidatePath("/me/surveys");
   revalidatePath(`/admin/training-surveys/${surveyId}`);
   revalidatePath(`/admin/employees/${employeeId}`);
+  return { ok: true };
+}
+
+/**
+ * 研修資料を見た記録。YouTube を最後まで再生したときに回答画面から呼ぶ
+ * (ファイルとそれ以外のリンクは /api/training-materials/[id]/open で記録する)。
+ */
+export async function recordMaterialView(materialId: string): Promise<{ ok: boolean }> {
+  const session = await auth();
+  const employeeId = session?.user?.employeeId;
+  if (!employeeId) return { ok: false };
+  const material = await prisma.trainingSurveyMaterial.findFirst({
+    where: {
+      id: materialId,
+      survey: { status: { not: "DRAFT" }, targets: { some: { employeeId } } },
+    },
+    select: { id: true, surveyId: true },
+  });
+  if (!material) return { ok: false };
+  await prisma.trainingSurveyMaterialView.createMany({
+    data: [{ materialId: material.id, employeeId }],
+    skipDuplicates: true,
+  });
+  revalidatePath(`/admin/training-surveys/${material.surveyId}`);
   return { ok: true };
 }

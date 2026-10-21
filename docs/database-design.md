@@ -401,7 +401,7 @@ PII を含むため、ファイル本体は外部オブジェクトストレー�
 | shift_id                | uuid (nullable) | 紐付くシフト                         |
 | created_at / updated_at | timestamptz     |                                      |
 
-> 研修アンケート (`training_surveys` / `training_survey_questions` / `training_survey_targets` / `training_survey_responses`) は [training-survey.md §4](training-survey.md) を参照。
+> 研修アンケート (`training_surveys` / `training_survey_questions` / `training_survey_targets` / `training_survey_responses` / `training_survey_materials` / `training_survey_material_views`) は [training-survey.md §4](training-survey.md) を参照。
 
 ### 2.19 `company_profile` — 会社マスタ (Phase 1-I で実装)
 

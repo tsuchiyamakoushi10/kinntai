@@ -62,6 +62,10 @@ export default async function TrainingSurveyResultPage({ params, searchParams }:
       responses: {
         select: { employeeId: true, answers: true, submittedAt: true, updatedAt: true },
       },
+      materials: {
+        orderBy: { sortOrder: "asc" },
+        include: { views: { select: { employeeId: true } } },
+      },
     },
   });
   if (!survey) notFound();
@@ -82,6 +86,17 @@ export default async function TrainingSurveyResultPage({ params, searchParams }:
       answers: responseOf.get(p.id)!.answers as Answers,
     })),
   );
+
+  const targetIds = new Set(people.map((p) => p.id));
+  const viewersOf = new Map(
+    survey.materials.map((m) => [
+      m.id,
+      new Set(m.views.map((v) => v.employeeId).filter((e) => targetIds.has(e))),
+    ]),
+  );
+  const mustMaterials = survey.materials.filter((m) => m.mustView);
+  const unviewedCount = (employeeId: string) =>
+    mustMaterials.filter((m) => !viewersOf.get(m.id)?.has(employeeId)).length;
 
   const base = `/admin/training-surveys/${id}`;
   const tabs: ReadonlyArray<[Tab, string]> = [
@@ -130,6 +145,35 @@ export default async function TrainingSurveyResultPage({ params, searchParams }:
           </Link>
         </div>
       </header>
+
+      {survey.materials.length > 0 && (
+        <section className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="text-sm font-bold text-slate-900">研修資料</h2>
+          <ul className="flex flex-col gap-1.5">
+            {survey.materials.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                <a
+                  href={`/api/training-materials/${m.id}/open`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-sky-700 underline"
+                >
+                  {m.title}
+                </a>
+                {m.mustView && (
+                  <span className="rounded bg-rose-50 px-1.5 py-0.5 text-xs text-rose-700">
+                    必ず見る
+                  </span>
+                )}
+                <span className="text-slate-600 tabular-nums">
+                  見た人 <b className="text-slate-900">{viewersOf.get(m.id)?.size ?? 0}</b> /{" "}
+                  {people.length}人
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div role="tablist" className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
         {tabs.map(([key, label]) => (
@@ -198,6 +242,15 @@ export default async function TrainingSurveyResultPage({ params, searchParams }:
               <li key={p.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
                 <p className="font-semibold text-slate-900">{nameOf(p)}</p>
                 <p className="text-xs text-slate-500">{p.office?.name ?? "拠点なし"}</p>
+                {mustMaterials.length > 0 && (
+                  <p
+                    className={`mt-1 text-xs font-semibold ${unviewedCount(p.id) > 0 ? "text-amber-700" : "text-emerald-700"}`}
+                  >
+                    {unviewedCount(p.id) > 0
+                      ? `資料をまだ見ていない（${unviewedCount(p.id)}件）`
+                      : "資料は見た"}
+                  </p>
+                )}
               </li>
             ))}
           </ul>

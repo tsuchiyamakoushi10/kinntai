@@ -15,7 +15,8 @@ import {
   type SurveyQuestion,
 } from "@/lib/training-survey/logic";
 
-import { submitSurveyAnswer } from "../actions";
+import { recordMaterialView, submitSurveyAnswer } from "../actions";
+import { type AnswerMaterial, MaterialsPanel } from "./materials-panel";
 
 type Props = {
   surveyId: string;
@@ -23,6 +24,9 @@ type Props = {
   initial: Answers | null;
   /** 受付中か (false なら回答を表示するだけ) */
   open: boolean;
+  materials: ReadonlyArray<AnswerMaterial>;
+  /** この職員が見た資料 */
+  viewedIds: ReadonlyArray<string>;
 };
 
 const choiceBtn = (on: boolean) =>
@@ -30,8 +34,10 @@ const choiceBtn = (on: boolean) =>
     on ? "bg-sky-600 text-white" : "border-2 border-slate-300 bg-white text-slate-800"
   }`;
 
-export function AnswerForm({ surveyId, questions, initial, open }: Props) {
+export function AnswerForm({ surveyId, questions, initial, open, materials, viewedIds }: Props) {
   const [answers, setAnswers] = useState<Answers>(initial ?? {});
+  const [viewed, setViewed] = useState<ReadonlySet<string>>(() => new Set(viewedIds));
+  const unviewed = materials.filter((m) => m.mustView && !viewed.has(m.id));
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [pending, start] = useTransition();
@@ -43,6 +49,15 @@ export function AnswerForm({ surveyId, questions, initial, open }: Props) {
       else next[key] = v;
       return next;
     });
+
+  // ファイル・リンクは開いた先 (/api/training-materials/[id]/open) で記録される。
+  // YouTube は最後まで再生したときにここから記録する。
+  function markViewed(id: string) {
+    if (viewed.has(id)) return;
+    setViewed((prev) => new Set(prev).add(id));
+    if (materials.find((m) => m.id === id)?.youTubeId) void recordMaterialView(id);
+  }
+  const panel = <MaterialsPanel materials={materials} viewed={viewed} onViewed={markViewed} />;
 
   if (done) {
     return (
@@ -64,6 +79,7 @@ export function AnswerForm({ surveyId, questions, initial, open }: Props) {
   if (!open) {
     return (
       <section className="flex flex-col gap-3">
+        {panel}
         <p className="rounded-xl bg-slate-100 p-4 text-sm text-slate-700">
           このアンケートの受付は終わりました。{initial ? "あなたの回答は次のとおりです。" : ""}
         </p>
@@ -112,6 +128,10 @@ export function AnswerForm({ surveyId, questions, initial, open }: Props) {
         submit();
       }}
     >
+      {panel}
+      {materials.length > 0 && (
+        <h2 className="mt-2 text-lg font-bold text-slate-900">アンケート</h2>
+      )}
       {initial && (
         <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
           回答済みです。直して送り直せます。
@@ -156,9 +176,14 @@ export function AnswerForm({ surveyId, questions, initial, open }: Props) {
           {error}
         </p>
       )}
+      {unviewed.length > 0 && (
+        <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+          送信する前に、上の研修資料を見てください（{unviewed.map((m) => m.title).join("、")}）
+        </p>
+      )}
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || unviewed.length > 0}
         className="rounded-2xl bg-slate-900 py-4 text-lg font-bold text-white disabled:bg-slate-400"
       >
         {pending ? "送信中…" : initial ? "直して送信する" : "送信する"}

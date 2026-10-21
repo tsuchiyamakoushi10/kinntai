@@ -59,7 +59,14 @@ Prisma は `DATABASE_URL` と `DIRECT_URL` を読むため、Vercel 側で「Sha
 | `SEED_ADMIN_EMAIL`       | 管理者の本物メールアドレス             | 初回シードでのみ使用                                                          |
 | `SEED_ADMIN_PASSWORD`    | 10 文字以上の強いパスワード            | 初回シードでのみ使用。投入後はログインしてすぐ変更し、Vercel 側からも削除推奨 |
 
+| `SUPABASE_URL` | `https://<ref>.supabase.co` | ファイル置き場 (Supabase Storage)。Supabase の Project Settings → API の Project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role の secret キー | 同じ画面の service_role。**サーバー専用・ブラウザに出さない** |
+| `STORAGE_BUCKET` | `kinntai` (省略可) | 非公開バケット。無ければ最初のアップロード時に自動で作る |
+
 > 機能フラグ (`FEATURE_*`) は実装側で false がデフォルトなので未設定でよい。
+>
+> Vercel はサーバー内にファイルを残せないため、研修資料・従業員の書類などのファイルは Supabase Storage に置く。
+> `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` が無いと、Vercel 上ではファイルの保存・表示がエラーになる。
 
 ---
 
