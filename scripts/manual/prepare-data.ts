@@ -7,11 +7,19 @@
  * - ローカル (localhost) の DB 以外では動かない。本番やステージングで絶対に実行しないこと。
  * - 通知書・研修アンケートはいったん全部消して、見本だけを作り直す (毎回同じ画面にするため)。
  */
+import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import { chromium } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 
 import { hashPassword } from "../../src/lib/password";
+import { getObjectStorage } from "../../src/lib/storage";
+import { materialStorageKey } from "../../src/lib/training-survey/materials";
 
 import { FIRST_LOGIN_STAFF, MANUAL_ADMIN, MANUAL_STAFF } from "./accounts";
+import { OUT_DIR, SAMPLE_MATERIAL_PDF } from "./video";
 
 const prisma = new PrismaClient();
 
@@ -19,6 +27,24 @@ function assertLocalDb(): void {
   const url = new URL(process.env.DATABASE_URL ?? "");
   if (!["localhost", "127.0.0.1"].includes(url.hostname)) {
     throw new Error(`ローカルの DB だけで実行できます (いまの接続先: ${url.hostname})`);
+  }
+}
+
+/** 研修資料の見本 PDF (中身は架空の研修資料) */
+async function makeSamplePdf(title: string, lines: string[]): Promise<Buffer> {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(
+      `<div style="font-family:'Noto Sans CJK JP',sans-serif;padding:48px">
+        <h1 style="font-size:28px">${title}</h1>
+        <ul style="font-size:18px;line-height:2">${lines.map((l) => `<li>${l}</li>`).join("")}</ul>
+        <p style="color:#888;margin-top:48px">マニュアル用の見本資料です</p>
+      </div>`,
+    );
+    return Buffer.from(await page.pdf({ format: "A4" }));
+  } finally {
+    await browser.close();
   }
 }
 
@@ -219,6 +245,38 @@ async function main(): Promise<void> {
     include: { questions: { orderBy: { sortOrder: "asc" } } },
   });
   const [, q1, q2, q3, q4] = survey.questions;
+
+  // 研修資料 (見ないと回答できない PDF)。回答した人は見た扱いにする
+  const pdf = await makeSamplePdf("感染症対策マニュアル", [
+    "手指消毒は、ケアの前とあとに必ず行う",
+    "ガウン・手袋は、決まった順番で着る・脱ぐ",
+    "嘔吐物は、塩素系の消毒液で処理する",
+    "1 時間に 1 回、窓を開けて換気する",
+  ]);
+  const storageKey = materialStorageKey(randomUUID());
+  await getObjectStorage().put({ key: storageKey, body: pdf, contentType: "application/pdf" });
+  const material = await prisma.trainingSurveyMaterial.create({
+    data: {
+      surveyId: survey.id,
+      sortOrder: 0,
+      kind: "FILE",
+      title: "感染症対策マニュアル",
+      storageKey,
+      fileName: "感染症対策マニュアル.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: pdf.length,
+      mustView: true,
+    },
+  });
+  await mkdir(join(OUT_DIR, "samples"), { recursive: true });
+  await writeFile(
+    SAMPLE_MATERIAL_PDF,
+    await makeSamplePdf("認知症ケア研修資料", [
+      "本人のペースに合わせて、ゆっくり声をかける",
+      "否定せず、気持ちを受け止める",
+      "できることは、本人にしてもらう",
+    ]),
+  );
   const samples = [
     {
       s: 5,
@@ -264,6 +322,9 @@ async function main(): Promise<void> {
         trainedOn: survey.trainedOn,
         notes: "研修アンケートの回答から自動で作成",
       },
+    });
+    await prisma.trainingSurveyMaterialView.create({
+      data: { materialId: material.id, employeeId: e.id },
     });
     await prisma.trainingSurveyResponse.create({
       data: {

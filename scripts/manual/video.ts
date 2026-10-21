@@ -16,6 +16,8 @@ import { synthesize, VOICE_CREDIT, type Voice } from "./voicevox";
 export const BASE_URL = process.env.MANUAL_BASE_URL ?? "http://localhost:3000";
 export const OUT_DIR = resolve(__dirname, "../../dist/manual");
 const CACHE_DIR = join(OUT_DIR, ".cache");
+/** 動画「研修アンケートを作って配る」で添付する見本の資料 (manual:prepare が作る) */
+export const SAMPLE_MATERIAL_PDF = join(OUT_DIR, "samples", "認知症ケア研修資料.pdf");
 const VIDEO_SIZE = { width: 1280, height: 720 };
 
 export type Ctx = {

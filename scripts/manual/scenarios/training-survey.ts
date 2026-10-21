@@ -1,5 +1,5 @@
 import { MANUAL_ADMIN, MANUAL_STAFF } from "../accounts";
-import type { Scenario } from "../video";
+import { SAMPLE_MATERIAL_PDF, type Scenario } from "../video";
 
 /** 研修アンケートを作って配る */
 export const surveyCreate: Scenario = {
@@ -21,6 +21,32 @@ export const surveyCreate: Scenario = {
       say: "研修名と研修日を入れます。回答した職員には、この研修名と日付で、研修記録が自動で付きます。",
       do: async (c) => {
         await c.type(c.page.getByPlaceholder("例: 移乗介助の研修"), "認知症ケアの研修");
+      },
+    },
+    {
+      say: "研修で使った資料も、一緒に配れます。ファイルを添付、を押して、ピーディーエフや、ワード、エクセルなどのファイルを選びます。",
+      do: async (c) => {
+        const btn = c.page.getByRole("button", { name: "＋ ファイルを添付" });
+        await c.scrollTo(btn);
+        const [chooser] = await Promise.all([c.page.waitForEvent("filechooser"), c.click(btn)]);
+        await chooser.setFiles(SAMPLE_MATERIAL_PDF);
+        // アップロードが終わると保存ボタンが「保存する」に戻る
+        await c.page.getByRole("button", { name: "保存する" }).waitFor();
+      },
+    },
+    {
+      say: "研修の動画は、ユーチューブに限定公開で上げておき、動画・リンクを追加、を押して、アドレスを貼ります。",
+      do: async (c) => {
+        await c.click(c.page.getByRole("button", { name: "＋ 動画・リンクを追加" }));
+        await c.type(c.page.getByLabel("URL"), "https://youtu.be/xxxxxxxxxxx");
+        await c.type(c.page.getByLabel("表示名").nth(1), "認知症ケア 研修動画");
+      },
+    },
+    {
+      say: "見ないと回答できない、にチェックが入っている資料は、職員が見るまで、アンケートを送信できません。ユーチューブの動画は、最後まで再生すると、見たことになります。",
+      do: async (c) => {
+        await c.highlight(c.page.getByText("見ないと回答できない").first());
+        await c.highlight(c.page.getByText("見ないと回答できない").nth(1));
       },
     },
     {
@@ -109,6 +135,12 @@ export const surveyResults: Scenario = {
       },
     },
     {
+      say: "研修資料を付けたアンケートでは、資料ごとに、見た人の数が出ます。",
+      do: async (c) => {
+        await c.highlight(c.page.getByText(/見た人/).first());
+      },
+    },
+    {
       say: "まとめでは、質問ごとに結果が縦に並びます。数の評価は、平均点と、それぞれの数字を選んだ人数が、棒で出ます。",
       do: async (c) => {
         await c.scrollTo(c.page.getByText("平均（5点満点）"));
@@ -174,6 +206,23 @@ export const surveyAnswer: Scenario = {
       say: "答えるアンケートを押します。",
       do: async (c) => {
         await c.click(c.page.getByRole("link", { name: /感染症対策の研修/ }));
+      },
+    },
+    {
+      say: "研修資料があるときは、質問の上に並んでいます。必ず見る、と書かれた資料を見るまでは、送信できません。",
+      do: async (c) => {
+        await c.highlight(c.page.getByText("必ず見る", { exact: true }).first());
+      },
+    },
+    {
+      say: "開く、を押すと、資料が開きます。見終わったら、元の画面に戻ってください。見た資料には、見た、の印が付きます。動画は、最後まで再生してください。",
+      do: async (c) => {
+        const [tab] = await Promise.all([
+          c.page.context().waitForEvent("page"),
+          c.click(c.page.getByRole("link", { name: "開く", exact: true })),
+        ]);
+        await tab.close();
+        await c.highlight(c.page.getByText("✓ 見た").first());
       },
     },
     {

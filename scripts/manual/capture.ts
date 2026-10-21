@@ -107,6 +107,23 @@ const ADMIN_SHOTS: Shot[] = [
     fullPage: true,
   },
   {
+    file: "admin-survey-materials.png",
+    path: "/admin/training-surveys",
+    before: async (p) => {
+      await p
+        .locator("li")
+        .filter({ hasText: "感染症対策の研修" })
+        .getByRole("link", { name: "結果を見る" })
+        .click();
+      await p.getByRole("link", { name: "編集" }).click();
+      // 下に貼り付いた保存ボタンが写真に重ならないようにする
+      await p.addStyleTag({ content: ".sticky{position:static!important}" });
+      await p.getByText("研修資料（任意）").scrollIntoViewIfNeeded();
+      await p.waitForLoadState("networkidle");
+    },
+    clip: 'section:has-text("研修資料（任意）")',
+  },
+  {
     file: "admin-survey-people.png",
     path: "/admin/training-surveys",
     before: async (p) => {
@@ -137,6 +154,20 @@ const STAFF_SHOTS: Shot[] = [
       const href = await p.locator("a[href^='/me/surveys/']").first().getAttribute("href");
       await p.goto(`${BASE_URL}${href}`, { waitUntil: "networkidle" });
     },
+  },
+  {
+    file: "staff-survey-materials.png",
+    path: "/me/surveys",
+    before: async (p) => {
+      // 見本の PDF が付いた (動画で見て回答した) アンケート
+      const href = await p
+        .locator("a[href^='/me/surveys/']")
+        .filter({ hasText: "感染症対策の研修" })
+        .first()
+        .getAttribute("href");
+      await p.goto(`${BASE_URL}${href}`, { waitUntil: "networkidle" });
+    },
+    clip: 'section[aria-labelledby="materials-heading"]',
   },
   { file: "staff-profile.png", path: "/me/profile" },
 ];
