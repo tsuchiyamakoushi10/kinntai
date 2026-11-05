@@ -9,7 +9,7 @@ import type { NoticeInput, NoticeView } from "@/lib/labor-notice/types";
 
 import { deleteLaborNoticeDraft } from "../actions";
 import { STATUS_LABEL, TYPE_LABEL } from "../labels";
-import { SignedUploadForm, VoidButton } from "./notice-actions";
+import { ArchiveButton, HideVoidButton, SignedUploadForm, VoidButton } from "./notice-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +61,7 @@ export default async function LaborNoticeDetailPage({ params }: Props) {
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
           {STATUS_LABEL[notice.status]}
+          {notice.archivedAt ? "（完了フォルダ）" : ""}
           {notice.noticeNo ? `　${notice.noticeNo}` : ""}
         </span>
       </header>
@@ -110,12 +111,24 @@ export default async function LaborNoticeDetailPage({ params }: Props) {
             期間の定めなしの通知書を作る
           </Link>
         )}
-        {notice.status === "VOID" && (
+        {notice.status === "VOID" && !notice.hiddenAt && (
+          <>
+            <Link
+              href={`/admin/labor-notices/new?from=${id}&mode=redo`}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+            >
+              作り直す
+            </Link>
+            <HideVoidButton noticeId={id} />
+          </>
+        )}
+        {isIssued && <ArchiveButton noticeId={id} archived={notice.archivedAt !== null} />}
+        {isIssued && (
           <Link
-            href={`/admin/labor-notices/new?from=${id}&mode=redo`}
+            href={`/admin/raise-notices/new?employeeId=${notice.employee.id}`}
             className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
           >
-            作り直す
+            昇給通知を作る
           </Link>
         )}
         {isIssued && <VoidButton noticeId={id} />}

@@ -302,6 +302,7 @@ model Office {
   shiftPublications   ShiftPublication[]
   officeAssignments   EmployeeOfficeAssignment[]
   laborNotices        LaborNotice[]
+  raiseNotices        RaiseNotice[]
   trainingSurveys     TrainingSurvey[]
 
   @@map("offices")
@@ -361,6 +362,7 @@ model User {
   shiftPublications   ShiftPublication[]   @relation("ShiftPublicationPublishedBy")
   createdLaborNotices LaborNotice[]        @relation("LaborNoticeCreatedBy")
   issuedLaborNotices  LaborNotice[]        @relation("LaborNoticeIssuedBy")
+  createdRaiseNotices RaiseNotice[]        @relation("RaiseNoticeCreatedBy")
   trainingSurveys     TrainingSurvey[]     @relation("TrainingSurveyCreatedBy")
 
   @@map("users")
@@ -454,6 +456,7 @@ model Employee {
   shiftPreferences      ShiftPreference[]
   officeAssignments     EmployeeOfficeAssignment[]
   laborNotices          LaborNotice[]
+  raiseNotices          RaiseNotice[]
   surveyTargets         TrainingSurveyTarget[]
   surveyMaterialViews   TrainingSurveyMaterialView[]
   surveyResponses       TrainingSurveyResponse[]
@@ -515,6 +518,7 @@ model EmploymentContract {
   documents    EmployeeDocument[]
   allowances   EmploymentContractAllowance[]
   laborNotices LaborNotice[]
+  raiseNotices RaiseNotice[]
 
   @@index([employeeId, contractStartOn(sort: Desc)])
   @@map("employment_contracts")
@@ -710,6 +714,7 @@ model EmployeeDocument {
   uploadedBy     User                @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
   accessLogs     DocumentAccessLog[]
   laborNotices   LaborNotice[]
+  raiseNotices   RaiseNotice[]
 
   @@index([employeeId, documentType])
   @@index([expiresOn])
@@ -996,6 +1001,10 @@ model LaborNotice {
   issuedAt         DateTime?         @map("issued_at") @db.Timestamptz(6)
   signedAt         DateTime?         @map("signed_at") @db.Timestamptz(6)
   voidedAt         DateTime?         @map("voided_at") @db.Timestamptz(6)
+  // 「完了」フォルダへ移した日時。署名済みの登録で自動、または手動で移す。NULL は一覧の「作業中」
+  archivedAt       DateTime?         @map("archived_at") @db.Timestamptz(6)
+  // 無効にした通知書を一覧から消した日時。番号を欠番として残すため行は消さない
+  hiddenAt         DateTime?         @map("hidden_at") @db.Timestamptz(6)
   signedDocumentId String?           @map("signed_document_id") @db.Uuid
   createdById      String            @map("created_by") @db.Uuid
   issuedById       String?           @map("issued_by") @db.Uuid
@@ -1012,6 +1021,37 @@ model LaborNotice {
   @@index([employeeId, contractStartOn(sort: Desc)])
   @@index([status, contractEndOn])
   @@map("labor_notices")
+}
+
+// 昇給通知書 (S-A-39〜41)。発行と同時に、従業員の賃金と最新の雇用契約の賃金を新しい金額に書き換える。
+// snapshot は発行時の表示値 (RaiseNoticeView)。番号は振らない (誤りは削除して作り直す)。
+// docs/raise-notice.md。tenant_id はマルチテナント化時に追加する。
+model RaiseNotice {
+  id               String    @id @default(uuid()) @db.Uuid
+  employeeId       String    @map("employee_id") @db.Uuid
+  officeId         String    @map("office_id") @db.Uuid
+  // 賃金を書き換えた雇用契約。契約が無い従業員は NULL
+  contractId       String?   @map("contract_id") @db.Uuid
+  issuedOn         DateTime  @map("issued_on") @db.Date
+  // 新しい賃金を適用する日
+  effectiveOn      DateTime  @map("effective_on") @db.Date
+  snapshot         Json
+  signedAt         DateTime? @map("signed_at") @db.Timestamptz(6)
+  signedDocumentId String?   @map("signed_document_id") @db.Uuid
+  // 「完了」フォルダへ移した日時。署名済みの登録で自動、または手動で移す
+  archivedAt       DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdById      String    @map("created_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee       Employee            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  office         Office              @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  contract       EmploymentContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  signedDocument EmployeeDocument?   @relation(fields: [signedDocumentId], references: [id], onDelete: SetNull)
+  createdBy      User                @relation("RaiseNoticeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, issuedOn(sort: Desc)])
+  @@map("raise_notices")
 }
 
 // 労働条件通知書: 区分ごとの初期値 (S-A-34)。行が無い区分は src/lib/labor-notice/constants.ts の既定値を使う。

@@ -3,10 +3,11 @@ import Link from "next/link";
 
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
-import { formatDate, toDateInputValue } from "@/lib/format";
+import { formatDate, parseDateInputValue, toDateInputValue } from "@/lib/format";
 import { addDays } from "@/lib/labor-notice/dates";
 import { todayJst } from "@/lib/labor-notice/defaults";
 
+import { ArchiveButton, HideVoidButton } from "./[id]/notice-actions";
 import { STATUS_LABEL, TYPE_LABEL } from "./labels";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
 const RENEWAL_NOTICE_DAYS = 30;
 
 type Props = {
-  searchParams: Promise<{ status?: string; type?: string }>;
+  searchParams: Promise<{ status?: string; type?: string; folder?: string }>;
 };
 
 /** S-A-30 労働条件通知書 一覧 */
@@ -24,12 +25,28 @@ export default async function LaborNoticeListPage({ searchParams }: Props) {
   const sp = await searchParams;
   const status = (Object.keys(STATUS_LABEL) as LaborNoticeStatus[]).find((s) => s === sp.status);
   const type = (Object.keys(TYPE_LABEL) as LaborNoticeType[]).find((t) => t === sp.type);
+  const done = sp.folder === "done";
 
-  const where: Prisma.LaborNoticeWhereInput = {
+  const today = todayJst();
+  const soon = addDays(today, RENEWAL_NOTICE_DAYS);
+
+  // 一覧から消した無効な通知書は出さない
+  const base: Prisma.LaborNoticeWhereInput = {
+    hiddenAt: null,
     ...(status ? { status } : {}),
     ...(type ? { noticeType: type } : {}),
   };
-  const [notices, latest] = await Promise.all([
+  const where: Prisma.LaborNoticeWhereInput = done
+    ? { ...base, archivedAt: { not: null } }
+    : {
+        ...base,
+        OR: [
+          { archivedAt: null },
+          // 完了フォルダにあっても、契約の終了が近いものは作業中にも出す
+          { contractEndOn: { lte: parseDateInputValue(soon) ?? undefined } },
+        ],
+      };
+  const [notices, latest, doneCount] = await Promise.all([
     prisma.laborNotice.findMany({
       where,
       orderBy: [{ createdAt: "desc" }],
@@ -45,11 +62,10 @@ export default async function LaborNoticeListPage({ searchParams }: Props) {
       where: { status: { not: "VOID" } },
       _max: { contractStartOn: true },
     }),
+    prisma.laborNotice.count({ where: { hiddenAt: null, archivedAt: { not: null } } }),
   ]);
   const latestStart = new Map(latest.map((l) => [l.employeeId, l._max.contractStartOn]));
 
-  const today = todayJst();
-  const soon = addDays(today, RENEWAL_NOTICE_DAYS);
   const needsNext = (n: (typeof notices)[number]): boolean => {
     if (n.status !== "ISSUED" && n.status !== "SIGNED") return false;
     if (!n.contractEndOn) return false;
@@ -57,6 +73,15 @@ export default async function LaborNoticeListPage({ searchParams }: Props) {
     if (end > soon) return false;
     const newest = latestStart.get(n.employeeId);
     return !newest || newest <= n.contractEndOn;
+  };
+  const rows = done ? notices : notices.filter((n) => n.archivedAt === null || needsNext(n));
+  const tabHref = (folder: "active" | "done") => {
+    const q = new URLSearchParams();
+    if (folder === "done") q.set("folder", "done");
+    if (status) q.set("status", status);
+    if (type) q.set("type", type);
+    const qs = q.toString();
+    return `/admin/labor-notices${qs ? `?${qs}` : ""}`;
   };
 
   return (
@@ -76,7 +101,33 @@ export default async function LaborNoticeListPage({ searchParams }: Props) {
         </Link>
       </header>
 
+      <nav aria-label="フォルダ" className="flex gap-2 border-b border-slate-200">
+        {(
+          [
+            ["active", "作業中"],
+            ["done", `完了フォルダ（${doneCount}）`],
+          ] as const
+        ).map(([key, label]) => {
+          const current = (key === "done") === done;
+          return (
+            <Link
+              key={key}
+              href={tabHref(key)}
+              aria-current={current ? "page" : undefined}
+              className={`-mb-px border-b-2 px-4 py-2.5 text-base font-semibold ${
+                current
+                  ? "border-slate-900 text-slate-900"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {label}
+            </Link>
+          );
+        })}
+      </nav>
+
       <form className="flex flex-wrap items-end gap-3 text-sm">
+        {done && <input type="hidden" name="folder" value="done" />}
         <label className="flex flex-col gap-1">
           <span className="text-xs text-slate-600">状態</span>
           <select
@@ -115,9 +166,11 @@ export default async function LaborNoticeListPage({ searchParams }: Props) {
         </button>
       </form>
 
-      {notices.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500">
-          まだ通知書がありません。
+          {done
+            ? "完了フォルダは空です。署名済みを登録すると、自動でここへ移ります。"
+            : "作業中の通知書はありません。"}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -134,7 +187,7 @@ export default async function LaborNoticeListPage({ searchParams }: Props) {
               </tr>
             </thead>
             <tbody>
-              {notices.map((n) => {
+              {rows.map((n) => {
                 const next = needsNext(n);
                 const isPartFixed = n.noticeType === "PART_TIME";
                 return (
@@ -163,7 +216,7 @@ export default async function LaborNoticeListPage({ searchParams }: Props) {
                       )}
                     </td>
                     <td className="px-3 py-2">{STATUS_LABEL[n.status]}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">
+                    <td className="flex flex-wrap items-center gap-2 px-3 py-2 whitespace-nowrap">
                       {next && (
                         <Link
                           href={`/admin/labor-notices/new?from=${n.id}&mode=${isPartFixed ? "indefinite" : "renew"}`}
@@ -172,6 +225,10 @@ export default async function LaborNoticeListPage({ searchParams }: Props) {
                           {isPartFixed ? "無期の通知書を作成" : "更新版を作成"}
                         </Link>
                       )}
+                      {(n.status === "ISSUED" || n.status === "SIGNED") && (
+                        <ArchiveButton noticeId={n.id} archived={n.archivedAt !== null} small />
+                      )}
+                      {n.status === "VOID" && <HideVoidButton noticeId={n.id} small />}
                     </td>
                   </tr>
                 );

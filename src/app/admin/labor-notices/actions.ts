@@ -226,6 +226,13 @@ export async function issueLaborNotice(payload: Payload): Promise<NoticeActionRe
           issuedAt: now,
           issuedById: session.user.id,
         };
+        // 作り直したら、元の無効な通知書は一覧から消す (番号は欠番として残る)
+        if (payload.replacesNoticeId) {
+          await tx.laborNotice.update({
+            where: { id: payload.replacesNoticeId },
+            data: { hiddenAt: now },
+          });
+        }
         if (payload.noticeId) {
           await tx.laborNotice.update({ where: { id: payload.noticeId }, data });
           return payload.noticeId;
@@ -262,6 +269,28 @@ export async function voidLaborNotice(noticeId: string): Promise<void> {
   });
   revalidatePath("/admin/labor-notices");
   revalidatePath(`/admin/labor-notices/${noticeId}`);
+}
+
+/** 「完了」フォルダへ移す / 「作業中」へ戻す。発行済み・署名済みだけ */
+export async function setLaborNoticeArchived(noticeId: string, archived: boolean): Promise<void> {
+  await requireAdmin();
+  await prisma.laborNotice.updateMany({
+    where: { id: noticeId, status: { in: ["ISSUED", "SIGNED"] } },
+    data: { archivedAt: archived ? new Date() : null },
+  });
+  revalidatePath("/admin/labor-notices");
+  revalidatePath(`/admin/labor-notices/${noticeId}`);
+}
+
+/** 無効にした通知書を一覧から消す。番号を欠番として残すため行は消さずに隠す */
+export async function hideVoidLaborNotice(noticeId: string): Promise<void> {
+  await requireAdmin();
+  await prisma.laborNotice.updateMany({
+    where: { id: noticeId, status: "VOID" },
+    data: { hiddenAt: new Date() },
+  });
+  revalidatePath("/admin/labor-notices");
+  redirect("/admin/labor-notices");
 }
 
 export type SignedUploadState = { error?: string; done?: boolean };
@@ -313,7 +342,13 @@ export async function uploadSignedLaborNotice(
     });
     await tx.laborNotice.update({
       where: { id: notice.id },
-      data: { status: "SIGNED", signedAt: new Date(), signedDocumentId: doc.id },
+      // 署名済みになったら作業は終わりなので「完了」フォルダへ移す
+      data: {
+        status: "SIGNED",
+        signedAt: new Date(),
+        signedDocumentId: doc.id,
+        archivedAt: new Date(),
+      },
     });
   });
 

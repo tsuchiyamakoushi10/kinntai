@@ -2,7 +2,13 @@
 
 import { useActionState } from "react";
 
-import { uploadSignedLaborNotice, voidLaborNotice, type SignedUploadState } from "../actions";
+import {
+  hideVoidLaborNotice,
+  setLaborNoticeArchived,
+  uploadSignedLaborNotice,
+  voidLaborNotice,
+  type SignedUploadState,
+} from "../actions";
 
 export function SignedUploadForm({ noticeId }: { noticeId: string }) {
   const [state, action, pending] = useActionState<SignedUploadState, FormData>(
@@ -56,6 +62,51 @@ export function VoidButton({ noticeId }: { noticeId: string }) {
         className="rounded-lg border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50"
       >
         無効にする（作り直す）
+      </button>
+    </form>
+  );
+}
+
+/** 「完了」フォルダへ移す / 「作業中」へ戻す */
+export function ArchiveButton({
+  noticeId,
+  archived,
+  small = false,
+}: {
+  noticeId: string;
+  archived: boolean;
+  small?: boolean;
+}) {
+  return (
+    <form action={setLaborNoticeArchived.bind(null, noticeId, !archived)}>
+      <button
+        type="submit"
+        className={`rounded-lg border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 ${
+          small ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-sm"
+        }`}
+      >
+        {archived ? "作業中に戻す" : "完了フォルダへ移す"}
+      </button>
+    </form>
+  );
+}
+
+/** 無効にした通知書を一覧から消す */
+export function HideVoidButton({ noticeId, small = false }: { noticeId: string; small?: boolean }) {
+  return (
+    <form
+      action={hideVoidLaborNotice.bind(null, noticeId)}
+      onSubmit={(e) => {
+        if (!window.confirm("この無効な通知書を一覧から消しますか？")) e.preventDefault();
+      }}
+    >
+      <button
+        type="submit"
+        className={`rounded-lg border border-red-300 bg-white font-semibold text-red-700 hover:bg-red-50 ${
+          small ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-sm"
+        }`}
+      >
+        消す
       </button>
     </form>
   );

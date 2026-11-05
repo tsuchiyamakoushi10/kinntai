@@ -28,6 +28,7 @@ const SECTIONS: Section[] = [
       { label: "ダッシュボード", href: "/admin" },
       { label: "従業員", href: "/admin/employees" },
       { label: "労働条件通知書", href: "/admin/labor-notices" },
+      { label: "昇給通知", href: "/admin/raise-notices" },
       { label: "研修アンケート", href: "/admin/training-surveys" },
       { label: "使い方", href: "/admin/manual" },
     ],

@@ -6,6 +6,8 @@ import { nextContractInput, todayJst } from "@/lib/labor-notice/defaults";
 import { loadNoticeMasters } from "@/lib/labor-notice/load";
 import { parseNoticeInput } from "@/lib/labor-notice/parse";
 import type { NoticeInput } from "@/lib/labor-notice/types";
+import { applyRaiseToWage } from "@/lib/raise-notice/rows";
+import type { RaiseView } from "@/lib/raise-notice/types";
 import { toDateInputValue } from "@/lib/format";
 
 import { loadEditorEmployees } from "../editor-data";
@@ -36,7 +38,14 @@ export default async function NewLaborNoticePage({ searchParams }: Props) {
   if (sp.from) {
     const from = await prisma.laborNotice.findUnique({
       where: { id: sp.from },
-      select: { id: true, employeeId: true, status: true, input: true, contractEndOn: true },
+      select: {
+        id: true,
+        employeeId: true,
+        status: true,
+        input: true,
+        contractEndOn: true,
+        issuedAt: true,
+      },
     });
     const prev = from ? parseNoticeInput(from.input) : null;
     if (from && prev) {
@@ -47,7 +56,24 @@ export default async function NewLaborNoticePage({ searchParams }: Props) {
         heading = "労働条件通知書を作り直す";
       } else if (from.contractEndOn && (sp.mode === "renew" || sp.mode === "indefinite")) {
         const mode = sp.mode === "renew" ? "RENEW" : "TO_INDEFINITE";
-        initialInput = nextContractInput(prev, toDateInputValue(from.contractEndOn), mode, today);
+        // 前回の通知書の後に昇給通知を出していれば、新しい金額から始める
+        const raises = from.issuedAt
+          ? await prisma.raiseNotice.findMany({
+              where: { employeeId: from.employeeId, createdAt: { gt: from.issuedAt } },
+              orderBy: { createdAt: "asc" },
+              select: { snapshot: true },
+            })
+          : [];
+        const wage = raises.reduce((w, r) => {
+          const v = r.snapshot as unknown as RaiseView;
+          return applyRaiseToWage(w, v.kind, v.rows);
+        }, prev.wage);
+        initialInput = nextContractInput(
+          { ...prev, wage },
+          toDateInputValue(from.contractEndOn),
+          mode,
+          today,
+        );
         heading = mode === "RENEW" ? "契約更新の通知書を作る" : "期間の定めなしの通知書を作る";
       }
     }
