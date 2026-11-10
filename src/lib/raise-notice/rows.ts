@@ -2,11 +2,25 @@
  * 昇給通知書の金額行の組み立て・検証・労働条件通知書への引き継ぎ (純関数)。
  * docs/raise-notice.md §2。
  */
-import { QUALIFICATION_LABEL } from "@/lib/labor-notice/constants";
+import { LEGACY_ALLOWANCE_CODES, QUALIFICATION_LABEL } from "@/lib/labor-notice/constants";
 import { isValidYmd } from "@/lib/labor-notice/dates";
-import type { NoticeWageInput, QualificationAllowances } from "@/lib/labor-notice/types";
+import { allowanceTypesFor, setAllowanceYen } from "@/lib/labor-notice/masters";
+import type {
+  NoticeAllowanceType,
+  NoticeEmploymentType,
+  NoticeInput,
+  NoticeWageInput,
+  QualificationAllowances,
+} from "@/lib/labor-notice/types";
 
-import type { RaiseInput, RaiseRow, RaiseRowKey, RaiseUnit, RaiseWageKind } from "./types";
+import type {
+  LegacyRaiseRowKey,
+  RaiseInput,
+  RaiseRow,
+  RaiseRowKey,
+  RaiseUnit,
+  RaiseWageKind,
+} from "./types";
 
 const BASE_LABEL: Record<RaiseWageKind, string> = {
   MONTHLY: "基本給",
@@ -33,11 +47,33 @@ export const KIND_TO_WAGE_TYPE = {
   NIGHT_DAILY: "DAILY",
 } as const satisfies Record<RaiseWageKind, string>;
 
+/** 賃金の形に対応する通知書の区分 (作成画面で区分ごとに賃金の形が決まっている) */
+const KIND_TO_NOTICE_TYPE: Record<RaiseWageKind, NoticeEmploymentType> = {
+  MONTHLY: "FULL_TIME",
+  HOURLY: "PART_TIME",
+  NIGHT_DAILY: "NIGHT_ONLY",
+};
+
 function row(key: RaiseRowKey, label: string, unit: RaiseUnit, yen: number): RaiseRow {
   return { key, label, unit, beforeYen: yen, afterYen: yen };
 }
 
-/** 労働条件通知書の賃金から、変更前 = 変更後 = 今の金額の行を作る */
+function allowanceRow(code: string, label: string, yen: number): RaiseRow {
+  return { key: "ALLOWANCE", code, label, unit: "MONTH", beforeYen: yen, afterYen: yen };
+}
+
+const LEGACY_KEY_TO_CODE: Record<LegacyRaiseRowKey, string> = {
+  MANAGER: LEGACY_ALLOWANCE_CODES.manager,
+  COUNSELOR: LEGACY_ALLOWANCE_CODES.counselor,
+};
+
+/** 2026-11-10 より前の snapshot の行 (key: MANAGER / COUNSELOR) を ALLOWANCE に読み替える */
+export function normalizeRaiseRow(r: RaiseRow): RaiseRow {
+  const legacy = LEGACY_KEY_TO_CODE[r.key as unknown as LegacyRaiseRowKey];
+  return legacy ? { ...r, key: "ALLOWANCE", code: legacy } : r;
+}
+
+/** 労働条件通知書の基本給・資格手当から、変更前 = 変更後 = 今の金額の行を作る */
 export function rowsFromWage(
   wage: NoticeWageInput,
   qualificationDefaults: QualificationAllowances,
@@ -56,9 +92,22 @@ export function rowsFromWage(
       row("QUALIFICATION", `資格手当（${QUALIFICATION_LABEL[wage.qualification]}）`, "MONTH", yen),
     );
   }
-  if (wage.kind === "MONTHLY") {
-    rows.push(row("MANAGER", "管理者手当", "MONTH", wage.managerAllowanceYen));
-    rows.push(row("COUNSELOR", "相談員手当", "MONTH", wage.counselorAllowanceYen));
+  return rows;
+}
+
+/**
+ * 労働条件通知書の入力から行を作る。人ごとの手当は、その区分に載せる使用中の種類を
+ * 0 円でも出す (0 円から昇給できるように)。
+ */
+export function rowsFromNotice(
+  input: Pick<NoticeInput, "employmentType" | "wage" | "allowances">,
+  qualificationDefaults: QualificationAllowances,
+  allowanceTypes: ReadonlyArray<NoticeAllowanceType>,
+): RaiseRow[] {
+  const rows = rowsFromWage(input.wage, qualificationDefaults);
+  for (const t of allowanceTypesFor(allowanceTypes, input.employmentType, input.allowances)) {
+    const yen = input.allowances.find((a) => a.code === t.code)?.yen ?? 0;
+    rows.push(allowanceRow(t.code, t.label, yen));
   }
   return rows;
 }
@@ -68,11 +117,31 @@ export function rowsFromBase(kind: RaiseWageKind, baseYen: number): RaiseRow[] {
   return [row("BASE", BASE_LABEL[kind], BASE_UNIT[kind], baseYen)];
 }
 
-/** 前回の昇給通知の変更後を、次の昇給通知の変更前にする */
-export function rowsFromPreviousRaise(prev: ReadonlyArray<RaiseRow>): RaiseRow[] {
-  return prev
+/**
+ * 前回の昇給通知の変更後を、次の昇給通知の変更前にする。
+ * 前回より後に設定で足した人ごとの手当の種類は 0 円の行で足す (追加した手当の行より前)。
+ */
+export function rowsFromPreviousRaise(
+  prev: ReadonlyArray<RaiseRow>,
+  kind: RaiseWageKind,
+  allowanceTypes: ReadonlyArray<NoticeAllowanceType>,
+): RaiseRow[] {
+  const rows = prev
+    .map(normalizeRaiseRow)
     .filter((r) => r.key !== "OTHER" || r.afterYen > 0)
-    .map((r) => row(r.key, r.label, r.unit, r.afterYen));
+    .map((r) => ({ ...r, beforeYen: r.afterYen }));
+  const type = KIND_TO_NOTICE_TYPE[kind];
+  const added = allowanceTypes
+    .filter(
+      (t) =>
+        t.isActive &&
+        t.targetTypes.includes(type) &&
+        !rows.some((r) => r.key === "ALLOWANCE" && r.code === t.code),
+    )
+    .map((t) => allowanceRow(t.code, t.label, 0));
+  const firstOther = rows.findIndex((r) => r.key === "OTHER");
+  const at = firstOther === -1 ? rows.length : firstOther;
+  return [...rows.slice(0, at), ...added, ...rows.slice(at)];
 }
 
 export function emptyOtherRow(): RaiseRow {
@@ -120,9 +189,24 @@ export function checkRaise(input: RaiseInput): RaiseCheck {
 }
 
 /**
- * 昇給の変更後の金額を労働条件通知書の賃金に写す。次の通知書 (更新・無期切替) を
- * 新しい金額から始めるために使う。賃金の形が違う (月給 → 時給 など) ときは写さない。
+ * 昇給の変更後の金額を労働条件通知書の入力 (賃金・人ごとの手当) に写す。次の通知書
+ * (更新・無期切替) を新しい金額から始めるために使う。賃金の形が違う (月給 → 時給 など) ときは写さない。
  */
+export function applyRaiseToNotice<T extends Pick<NoticeInput, "wage" | "allowances">>(
+  input: T,
+  kind: RaiseWageKind,
+  rows: ReadonlyArray<RaiseRow>,
+): T {
+  if (input.wage.kind !== kind) return input;
+  let allowances = input.allowances;
+  for (const r of rows.map(normalizeRaiseRow)) {
+    if (r.key === "ALLOWANCE" && r.code)
+      allowances = setAllowanceYen(allowances, r.code, r.afterYen);
+  }
+  return { ...input, wage: applyRaiseToWage(input.wage, kind, rows), allowances };
+}
+
+/** 昇給の変更後の基本給・資格手当を賃金に写す。賃金の形が違うときは写さない */
 export function applyRaiseToWage(
   wage: NoticeWageInput,
   kind: RaiseWageKind,
@@ -137,8 +221,6 @@ export function applyRaiseToWage(
         ...wage,
         baseYen: base ?? wage.baseYen,
         qualificationAllowanceYen: after("QUALIFICATION") ?? wage.qualificationAllowanceYen,
-        managerAllowanceYen: after("MANAGER") ?? wage.managerAllowanceYen,
-        counselorAllowanceYen: after("COUNSELOR") ?? wage.counselorAllowanceYen,
       };
     case "HOURLY":
       return {
@@ -152,7 +234,8 @@ export function applyRaiseToWage(
 }
 
 const KINDS: ReadonlyArray<RaiseWageKind> = ["MONTHLY", "HOURLY", "NIGHT_DAILY"];
-const KEYS: ReadonlyArray<RaiseRowKey> = ["BASE", "QUALIFICATION", "MANAGER", "COUNSELOR", "OTHER"];
+const KEYS: ReadonlyArray<RaiseRowKey> = ["BASE", "QUALIFICATION", "ALLOWANCE", "OTHER"];
+const ALLOWANCE_CODE = /^[A-Z0-9_]{1,32}$/;
 const UNITS: ReadonlyArray<RaiseUnit> = ["MONTH", "HOUR", "NIGHT"];
 const MAX_ROWS = 12;
 
@@ -174,8 +257,13 @@ export function parseRaiseInput(raw: unknown): RaiseInput | null {
     if (!KEYS.includes(x.key as RaiseRowKey) || !UNITS.includes(x.unit as RaiseUnit)) return null;
     if (typeof x.label !== "string" || x.label.length > 40) return null;
     if (!isYen(x.beforeYen) || !isYen(x.afterYen)) return null;
+    const key = x.key as RaiseRowKey;
+    if (key === "ALLOWANCE" && !(typeof x.code === "string" && ALLOWANCE_CODE.test(x.code))) {
+      return null;
+    }
     rows.push({
-      key: x.key as RaiseRowKey,
+      key,
+      ...(key === "ALLOWANCE" ? { code: x.code as string } : {}),
       label: x.label.trim(),
       unit: x.unit as RaiseUnit,
       beforeYen: x.beforeYen,
@@ -183,7 +271,7 @@ export function parseRaiseInput(raw: unknown): RaiseInput | null {
     });
   }
   // 引き継ぐ項目は 1 行ずつ
-  const mapped = rows.filter((r) => r.key !== "OTHER").map((r) => r.key);
+  const mapped = rows.filter((r) => r.key !== "OTHER").map((r) => `${r.key}:${r.code ?? ""}`);
   if (new Set(mapped).size !== mapped.length) return null;
   return {
     issuedOn: o.issuedOn,

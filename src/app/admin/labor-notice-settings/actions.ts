@@ -8,9 +8,14 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { parseDateInputValue } from "@/lib/format";
-import { MIN_WAGES } from "@/lib/labor-notice/constants";
+import { DEFAULT_ALLOWANCE_TYPES, MIN_WAGES } from "@/lib/labor-notice/constants";
 import { loadNoticeSettings } from "@/lib/labor-notice/load";
-import { checkMinWage, checkPreset, checkWorkPatterns } from "@/lib/labor-notice/masters";
+import {
+  checkAllowanceTypes,
+  checkMinWage,
+  checkPreset,
+  checkWorkPatterns,
+} from "@/lib/labor-notice/masters";
 import type { NoticeEmploymentType } from "@/lib/labor-notice/types";
 
 export type SettingsResult = { ok: true } | { ok: false; error: string };
@@ -84,6 +89,40 @@ export async function saveNoticeWorkPatterns(value: unknown): Promise<SettingsRe
         await tx.laborNoticeWorkPattern.update({ where: { code }, data });
       } else {
         await tx.laborNoticeWorkPattern.create({ data: { code, ...data } });
+      }
+    }
+  });
+  return done();
+}
+
+/**
+ * 人ごとの手当の種類を保存する (docs/labor-notice.md §2.2)。
+ * 削除はせず「使わない」にする (下書き・前回の通知書が code で参照しているため)。
+ */
+export async function saveNoticeAllowanceTypes(value: unknown): Promise<SettingsResult> {
+  await requireAdmin();
+  const checked = checkAllowanceTypes(value);
+  if (!checked.ok) return checked;
+
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.laborNoticeAllowanceType.findMany({ select: { code: true } });
+    const codes = new Set(existing.map((e) => e.code));
+    // 既定値を表示していた場合、既定の code (MANAGER / COUNSELOR) は画面から届く
+    const known = new Set([...codes, ...DEFAULT_ALLOWANCE_TYPES.map((t) => t.code)]);
+    for (const [i, a] of checked.value.entries()) {
+      if (a.code !== "" && !known.has(a.code)) continue; // 画面に無いはずの code は無視
+      const code = a.code || `A${randomBytes(4).toString("hex").toUpperCase()}`;
+      const data = {
+        label: a.label,
+        targetTypes: [...a.targetTypes],
+        includedInWageChecks: a.includedInWageChecks,
+        sortOrder: i * 10,
+        isActive: a.isActive,
+      };
+      if (codes.has(code)) {
+        await tx.laborNoticeAllowanceType.update({ where: { code }, data });
+      } else {
+        await tx.laborNoticeAllowanceType.create({ data: { code, ...data } });
       }
     }
   });

@@ -1091,6 +1091,25 @@ model LaborNoticeWorkPattern {
   @@map("labor_notice_work_patterns")
 }
 
+// 労働条件通知書: 人ごとに金額を入れる手当の種類 (管理者手当・相談員手当 など, S-A-34)。
+// 0 行なら constants.ts の既定値を使う。削除はせず is_active=false にする (下書きが code で参照するため)。
+// docs/labor-notice.md §2.2。tenant_id はマルチテナント化時に追加する。
+model LaborNoticeAllowanceType {
+  id                   String            @id @default(uuid()) @db.Uuid
+  code                 String            @unique
+  label                String
+  // 作成画面に入力欄を出す区分
+  targetTypes          LaborNoticeType[] @map("target_types")
+  // 最低賃金 (月給) と社会保険の月額賃金の判定に含めるか
+  includedInWageChecks Boolean           @default(true) @map("included_in_wage_checks")
+  sortOrder            Int               @default(0) @map("sort_order")
+  isActive             Boolean           @default(true) @map("is_active")
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("labor_notice_allowance_types")
+}
+
 // 最低賃金 (都道府県別・発効日つき)。0 行なら constants.ts の既定値を使う。docs/labor-notice.md §2.1
 model MinWage {
   id            String   @id @default(uuid()) @db.Uuid

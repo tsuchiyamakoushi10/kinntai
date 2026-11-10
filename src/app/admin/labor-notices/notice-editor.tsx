@@ -7,7 +7,7 @@ import { computeNotice } from "@/lib/labor-notice/compute";
 import { EMPLOYMENT_TYPE_LABEL, QUALIFICATION_LABEL } from "@/lib/labor-notice/constants";
 import { applyPreset } from "@/lib/labor-notice/defaults";
 import { renderNoticeDocument } from "@/lib/labor-notice/html";
-import { PRESET_TEXT_LABEL } from "@/lib/labor-notice/masters";
+import { allowanceTypesFor, PRESET_TEXT_LABEL, setAllowanceYen } from "@/lib/labor-notice/masters";
 import type {
   InsuranceSet,
   NoticeEmploymentType,
@@ -98,6 +98,11 @@ export function NoticeEditor(props: Props) {
   );
   const preset = masters.presets[input.employmentType];
   const texts = { ...preset.texts, ...input.overrides };
+  const personalTypes = allowanceTypesFor(
+    masters.allowanceTypes,
+    input.employmentType,
+    input.allowances,
+  );
 
   const set = (patch: Partial<NoticeInput>) => setInput((prev) => ({ ...prev, ...patch }));
   const setWage = (patch: Partial<NoticeWageInput>) =>
@@ -359,16 +364,6 @@ export function NoticeEditor(props: Props) {
                   className={inputCls}
                 />
               </Field>
-              <YenField
-                label="管理者手当（月額）"
-                value={w.managerAllowanceYen}
-                onChange={(v) => setWage({ managerAllowanceYen: v })}
-              />
-              <YenField
-                label="相談員手当（月額）"
-                value={w.counselorAllowanceYen}
-                onChange={(v) => setWage({ counselorAllowanceYen: v })}
-              />
             </div>
           )}
           {w.kind === "HOURLY" && (
@@ -413,6 +408,26 @@ export function NoticeEditor(props: Props) {
                   {b.label}（{b.workHours}時間）: 基本 {b.baseYen.toLocaleString()}円 ＋ 深夜分{" "}
                   {b.premiumYen.toLocaleString()}円
                 </p>
+              ))}
+            </div>
+          )}
+          {personalTypes.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+              <p className="col-span-2 text-xs text-slate-500">
+                付く手当だけ金額を入れてください（空欄の手当は書面に載りません）。
+              </p>
+              {personalTypes.map((t) => (
+                <YenField
+                  key={t.code}
+                  label={`${t.label}（月額）${t.isActive ? "" : "・使わない設定"}`}
+                  value={input.allowances.find((a) => a.code === t.code)?.yen ?? 0}
+                  onChange={(v) =>
+                    setInput((prev) => ({
+                      ...prev,
+                      allowances: setAllowanceYen(prev.allowances, t.code, v),
+                    }))
+                  }
+                />
               ))}
             </div>
           )}

@@ -6,10 +6,16 @@ import type { CompanyProfile, LaborNoticeType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { toDateInputValue } from "@/lib/format";
 
-import { EMPLOYMENT_PRESETS, MIN_WAGES, NOTICE_WORK_PATTERNS } from "./constants";
+import {
+  DEFAULT_ALLOWANCE_TYPES,
+  EMPLOYMENT_PRESETS,
+  MIN_WAGES,
+  NOTICE_WORK_PATTERNS,
+} from "./constants";
 import { mergePreset, type WorkPatternInput } from "./masters";
 import type {
   MinWage,
+  NoticeAllowanceType,
   NoticeCompany,
   NoticeEmploymentType,
   NoticeMasters,
@@ -72,6 +78,7 @@ export async function loadNoticeMasters(): Promise<{
       presets: settings.presets,
       patterns: settings.patterns.filter((p) => p.isActive),
       minWages: settings.minWages,
+      allowanceTypes: settings.allowanceTypes,
     },
     noticeNumberPrefix: profile.noticeNumberPrefix,
   };
@@ -88,18 +95,28 @@ export type NoticeSettings = {
   /** 並び順どおり。非表示 (isActive=false) も含む */
   patterns: WorkPatternInput[];
   minWages: MinWage[];
+  /** 人ごとの手当の種類。並び順どおり。使わない (isActive=false) も含む */
+  allowanceTypes: NoticeAllowanceType[];
   /** DB に保存済みか (未保存なら既定値を表示している) */
-  saved: { presets: NoticeEmploymentType[]; patterns: boolean; minWages: boolean };
+  saved: {
+    presets: NoticeEmploymentType[];
+    patterns: boolean;
+    minWages: boolean;
+    allowanceTypes: boolean;
+  };
 };
 
 /** 通知書の設定マスター (S-A-34)。DB に無いものは constants.ts の既定値で補う */
 export async function loadNoticeSettings(): Promise<NoticeSettings> {
-  const [presetRows, patternRows, wageRows] = await Promise.all([
+  const [presetRows, patternRows, wageRows, allowanceRows] = await Promise.all([
     prisma.laborNoticePreset.findMany(),
     prisma.laborNoticeWorkPattern.findMany({
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
     prisma.minWage.findMany({ orderBy: [{ prefecture: "asc" }, { effectiveFrom: "desc" }] }),
+    prisma.laborNoticeAllowanceType.findMany({
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    }),
   ]);
 
   const presets = {} as Record<NoticeEmploymentType, NoticePreset>;
@@ -130,14 +147,27 @@ export async function loadNoticeSettings(): Promise<NoticeSettings> {
         }))
       : [...MIN_WAGES];
 
+  const allowanceTypes: NoticeAllowanceType[] =
+    allowanceRows.length > 0
+      ? allowanceRows.map((a) => ({
+          code: a.code,
+          label: a.label,
+          targetTypes: a.targetTypes as NoticeEmploymentType[],
+          includedInWageChecks: a.includedInWageChecks,
+          isActive: a.isActive,
+        }))
+      : [...DEFAULT_ALLOWANCE_TYPES];
+
   return {
     presets,
     patterns,
     minWages,
+    allowanceTypes,
     saved: {
       presets: presetRows.map((r) => r.noticeType as NoticeEmploymentType),
       patterns: patternRows.length > 0,
       minWages: wageRows.length > 0,
+      allowanceTypes: allowanceRows.length > 0,
     },
   };
 }

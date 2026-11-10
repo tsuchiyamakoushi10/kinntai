@@ -39,8 +39,6 @@ function defaultWage(type: NoticeEmploymentType): NoticeWageInput {
         baseYen: 0,
         qualification: "NONE",
         singleParentChildren: 0,
-        managerAllowanceYen: 0,
-        counselorAllowanceYen: 0,
       };
     case "PART_TIME":
       return { kind: "HOURLY", hourlyYen: 0, qualification: "NONE", worksNight: false };
@@ -78,6 +76,7 @@ export function applyPreset(
     fixedTermMonths: preset.defaultFixedTermMonths,
     convertsToIndefinite: preset.convertsToIndefinite,
     wage: defaultWage(type),
+    allowances: [],
     patternCodes: preset.defaultPatternCodes,
     ...DEFAULT_TIME[type],
     weeklyHoursText: null,

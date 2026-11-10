@@ -151,6 +151,26 @@ export function computeNotice(input: NoticeInput, masters: NoticeMasters): Notic
   const minWageBreaches: string[] = [];
   const w = input.wage;
 
+  // 人ごとの手当 (§2.2): 金額の入っているものを種類の並び順で
+  const personalRows: { label: string; body: string }[] = [];
+  let personalCheckedYen = 0;
+  for (const t of masters.allowanceTypes) {
+    const yen = input.allowances.find((a) => a.code === t.code)?.yen ?? 0;
+    if (!(yen > 0)) continue;
+    personalRows.push({ label: t.label, body: `月額 ${formatYen(yen)}` });
+    if (t.includedInWageChecks) personalCheckedYen += yen;
+  }
+  if (
+    input.allowances.some(
+      (a) => a.yen > 0 && !masters.allowanceTypes.some((t) => t.code === a.code),
+    )
+  ) {
+    errors.push({
+      field: "allowances",
+      message: "設定に無い手当が入っています。労働条件通知書の設定で手当を確認してください",
+    });
+  }
+
   if (w.kind === "MONTHLY" || w.kind === "HOURLY") {
     if (w.kind === "MONTHLY") {
       summary = `月給 ${formatYen(w.baseYen)}〜`;
@@ -191,15 +211,9 @@ export function computeNotice(input: NoticeInput, masters: NoticeMasters): Notic
           body: `月額 ${formatYen(yen)}（扶養する子1人 月${formatYen(SINGLE_PARENT_ALLOWANCE_PER_CHILD_YEN)}・上限${formatYen(SINGLE_PARENT_ALLOWANCE_CAP_YEN)}）`,
         });
       }
-      if (w.managerAllowanceYen > 0) {
-        wageRows.push({ label: "管理者手当", body: `月額 ${formatYen(w.managerAllowanceYen)}` });
-      }
-      if (w.counselorAllowanceYen > 0) {
-        wageRows.push({ label: "相談員手当", body: `月額 ${formatYen(w.counselorAllowanceYen)}` });
-      }
-      // 最低賃金に算入する手当: 資格・管理者・相談員 (家族手当・通勤・時間外系は除外)
-      const included =
-        w.baseYen + qualificationYen + w.managerAllowanceYen + w.counselorAllowanceYen;
+      wageRows.push(...personalRows);
+      // 最低賃金に算入する手当: 資格 + 「判定に含める」人ごとの手当 (家族手当・通勤・時間外系は除外)
+      const included = w.baseYen + qualificationYen + personalCheckedYen;
       monthlyWageYen = included;
       if (minWage && w.baseYen > 0 && input.monthlyHours && input.monthlyHours > 0) {
         const hourly = included / input.monthlyHours;
@@ -208,7 +222,10 @@ export function computeNotice(input: NoticeInput, masters: NoticeMasters): Notic
         }
       }
     } else {
-      monthlyWageYen = (w.hourlyYen * input.hoursPerWeek * 52) / 12 + qualificationYen;
+      wageRows.push(...personalRows);
+      // 時給の最低賃金チェックは時給で比べる。月額の手当は社会保険の月額賃金にだけ足す
+      monthlyWageYen =
+        (w.hourlyYen * input.hoursPerWeek * 52) / 12 + qualificationYen + personalCheckedYen;
       // 未入力 (0 円) はエラー側で出すので最低賃金の警告は重ねない
       if (minWage && w.hourlyYen > 0 && w.hourlyYen < minWage.yen) {
         minWageBreaches.push(`時給 ${formatYen(w.hourlyYen)}`);
@@ -227,7 +244,7 @@ export function computeNotice(input: NoticeInput, masters: NoticeMasters): Notic
       errors.push({ field: "wage", message: "1回あたりの金額を入力してください" });
     if (!(w.nightHours >= 0))
       errors.push({ field: "nightHours", message: "深夜時間数を入力してください" });
-    monthlyWageYen = (w.totalYen * input.daysPerWeek * 52) / 12;
+    monthlyWageYen = (w.totalYen * input.daysPerWeek * 52) / 12 + personalCheckedYen;
     const variable = company.variableHoursAgreementCoversNight;
     nightBreakdown = patternRows.map((p) => {
       const split = splitNightWage(w.totalYen, p.workHours, w.nightHours);
@@ -248,6 +265,7 @@ export function computeNotice(input: NoticeInput, masters: NoticeMasters): Notic
       label: "日給（1回あたり）",
       body: `${formatYen(w.totalYen)}（勤務パターンにかかわらず同額）`,
     });
+    wageRows.push(...personalRows);
     for (const row of preset.allowanceRows) wageRows.push({ label: row.label, body: row.body });
     if (!variable) {
       warnings.push({

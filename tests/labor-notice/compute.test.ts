@@ -148,8 +148,6 @@ describe("正社員", () => {
           baseYen: 250_000,
           qualification: "NURSE",
           singleParentChildren: 0,
-          managerAllowanceYen: 0,
-          counselorAllowanceYen: 0,
         },
       }),
       masters(),

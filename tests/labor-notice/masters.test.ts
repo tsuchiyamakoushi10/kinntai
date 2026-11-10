@@ -109,8 +109,6 @@ describe("マスターの変更が通知書に反映される", () => {
           baseYen: 250_000,
           qualification: "NURSE",
           singleParentChildren: 0,
-          managerAllowanceYen: 0,
-          counselorAllowanceYen: 0,
         },
       }),
       custom,

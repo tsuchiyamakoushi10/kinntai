@@ -8,6 +8,7 @@ import { PRESET_TEXT_LABEL, type WorkPatternInput } from "@/lib/labor-notice/mas
 import type {
   AllowanceRow,
   MinWage,
+  NoticeAllowanceType,
   NoticeEmploymentType,
   NoticePreset,
   PresetTexts,
@@ -18,6 +19,7 @@ import {
   addMinWage,
   deleteMinWage,
   resetNoticePreset,
+  saveNoticeAllowanceTypes,
   saveNoticePreset,
   saveNoticeWorkPatterns,
   type SettingsResult,
@@ -27,6 +29,7 @@ type Props = {
   presets: Record<NoticeEmploymentType, NoticePreset>;
   patterns: WorkPatternInput[];
   minWages: MinWage[];
+  allowanceTypes: NoticeAllowanceType[];
   savedPresets: NoticeEmploymentType[];
 };
 
@@ -48,13 +51,14 @@ const subBtn =
   "rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50";
 
 export function SettingsEditor(props: Props) {
-  const [tab, setTab] = useState<"presets" | "patterns" | "minWages">("presets");
+  const [tab, setTab] = useState<"presets" | "allowances" | "patterns" | "minWages">("presets");
   return (
     <div className="flex flex-col gap-4">
       <div role="tablist" className="flex flex-wrap gap-2">
         {(
           [
             ["presets", "区分ごとの初期値・手当"],
+            ["allowances", "人ごとの手当"],
             ["patterns", "勤務パターン"],
             ["minWages", "最低賃金"],
           ] as const
@@ -83,6 +87,12 @@ export function SettingsEditor(props: Props) {
         />
       )}
       {/* 保存後の再読込で新しい値から作り直す (新規行の二重登録を防ぐ) */}
+      {tab === "allowances" && (
+        <AllowanceTypesSection
+          key={JSON.stringify(props.allowanceTypes)}
+          types={props.allowanceTypes}
+        />
+      )}
       {tab === "patterns" && (
         <PatternsSection key={JSON.stringify(props.patterns)} patterns={props.patterns} />
       )}
@@ -299,7 +309,7 @@ function PresetForm({
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 text-base font-semibold text-slate-900">書面に載せる手当</legend>
         <p className="text-xs text-slate-500">
-          基本給・資格手当・ひとり親手当・管理者手当・相談員手当は、通知書を作るときに金額から自動で載ります。ここには、それ以外の決まった手当を書きます。
+          基本給・資格手当・ひとり親手当と「人ごとの手当」（管理者手当など）は、通知書を作るときに入れた金額から自動で載ります。ここには、全員に同じ文言で載せる手当を書きます。
         </p>
         {rows.map((r, i) => (
           <div
@@ -427,6 +437,160 @@ function PresetForm({
 
 function isSavedKey(saved: NoticeEmploymentType[], type: NoticeEmploymentType): string {
   return saved.includes(type) ? "saved" : "default";
+}
+
+// ---------------- 人ごとの手当 ----------------
+
+function AllowanceTypesSection({ types }: { types: NoticeAllowanceType[] }) {
+  const [rows, setRows] = useState<NoticeAllowanceType[]>(types);
+  const { pending, message, run } = useSave();
+  const setRow = (i: number, patch: Partial<NoticeAllowanceType>) =>
+    setRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const moveRow = (i: number, d: -1 | 1) =>
+    setRows((prev) => {
+      const next = [...prev];
+      const j = i + d;
+      if (j < 0 || j >= next.length) return prev;
+      [next[i], next[j]] = [next[j]!, next[i]!];
+      return next;
+    });
+  const toggleType = (i: number, t: NoticeEmploymentType) =>
+    setRows((prev) =>
+      prev.map((r, j) =>
+        j !== i
+          ? r
+          : {
+              ...r,
+              targetTypes: r.targetTypes.includes(t)
+                ? r.targetTypes.filter((x) => x !== t)
+                : TYPES.filter((x) => x === t || r.targetTypes.includes(x)),
+            },
+      ),
+    );
+
+  return (
+    <section className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5">
+      <p className="text-sm text-slate-600">
+        管理者手当のように、人によって付いたり付かなかったりする手当です。ここで登録すると、通知書を作る画面の「賃金」に金額を入れる欄が出ます。金額を入れた手当だけが書面に載ります（月額）。使わなくなったものは「使う」のチェックを外してください。
+      </p>
+      {rows.map((r, i) => (
+        <div
+          key={r.code || `new-${i}`}
+          className={`flex flex-col gap-3 rounded-lg border border-slate-200 p-3 ${
+            r.isActive ? "" : "opacity-60"
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              aria-label="手当の名前"
+              placeholder="手当の名前（例: リーダー手当）"
+              value={r.label}
+              onChange={(e) => setRow(i, { label: e.target.value })}
+              className={`${inputCls} w-full sm:w-64`}
+            />
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={r.isActive}
+                onChange={(e) => setRow(i, { isActive: e.target.checked })}
+                className="size-5"
+              />
+              使う
+            </label>
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => moveRow(i, -1)}
+                className={subBtn}
+                aria-label="上へ"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                onClick={() => moveRow(i, 1)}
+                className={subBtn}
+                aria-label="下へ"
+              >
+                ↓
+              </button>
+              {r.code === "" && (
+                <button
+                  type="button"
+                  onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}
+                  className={`${subBtn} text-red-700`}
+                >
+                  取り消す
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-xs text-slate-600">入力欄を出す人:</span>
+            {TYPES.map((t) => {
+              const on = r.targetTypes.includes(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleType(i, t)}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    on ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white"
+                  }`}
+                >
+                  {EMPLOYMENT_TYPE_LABEL[t]}
+                </button>
+              );
+            })}
+          </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={r.includedInWageChecks}
+              onChange={(e) => setRow(i, { includedInWageChecks: e.target.checked })}
+              className="mt-0.5 size-5"
+            />
+            <span>
+              最低賃金・社会保険の判定で、給料に含める
+              <span className="block text-xs text-slate-500">
+                家族手当・通勤手当・皆勤手当のような手当はチェックを外してください。
+              </span>
+            </span>
+          </label>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() =>
+            setRows((prev) => [
+              ...prev,
+              {
+                code: "",
+                label: "",
+                targetTypes: ["FULL_TIME"],
+                includedInWageChecks: true,
+                isActive: true,
+              },
+            ])
+          }
+          className={subBtn}
+        >
+          ＋ 手当を追加
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => run(() => saveNoticeAllowanceTypes(rows))}
+          className={primaryBtn}
+        >
+          {pending ? "保存中…" : "人ごとの手当を保存"}
+        </button>
+        <Message message={message} />
+      </div>
+    </section>
+  );
 }
 
 // ---------------- 勤務パターン ----------------

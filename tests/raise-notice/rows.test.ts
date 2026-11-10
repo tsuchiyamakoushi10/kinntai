@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { EMPLOYMENT_PRESETS } from "@/lib/labor-notice/constants";
-import type { NoticeWageInput } from "@/lib/labor-notice/types";
+import { DEFAULT_ALLOWANCE_TYPES, EMPLOYMENT_PRESETS } from "@/lib/labor-notice/constants";
+import type { NoticeAllowanceType, NoticeInput, NoticeWageInput } from "@/lib/labor-notice/types";
 import { renderRaiseDocument } from "@/lib/raise-notice/html";
 import {
+  applyRaiseToNotice,
   applyRaiseToWage,
   checkRaise,
   monthlyTotals,
   parseRaiseInput,
+  rowsFromNotice,
   rowsFromPreviousRaise,
   rowsFromWage,
   visibleRows,
@@ -22,9 +24,15 @@ const monthly: NoticeWageInput = {
   qualification: "CARE_WORKER",
   qualificationAllowanceYen: 15_000,
   singleParentChildren: 0,
-  managerAllowanceYen: 0,
-  counselorAllowanceYen: 10_000,
 };
+
+const monthlyNotice: Pick<NoticeInput, "employmentType" | "wage" | "allowances"> = {
+  employmentType: "FULL_TIME",
+  wage: monthly,
+  allowances: [{ code: "COUNSELOR", yen: 10_000 }],
+};
+const types = DEFAULT_ALLOWANCE_TYPES;
+const monthlyRows = () => rowsFromNotice(monthlyNotice, qualificationDefaults, types);
 
 const hourly: NoticeWageInput = {
   kind: "HOURLY",
@@ -44,15 +52,30 @@ function raise(rows: RaiseRow[], patch: Partial<RaiseInput> = {}): RaiseInput {
   };
 }
 
-describe("rowsFromWage", () => {
-  it("月給: 基本給・資格手当・管理者手当・相談員手当の行を、今の金額で作る", () => {
-    const rows = rowsFromWage(monthly, qualificationDefaults);
-    expect(rows.map((r) => [r.key, r.label, r.beforeYen, r.afterYen])).toEqual([
-      ["BASE", "基本給", 200_000, 200_000],
-      ["QUALIFICATION", "資格手当（介護福祉士）", 15_000, 15_000],
-      ["MANAGER", "管理者手当", 0, 0],
-      ["COUNSELOR", "相談員手当", 10_000, 10_000],
+describe("rowsFromNotice / rowsFromWage", () => {
+  it("月給: 基本給・資格手当と、正社員に載せる人ごとの手当 (0 円も) の行を今の金額で作る", () => {
+    const rows = monthlyRows();
+    expect(rows.map((r) => [r.key, r.code, r.label, r.beforeYen, r.afterYen])).toEqual([
+      ["BASE", undefined, "基本給", 200_000, 200_000],
+      ["QUALIFICATION", undefined, "資格手当（介護福祉士）", 15_000, 15_000],
+      ["ALLOWANCE", "MANAGER", "管理者手当", 0, 0],
+      ["ALLOWANCE", "COUNSELOR", "相談員手当", 10_000, 10_000],
     ]);
+  });
+  it("使わない設定の手当でも、金額が入っていれば行に出す。区分外で 0 円なら出さない", () => {
+    const custom: NoticeAllowanceType[] = [
+      { ...types[0]!, isActive: false },
+      { ...types[1]!, isActive: false },
+      {
+        code: "LEADER",
+        label: "リーダー手当",
+        targetTypes: ["PART_TIME"],
+        includedInWageChecks: true,
+        isActive: true,
+      },
+    ];
+    const rows = rowsFromNotice(monthlyNotice, qualificationDefaults, custom);
+    expect(rows.filter((r) => r.key === "ALLOWANCE").map((r) => r.code)).toEqual(["COUNSELOR"]);
   });
   it("資格手当が未指定ならマスタの既定額を使う", () => {
     const rows = rowsFromWage(
@@ -74,16 +97,16 @@ describe("rowsFromWage", () => {
 
 describe("checkRaise", () => {
   it("金額が変わっていなければ発行できない", () => {
-    const rows = rowsFromWage(monthly, qualificationDefaults);
+    const rows = monthlyRows();
     expect(checkRaise(raise(rows)).errors).toContain(
       "金額が変わっていません。変更後の金額を入力してください",
     );
   });
   it("基本給を上げれば問題なし。下がった行は警告", () => {
-    const rows = rowsFromWage(monthly, qualificationDefaults).map((r) =>
+    const rows = monthlyRows().map((r) =>
       r.key === "BASE"
         ? { ...r, afterYen: 205_000 }
-        : r.key === "COUNSELOR"
+        : r.code === "COUNSELOR"
           ? { ...r, afterYen: 5_000 }
           : r,
     );
@@ -106,21 +129,47 @@ describe("checkRaise", () => {
   });
 });
 
-describe("applyRaiseToWage", () => {
-  it("変更後の金額を次の労働条件通知書の賃金に写す (ひとり親手当などはそのまま)", () => {
-    const rows = rowsFromWage(monthly, qualificationDefaults).map((r) =>
+describe("applyRaiseToNotice / applyRaiseToWage", () => {
+  it("変更後の金額を次の労働条件通知書の賃金と人ごとの手当に写す (ひとり親手当などはそのまま)", () => {
+    const rows = monthlyRows().map((r) =>
       r.key === "BASE"
         ? { ...r, afterYen: 210_000 }
-        : r.key === "MANAGER"
+        : r.code === "MANAGER"
           ? { ...r, afterYen: 20_000 }
-          : r,
+          : r.code === "COUNSELOR"
+            ? { ...r, afterYen: 0 }
+            : r,
     );
-    expect(applyRaiseToWage({ ...monthly, singleParentChildren: 1 }, "MONTHLY", rows)).toEqual({
-      ...monthly,
-      singleParentChildren: 1,
-      baseYen: 210_000,
-      managerAllowanceYen: 20_000,
-    });
+    const next = applyRaiseToNotice(
+      { ...monthlyNotice, wage: { ...monthly, singleParentChildren: 1 } },
+      "MONTHLY",
+      rows,
+    );
+    expect(next.wage).toEqual({ ...monthly, singleParentChildren: 1, baseYen: 210_000 });
+    expect(next.allowances).toEqual([{ code: "MANAGER", yen: 20_000 }]);
+  });
+  it("2026-11 より前の昇給通知 (key: MANAGER / COUNSELOR) も手当に写す", () => {
+    const legacy = [
+      { key: "BASE", label: "基本給", unit: "MONTH", beforeYen: 200_000, afterYen: 200_000 },
+      { key: "MANAGER", label: "管理者手当", unit: "MONTH", beforeYen: 0, afterYen: 30_000 },
+    ] as unknown as RaiseRow[];
+    expect(applyRaiseToNotice(monthlyNotice, "MONTHLY", legacy).allowances).toEqual([
+      { code: "COUNSELOR", yen: 10_000 },
+      { code: "MANAGER", yen: 30_000 },
+    ]);
+  });
+  it("賃金の形が違えば手当も写さない", () => {
+    const rows = [
+      {
+        key: "ALLOWANCE",
+        code: "MANAGER",
+        label: "管理者手当",
+        unit: "MONTH",
+        beforeYen: 0,
+        afterYen: 1,
+      },
+    ] as RaiseRow[];
+    expect(applyRaiseToNotice(monthlyNotice, "HOURLY", rows)).toBe(monthlyNotice);
   });
   it("時給・夜勤専従も基本の金額を写す", () => {
     const hRows = [{ ...rowsFromWage(hourly, qualificationDefaults)[0]!, afterYen: 1_200 }];
@@ -142,19 +191,35 @@ describe("前回の昇給から次の昇給へ", () => {
       { key: "OTHER", label: "皆勤手当", unit: "MONTH", beforeYen: 0, afterYen: 3_000 },
       { key: "OTHER", label: "廃止", unit: "MONTH", beforeYen: 1_000, afterYen: 0 },
     ];
-    expect(rowsFromPreviousRaise(prev)).toEqual([
+    expect(rowsFromPreviousRaise(prev, "HOURLY", types)).toEqual([
       { key: "BASE", label: "時給", unit: "HOUR", beforeYen: 1_150, afterYen: 1_150 },
       { key: "OTHER", label: "皆勤手当", unit: "MONTH", beforeYen: 3_000, afterYen: 3_000 },
+    ]);
+  });
+  it("旧 key (MANAGER / COUNSELOR) を読み替え、後から設定で足した手当は 0 円で追加手当より前に足す", () => {
+    const prev = [
+      { key: "BASE", label: "基本給", unit: "MONTH", beforeYen: 200_000, afterYen: 205_000 },
+      { key: "COUNSELOR", label: "相談員手当", unit: "MONTH", beforeYen: 10_000, afterYen: 12_000 },
+      { key: "OTHER", label: "皆勤手当", unit: "MONTH", beforeYen: 0, afterYen: 3_000 },
+    ] as unknown as RaiseRow[];
+    const rows = rowsFromPreviousRaise(prev, "MONTHLY", types);
+    expect(rows.map((r) => [r.key, r.code, r.beforeYen])).toEqual([
+      ["BASE", undefined, 205_000],
+      ["ALLOWANCE", "COUNSELOR", 12_000],
+      ["ALLOWANCE", "MANAGER", 0],
+      ["OTHER", undefined, 3_000],
     ]);
   });
 });
 
 describe("書面", () => {
-  const rows = rowsFromWage(monthly, qualificationDefaults).map((r) =>
-    r.key === "BASE" ? { ...r, afterYen: 205_000 } : r,
-  );
+  const rows = monthlyRows().map((r) => (r.key === "BASE" ? { ...r, afterYen: 205_000 } : r));
   it("0 円の行は載せず、月給は合計を出す", () => {
-    expect(visibleRows(rows).map((r) => r.key)).toEqual(["BASE", "QUALIFICATION", "COUNSELOR"]);
+    expect(visibleRows(rows).map((r) => r.label)).toEqual([
+      "基本給",
+      "資格手当（介護福祉士）",
+      "相談員手当",
+    ]);
     expect(monthlyTotals("MONTHLY", visibleRows(rows))).toEqual({
       beforeYen: 225_000,
       afterYen: 230_000,
@@ -178,7 +243,7 @@ describe("書面", () => {
 });
 
 describe("parseRaiseInput", () => {
-  const ok = raise(rowsFromWage(monthly, qualificationDefaults));
+  const ok = raise(monthlyRows());
   it("正しい入力は JSON 往復で通る", () => {
     expect(parseRaiseInput(JSON.parse(JSON.stringify(ok)))).toEqual(ok);
   });
@@ -187,6 +252,11 @@ describe("parseRaiseInput", () => {
     expect(bad([{ ...ok.rows[0], afterYen: -1 }])).toBeNull();
     expect(bad([{ ...ok.rows[0], key: "BONUS" }])).toBeNull();
     expect(bad([ok.rows[0], ok.rows[0]])).toBeNull();
+    // 人ごとの手当は code が必要で、同じ code の重複は弾く (違う code なら並べてよい)
+    const allowance = ok.rows.find((r) => r.code === "COUNSELOR")!;
+    expect(bad([ok.rows[0], { ...allowance, code: undefined }])).toBeNull();
+    expect(bad([ok.rows[0], allowance, allowance])).toBeNull();
+    expect(bad([ok.rows[0], allowance, { ...allowance, code: "MANAGER" }])).not.toBeNull();
     expect(parseRaiseInput({ ...ok, kind: "YEARLY" })).toBeNull();
   });
 });

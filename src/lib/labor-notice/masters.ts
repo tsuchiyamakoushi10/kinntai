@@ -3,11 +3,14 @@
  *
  * - DB の行は画面から保存した値なので、壊れていたら既定値に戻す (帳票を止めない)。
  * - 保存時は同じ検証で弾き、エラー文言を画面に返す。
- * docs/labor-notice.md §2.1
+ * docs/labor-notice.md §2.1, §2.2
  */
 import type {
   AllowanceRow,
   MinWage,
+  NoticeAllowanceInput,
+  NoticeAllowanceType,
+  NoticeEmploymentType,
   NoticePreset,
   NoticeWorkPattern,
   PresetTexts,
@@ -249,4 +252,92 @@ export function checkMinWage(v: unknown): Checked<MinWage> {
     return { ok: false, error: "発効日を入力してください" };
   }
   return { ok: true, value: { prefecture, yen: v.yen, effectiveFrom: v.effectiveFrom } };
+}
+
+const EMPLOYMENT_TYPES: ReadonlyArray<NoticeEmploymentType> = [
+  "FULL_TIME",
+  "PART_TIME",
+  "NIGHT_ONLY",
+];
+const ALLOWANCE_CODE = /^[A-Z0-9_]{1,32}$/;
+/** 書面で自動計算の行と同じ名前は紛らわしいので使わせない */
+const RESERVED_ALLOWANCE_LABELS = ["基本給", "時給", "資格手当", "ひとり親手当"];
+
+/**
+ * 人ごとの手当の種類一覧の保存前チェック。code が空の行は新規 (呼び出し側で採番)。
+ * 削除はさせず「使わない」にする (下書きが code で参照しているため)。docs/labor-notice.md §2.2
+ */
+export function checkAllowanceTypes(v: unknown): Checked<NoticeAllowanceType[]> {
+  if (!Array.isArray(v) || v.length > 50) {
+    return { ok: false, error: "手当の一覧が読み取れません" };
+  }
+  const out: NoticeAllowanceType[] = [];
+  const labels = new Set<string>();
+  const codes = new Set<string>();
+  for (const a of v) {
+    if (!isObj(a)) return { ok: false, error: "手当の一覧が読み取れません" };
+    const label = typeof a.label === "string" ? a.label.trim() : "";
+    if (label === "" || label.length > 20) {
+      return { ok: false, error: "手当の名前を 20 文字以内で入力してください" };
+    }
+    if (RESERVED_ALLOWANCE_LABELS.includes(label)) {
+      return { ok: false, error: `「${label}」は通知書で自動で載るため、別の名前にしてください` };
+    }
+    if (labels.has(label)) return { ok: false, error: `「${label}」が重複しています` };
+    labels.add(label);
+    const code = typeof a.code === "string" ? a.code : "";
+    if (code !== "") {
+      if (!ALLOWANCE_CODE.test(code) || codes.has(code)) {
+        return { ok: false, error: "手当の一覧が読み取れません" };
+      }
+      codes.add(code);
+    }
+    if (
+      !Array.isArray(a.targetTypes) ||
+      !a.targetTypes.every((t) => (EMPLOYMENT_TYPES as ReadonlyArray<unknown>).includes(t))
+    ) {
+      return { ok: false, error: "手当の一覧が読み取れません" };
+    }
+    const targetTypes = EMPLOYMENT_TYPES.filter((t) => (a.targetTypes as unknown[]).includes(t));
+    if (targetTypes.length === 0) {
+      return { ok: false, error: `「${label}」を載せる区分を1つ以上選んでください` };
+    }
+    if (typeof a.includedInWageChecks !== "boolean" || typeof a.isActive !== "boolean") {
+      return { ok: false, error: "手当の一覧が読み取れません" };
+    }
+    out.push({
+      code,
+      label,
+      targetTypes,
+      includedInWageChecks: a.includedInWageChecks,
+      isActive: a.isActive,
+    });
+  }
+  return { ok: true, value: out };
+}
+
+/**
+ * 作成画面・昇給通知に出す人ごとの手当の種類 (並び順どおり)。
+ * その区分に載せる使用中の種類 + 金額が入っている種類 (使わない・区分外になっても消さない)。
+ */
+export function allowanceTypesFor(
+  types: ReadonlyArray<NoticeAllowanceType>,
+  employmentType: NoticeEmploymentType,
+  allowances: ReadonlyArray<NoticeAllowanceInput>,
+): NoticeAllowanceType[] {
+  return types.filter(
+    (t) =>
+      (t.isActive && t.targetTypes.includes(employmentType)) ||
+      allowances.some((a) => a.code === t.code && a.yen > 0),
+  );
+}
+
+/** 人ごとの手当の金額を 1 件書き換える (0 円は行ごと消す) */
+export function setAllowanceYen(
+  allowances: ReadonlyArray<NoticeAllowanceInput>,
+  code: string,
+  yen: number,
+): NoticeAllowanceInput[] {
+  const rest = allowances.filter((a) => a.code !== code);
+  return yen > 0 ? [...rest, { code, yen }] : rest;
 }

@@ -25,8 +25,6 @@ export type NoticeWageInput =
       qualificationAllowanceYen?: number | null;
       /** ひとり親手当の対象となる子の数 */
       singleParentChildren: number;
-      managerAllowanceYen: number;
-      counselorAllowanceYen: number;
     }
   | {
       kind: "HOURLY";
@@ -74,6 +72,23 @@ export type AllowanceRow = { label: string; body: string; onlyIfWorksNight?: boo
 /** 資格手当の月額。null = 金額未確定 (通知書作成時に手入力が必要) */
 export type QualificationAllowances = Record<Exclude<NoticeQualification, "NONE">, number | null>;
 
+/**
+ * 人ごとに金額を入れる手当の種類 (管理者手当・相談員手当 など)。S-A-34 で編集でき、
+ * 未設定なら constants.ts の既定値。docs/labor-notice.md §2.2
+ */
+export type NoticeAllowanceType = {
+  code: string;
+  label: string;
+  /** 作成画面に入力欄を出す区分 */
+  targetTypes: ReadonlyArray<NoticeEmploymentType>;
+  /** 最低賃金 (月給) と社会保険の月額賃金の判定に含めるか。家族手当・通勤手当などは含めない */
+  includedInWageChecks: boolean;
+  isActive: boolean;
+};
+
+/** 人ごとの手当の金額 (月額)。code は NoticeAllowanceType.code */
+export type NoticeAllowanceInput = { code: string; yen: number };
+
 /** 区分ごとの初期値。S-A-34 で編集でき、未設定なら constants.ts の既定値 */
 export type NoticePreset = {
   texts: PresetTexts;
@@ -104,6 +119,8 @@ export type NoticeInput = {
   officeId: string;
   jobDescription: string;
   wage: NoticeWageInput;
+  /** 人ごとの手当 (月額)。0 円の行は書面に出さない */
+  allowances: ReadonlyArray<NoticeAllowanceInput>;
   /** 勤務パターンのコード (NoticeWorkPattern.code) */
   patternCodes: ReadonlyArray<string>;
   daysPerWeek: number;
@@ -167,6 +184,8 @@ export type NoticeMasters = {
   offices: ReadonlyArray<NoticeOffice>;
   patterns: ReadonlyArray<NoticeWorkPattern>;
   minWages: ReadonlyArray<MinWage>;
+  /** 人ごとの手当の種類。並び順どおりで、使わないもの (isActive=false) も含む */
+  allowanceTypes: ReadonlyArray<NoticeAllowanceType>;
 };
 
 export type NoticeIssueCode =

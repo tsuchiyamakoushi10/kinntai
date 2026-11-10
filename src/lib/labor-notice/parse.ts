@@ -2,9 +2,11 @@
  * クライアントから届いた JSON を NoticeInput として検証する。
  * 型が合わない値は null を返す (エラー文言は画面側で出す)。
  */
+import { LEGACY_ALLOWANCE_CODES } from "./constants";
 import type {
   InsuranceSet,
   InsuranceStatus,
+  NoticeAllowanceInput,
   NoticeEmploymentType,
   NoticeInput,
   NoticeIssueCode,
@@ -62,24 +64,13 @@ function parseWage(v: unknown): NoticeWageInput | null {
     const baseYen = num(v.baseYen);
     const qualification = oneOf(v.qualification, QUALIFICATIONS);
     const singleParentChildren = num(v.singleParentChildren, 0, 20);
-    const managerAllowanceYen = num(v.managerAllowanceYen);
-    const counselorAllowanceYen = num(v.counselorAllowanceYen);
-    if (
-      baseYen === null ||
-      qualification === null ||
-      singleParentChildren === null ||
-      managerAllowanceYen === null ||
-      counselorAllowanceYen === null
-    )
-      return null;
+    if (baseYen === null || qualification === null || singleParentChildren === null) return null;
     return {
       kind: "MONTHLY",
       baseYen,
       qualification,
       qualificationAllowanceYen,
       singleParentChildren,
-      managerAllowanceYen,
-      counselorAllowanceYen,
     };
   }
   if (v.kind === "HOURLY") {
@@ -96,6 +87,33 @@ function parseWage(v: unknown): NoticeWageInput | null {
     return { kind: "NIGHT_DAILY", totalYen, nightHours };
   }
   return null;
+}
+
+/**
+ * 人ごとの手当。2026-11-10 より前の入力は allowances が無く、月給の
+ * wage.managerAllowanceYen / wage.counselorAllowanceYen に持っていたので読み替える。
+ */
+function parseAllowances(v: unknown, wage: unknown): NoticeAllowanceInput[] | null {
+  if (v === undefined) {
+    if (!isObj(wage) || wage.kind !== "MONTHLY") return [];
+    const legacy: NoticeAllowanceInput[] = [];
+    const manager = num(wage.managerAllowanceYen);
+    const counselor = num(wage.counselorAllowanceYen);
+    if (manager) legacy.push({ code: LEGACY_ALLOWANCE_CODES.manager, yen: manager });
+    if (counselor) legacy.push({ code: LEGACY_ALLOWANCE_CODES.counselor, yen: counselor });
+    return legacy;
+  }
+  if (!Array.isArray(v) || v.length > 50) return null;
+  const out: NoticeAllowanceInput[] = [];
+  for (const a of v) {
+    if (!isObj(a)) return null;
+    const code = str(a.code, 32);
+    const yen = num(a.yen);
+    if (code === null || code === "" || yen === null || !Number.isInteger(yen)) return null;
+    if (out.some((x) => x.code === code)) return null;
+    if (yen > 0) out.push({ code, yen });
+  }
+  return out;
 }
 
 function parseInsurance(v: unknown): InsuranceSet | null | undefined {
@@ -139,6 +157,7 @@ export function parseNoticeInput(v: unknown): NoticeInput | null {
   const officeId = str(v.officeId, 64);
   const jobDescription = str(v.jobDescription, 200);
   const wage = parseWage(v.wage);
+  const allowances = parseAllowances(v.allowances, v.wage);
   const patternCodes =
     Array.isArray(v.patternCodes) &&
     v.patternCodes.every((c) => typeof c === "string" && c.length <= 32)
@@ -164,6 +183,7 @@ export function parseNoticeInput(v: unknown): NoticeInput | null {
     officeId === null ||
     jobDescription === null ||
     wage === null ||
+    allowances === null ||
     patternCodes === null ||
     daysPerWeek === null ||
     hoursPerWeek === null ||
@@ -187,6 +207,7 @@ export function parseNoticeInput(v: unknown): NoticeInput | null {
     officeId,
     jobDescription,
     wage,
+    allowances,
     patternCodes,
     daysPerWeek,
     hoursPerWeek,

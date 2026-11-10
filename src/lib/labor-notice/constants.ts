@@ -7,6 +7,7 @@
  */
 import type {
   MinWage,
+  NoticeAllowanceType,
   NoticeEmploymentType,
   NoticePreset,
   NoticeQualification,
@@ -122,6 +123,30 @@ export const EMPLOYMENT_PRESETS: Record<NoticeEmploymentType, NoticePreset> = {
     qualificationAllowances: NO_QUALIFICATION_AMOUNTS,
   },
 };
+
+/**
+ * 人ごとに金額を入れる手当の種類の既定値 (S-A-34 で 1 度も保存していないとき)。
+ * code は 2026-11-10 より前の入力 (managerAllowanceYen / counselorAllowanceYen) の読み替え先。
+ * docs/labor-notice.md §2.2
+ */
+export const LEGACY_ALLOWANCE_CODES = { manager: "MANAGER", counselor: "COUNSELOR" } as const;
+
+export const DEFAULT_ALLOWANCE_TYPES: ReadonlyArray<NoticeAllowanceType> = [
+  {
+    code: LEGACY_ALLOWANCE_CODES.manager,
+    label: "管理者手当",
+    targetTypes: ["FULL_TIME"],
+    includedInWageChecks: true,
+    isActive: true,
+  },
+  {
+    code: LEGACY_ALLOWANCE_CODES.counselor,
+    label: "相談員手当",
+    targetTypes: ["FULL_TIME"],
+    includedInWageChecks: true,
+    isActive: true,
+  },
+];
 
 /**
  * 通知書に載せる勤務パターン。勤務表の記号 (夜入 / 夜明 など) とは別に、

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { parseNoticeInput } from "@/lib/labor-notice/parse";
 import type { NoticeMasters } from "@/lib/labor-notice/types";
-import { rowsFromBase, rowsFromPreviousRaise, rowsFromWage } from "@/lib/raise-notice/rows";
+import { rowsFromBase, rowsFromNotice, rowsFromPreviousRaise } from "@/lib/raise-notice/rows";
 import type { RaiseRow, RaiseView, RaiseWageKind } from "@/lib/raise-notice/types";
 
 export type RaiseEditorEmployee = {
@@ -70,7 +70,7 @@ export async function loadRaiseEmployees(masters: NoticeMasters): Promise<RaiseE
         name,
         officeName,
         kind: prev.kind,
-        rows: rowsFromPreviousRaise(prev.rows),
+        rows: rowsFromPreviousRaise(prev.rows, prev.kind, masters.allowanceTypes),
         source: `前回の昇給通知（${formatDate(raise.effectiveOn)}から）`,
       };
     }
@@ -80,9 +80,10 @@ export async function loadRaiseEmployees(masters: NoticeMasters): Promise<RaiseE
         name,
         officeName,
         kind: input.wage.kind,
-        rows: rowsFromWage(
-          input.wage,
+        rows: rowsFromNotice(
+          input,
           masters.presets[input.employmentType].qualificationAllowances,
+          masters.allowanceTypes,
         ),
         source: `労働条件通知書 ${notice.noticeNo ?? ""}`,
       };

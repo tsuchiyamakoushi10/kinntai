@@ -8,16 +8,22 @@ import type { NoticeWageInput } from "@/lib/labor-notice/types";
 export type RaiseWageKind = NoticeWageInput["kind"];
 
 /**
- * 金額の行。BASE / QUALIFICATION / MANAGER / COUNSELOR は労働条件通知書の賃金項目に対応し、
+ * 金額の行。BASE / QUALIFICATION / ALLOWANCE は労働条件通知書の賃金項目に対応し、
  * 発行時に次回の通知書へ引き継ぐ。OTHER は書面に載せるだけ。
+ * ALLOWANCE は人ごとの手当 (labor-notice.md §2.2) で、`code` で種類を指す。
  */
-export type RaiseRowKey = "BASE" | "QUALIFICATION" | "MANAGER" | "COUNSELOR" | "OTHER";
+export type RaiseRowKey = "BASE" | "QUALIFICATION" | "ALLOWANCE" | "OTHER";
+
+/** 2026-11-10 より前の snapshot にある key。読み込み時に ALLOWANCE へ読み替える */
+export type LegacyRaiseRowKey = "MANAGER" | "COUNSELOR";
 
 /** 金額の単位。基本給だけ賃金の形に合わせ、手当は月額 */
 export type RaiseUnit = "MONTH" | "HOUR" | "NIGHT";
 
 export type RaiseRow = {
   key: RaiseRowKey;
+  /** ALLOWANCE のときだけ。人ごとの手当の種類の code */
+  code?: string;
   label: string;
   unit: RaiseUnit;
   beforeYen: number;

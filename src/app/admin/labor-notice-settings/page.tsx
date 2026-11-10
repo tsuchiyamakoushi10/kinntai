@@ -22,6 +22,7 @@ export default async function LaborNoticeSettingsPage() {
         presets={settings.presets}
         patterns={settings.patterns}
         minWages={settings.minWages}
+        allowanceTypes={settings.allowanceTypes}
         savedPresets={settings.saved.presets}
       />
     </div>

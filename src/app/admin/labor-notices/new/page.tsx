@@ -6,7 +6,7 @@ import { nextContractInput, todayJst } from "@/lib/labor-notice/defaults";
 import { loadNoticeMasters } from "@/lib/labor-notice/load";
 import { parseNoticeInput } from "@/lib/labor-notice/parse";
 import type { NoticeInput } from "@/lib/labor-notice/types";
-import { applyRaiseToWage } from "@/lib/raise-notice/rows";
+import { applyRaiseToNotice } from "@/lib/raise-notice/rows";
 import type { RaiseView } from "@/lib/raise-notice/types";
 import { toDateInputValue } from "@/lib/format";
 
@@ -64,16 +64,11 @@ export default async function NewLaborNoticePage({ searchParams }: Props) {
               select: { snapshot: true },
             })
           : [];
-        const wage = raises.reduce((w, r) => {
+        const raised = raises.reduce((acc, r) => {
           const v = r.snapshot as unknown as RaiseView;
-          return applyRaiseToWage(w, v.kind, v.rows);
-        }, prev.wage);
-        initialInput = nextContractInput(
-          { ...prev, wage },
-          toDateInputValue(from.contractEndOn),
-          mode,
-          today,
-        );
+          return applyRaiseToNotice(acc, v.kind, v.rows);
+        }, prev);
+        initialInput = nextContractInput(raised, toDateInputValue(from.contractEndOn), mode, today);
         heading = mode === "RENEW" ? "契約更新の通知書を作る" : "期間の定めなしの通知書を作る";
       }
     }
