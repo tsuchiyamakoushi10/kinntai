@@ -3,7 +3,9 @@
  *
  * - 未認証なら /login に飛ばす（戻り先は ?from= に積む）
  * - /admin 配下と管理者向けマニュアル (/manual/admin/) は role=ADMIN のみ
- * - /me 配下は role=EMPLOYEE のみ（管理者は /admin にリダイレクト）
+ * - /me 配下は role=EMPLOYEE / MANAGER (部署の管理者)。管理者は /admin にリダイレクト。
+ *   /me/team (担当職員の面談・考課) の可否はページ側で DB の role を見て判定する
+ *   (付け替え直後に JWT が古くても正しく判定するため)
  * - /tablet 配下は Auth.js セッション不要（共有端末用）。ただし /tablet/setup は
  *   管理者ログイン必須（拠点登録の発行者を管理者に限定）。打刻フロー本体の
  *   認可は HMAC 署名付き cookie で行うため、ルート側のサーバーコンポーネントで
@@ -81,7 +83,7 @@ export default auth((req) => {
   ) {
     return NextResponse.redirect(new URL("/me", nextUrl));
   }
-  if (pathname.startsWith("/me") && user.role !== "EMPLOYEE") {
+  if (pathname.startsWith("/me") && user.role === "ADMIN") {
     return NextResponse.redirect(new URL("/admin", nextUrl));
   }
   if (pathname === "/") {

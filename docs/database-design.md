@@ -519,6 +519,27 @@ PDF 出力に必要な項目を追加する。既存カラムはそのまま維�
 - 生活相談員かどうかは `employees.job_category = life_counselor` で判定（自動配置では強制せず、午前/午後 各 N 名を満たすかの**チェック**に使う）
 - **旧 `office_shift_quotas`（パターン単位）は撤去済み（2026-06-09、[§2.11](#211-office_shift_quotas--拠点別-シフト必要人員数)）**。需要はこの午前/午後単位（デイ/ショート/NRS）と拠点専用 config（厨房・梨花）に一本化した
 
+### 2.24 育成面談・人事考課 (2026-11-19 追加)
+
+[growth-review.md](growth-review.md) 用。すべて `(employee_id, period_id)` で 1 件。期ごとの記録には絞り込み用に作成時の `office_id` を持つ (NULL 可)。
+将来の `tenant_id` は各テーブルに列追加で対応する。
+
+| テーブル                | 中身                                                                                                      |
+| ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| `evaluation_periods`    | 評価期間。名前・開始日・終了日・`is_current` (いまの期間、1 件だけ true)                                  |
+| `growth_profiles`       | 従業員ごと 1 行。いまの STEP (`growth_step`)、担当の部署の管理者 (`manager_employee_id`)                  |
+| `growth_step_histories` | STEP の履歴 (日付・STEP・メモ)                                                                            |
+| `growth_expectations`   | 期ごとの「今期の期待目標」                                                                                |
+| `interview_sheets`      | 職員の面談シート (頑張ったこと・困っていること・成長目標・将来像・提案、`submitted_at`)                   |
+| `interview_records`     | 面談記録 (面談日・強み・課題・期待・フォロー・期待する役割・支援・いまの / 次の STEP、状態)               |
+| `hr_assessments`        | 一次考課 (5 項目の S/A/B/C と根拠、総評、`draft` / `submitted`)                                           |
+| `hr_final_assessments`  | 最終考課 (5 項目の最終評価、変更理由、総合評価、コメント、`draft` / `confirmed`)                          |
+| `growth_reviews`        | 面談確認・処遇 (社長メモ・育成判断・前期 / 今期の基本給と賞与・理由・本人への言葉、`draft` / `confirmed`) |
+
+- `users.role` に `manager` (部署の管理者) を追加。
+- 期待度・育成区分・人材ポテンシャル・理由タグなどの選択肢は enum にせず text で持ち、`src/lib/growth/constants.ts` で管理する (文言の差し替えでマイグレーション不要にするため)。
+- Supabase の RLS は他テーブルと同様に全テーブル有効化する。
+
 ---
 
 ## 3. テーブル定義（Phase 3 以降、概念設計のみ）

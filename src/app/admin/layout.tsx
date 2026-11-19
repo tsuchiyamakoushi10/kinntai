@@ -56,7 +56,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         <aside className="w-56 shrink-0 border-r border-slate-200 bg-white">
           <AdminSidebar />
         </aside>
-        <main className="flex-1 p-6">{children}</main>
+        <main className="min-w-0 flex-1 p-6">{children}</main>
       </div>
     </div>
   );

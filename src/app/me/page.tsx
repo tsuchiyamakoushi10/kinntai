@@ -56,6 +56,22 @@ export default async function MyHomePage({ searchParams }: PageProps) {
         },
       })
     : 0;
+  // 面談シート: いまの期間があり、まだ出していなければホームで目立たせる。
+  // 部署の管理者かどうかは JWT ではなく DB の role で見る (付け替え直後でも出すため)。
+  const [currentPeriod, account] = await Promise.all([
+    prisma.evaluationPeriod.findFirst({
+      where: { isCurrent: true },
+      select: { id: true, name: true },
+    }),
+    prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } }),
+  ]);
+  const sheetPending =
+    !!currentPeriod &&
+    !!employeeId &&
+    (await prisma.interviewSheet.count({
+      where: { employeeId, periodId: currentPeriod.id, submittedAt: { not: null } },
+    })) === 0;
+  const isManager = account?.role === "MANAGER";
   const openBreakStart =
     attendance?.breakRecords.find((b) => b.breakEndAt === null)?.breakStartAt ?? null;
 
@@ -137,6 +153,32 @@ export default async function MyHomePage({ searchParams }: PageProps) {
         </Link>
       )}
 
+      {sheetPending && currentPeriod && (
+        <Link
+          href="/me/growth"
+          className="flex items-center justify-between rounded-2xl bg-sky-50 px-5 py-4 shadow-sm ring-2 ring-sky-300"
+        >
+          <span className="text-base font-bold text-slate-900">
+            {currentPeriod.name} の面談シートを書いてください
+          </span>
+          <span className="rounded-full bg-sky-600 px-3 py-1 text-sm font-bold text-white">
+            書く
+          </span>
+        </Link>
+      )}
+
+      {isManager && (
+        <Link
+          href="/me/team"
+          className="flex items-center justify-between rounded-2xl bg-pink-50 px-5 py-4 shadow-sm ring-2 ring-pink-300"
+        >
+          <span className="text-base font-bold text-slate-900">担当職員の面談・考課</span>
+          <span aria-hidden className="text-pink-500">
+            →
+          </span>
+        </Link>
+      )}
+
       <nav className="mt-2 grid grid-cols-1 gap-2">
         {ATTENDANCE_ENABLED && (
           <Link
@@ -174,6 +216,15 @@ export default async function MyHomePage({ searchParams }: PageProps) {
           className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
         >
           <span>シフト希望を出す</span>
+          <span aria-hidden className="text-slate-400">
+            →
+          </span>
+        </Link>
+        <Link
+          href="/me/growth"
+          className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
+        >
+          <span>わたしの成長・面談シート</span>
           <span aria-hidden className="text-slate-400">
             →
           </span>

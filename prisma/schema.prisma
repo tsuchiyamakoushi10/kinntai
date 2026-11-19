@@ -32,6 +32,8 @@ datasource db {
 enum UserRole {
   ADMIN    @map("admin")
   EMPLOYEE @map("employee")
+  // 部署の管理者 (面談・考課の担当)。従業員画面 + 担当職員の面談記録・一次考課。docs/growth-review.md §2
+  MANAGER  @map("manager")
 
   @@map("user_role")
 }
@@ -304,6 +306,11 @@ model Office {
   laborNotices        LaborNotice[]
   raiseNotices        RaiseNotice[]
   trainingSurveys     TrainingSurvey[]
+  interviewSheets     InterviewSheet[]
+  interviewRecords    InterviewRecord[]
+  hrAssessments       HrAssessment[]
+  hrFinalAssessments  HrFinalAssessment[]
+  growthReviews       GrowthReview[]
 
   @@map("offices")
 }
@@ -364,6 +371,8 @@ model User {
   issuedLaborNotices  LaborNotice[]        @relation("LaborNoticeIssuedBy")
   createdRaiseNotices RaiseNotice[]        @relation("RaiseNoticeCreatedBy")
   trainingSurveys     TrainingSurvey[]     @relation("TrainingSurveyCreatedBy")
+  interviewRecords    InterviewRecord[]    @relation("InterviewRecordInterviewer")
+  hrAssessments       HrAssessment[]       @relation("HrAssessmentAssessor")
 
   @@map("users")
 }
@@ -460,6 +469,15 @@ model Employee {
   surveyTargets         TrainingSurveyTarget[]
   surveyMaterialViews   TrainingSurveyMaterialView[]
   surveyResponses       TrainingSurveyResponse[]
+  growthProfile         GrowthProfile?               @relation("GrowthProfileEmployee")
+  managedGrowthProfiles GrowthProfile[]              @relation("GrowthProfileManager")
+  growthStepHistories   GrowthStepHistory[]
+  growthExpectations    GrowthExpectation[]
+  interviewSheets       InterviewSheet[]
+  interviewRecords      InterviewRecord[]
+  hrAssessments         HrAssessment[]
+  hrFinalAssessments    HrFinalAssessment[]
+  growthReviews         GrowthReview[]
 
   @@index([officeId, employmentStatus])
   @@map("employees")
@@ -1258,4 +1276,270 @@ model TrainingSurveyTemplate {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("training_survey_templates")
+}
+
+// =============================================================================
+// 育成面談・人事考課 (旧「結いナビ」)。docs/growth-review.md / docs/database-design.md §2.24
+// 期ごとの記録は (employee_id, period_id) で 1 件。office_id は作成時の所属 (絞り込み用)。
+// 将来 tenant_id を足す場合は各テーブルに列追加で対応する。
+// =============================================================================
+
+enum GrowthStep {
+  STEP1 @map("step1")
+  STEP2 @map("step2")
+  STEP3 @map("step3")
+  STEP4 @map("step4")
+  STEP5 @map("step5")
+
+  @@map("growth_step")
+}
+
+enum EvalRank {
+  S @map("s")
+  A @map("a")
+  B @map("b")
+  C @map("c")
+
+  @@map("eval_rank")
+}
+
+enum InterviewRecordStatus {
+  NOT_STARTED @map("not_started")
+  IN_PROGRESS @map("in_progress")
+  DONE        @map("done")
+
+  @@map("interview_record_status")
+}
+
+enum HrAssessmentStatus {
+  DRAFT     @map("draft")
+  SUBMITTED @map("submitted")
+
+  @@map("hr_assessment_status")
+}
+
+// 社長の最終考課・面談確認の状態
+enum GrowthDecisionStatus {
+  DRAFT     @map("draft")
+  CONFIRMED @map("confirmed")
+
+  @@map("growth_decision_status")
+}
+
+model EvaluationPeriod {
+  id        String   @id @default(uuid()) @db.Uuid
+  // 表示名 (例 "2026年 上期")
+  name      String
+  startOn   DateTime @map("start_on") @db.Date
+  endOn     DateTime @map("end_on") @db.Date
+  // いまの期間。true は 1 件だけ (アプリ側で保証)
+  isCurrent Boolean  @default(false) @map("is_current")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  expectations       GrowthExpectation[]
+  interviewSheets    InterviewSheet[]
+  interviewRecords   InterviewRecord[]
+  hrAssessments      HrAssessment[]
+  hrFinalAssessments HrFinalAssessment[]
+  growthReviews      GrowthReview[]
+
+  @@index([startOn(sort: Desc)])
+  @@map("evaluation_periods")
+}
+
+// 従業員ごと 1 行。いまの STEP と担当の部署の管理者 (User.role=manager の従業員)。
+model GrowthProfile {
+  employeeId        String      @id @map("employee_id") @db.Uuid
+  growthStep        GrowthStep? @map("growth_step")
+  managerEmployeeId String?     @map("manager_employee_id") @db.Uuid
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee  @relation("GrowthProfileEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  manager  Employee? @relation("GrowthProfileManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([managerEmployeeId])
+  @@map("growth_profiles")
+}
+
+model GrowthStepHistory {
+  id         String     @id @default(uuid()) @db.Uuid
+  employeeId String     @map("employee_id") @db.Uuid
+  step       GrowthStep
+  changedOn  DateTime   @map("changed_on") @db.Date
+  note       String?
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, changedOn(sort: Desc)])
+  @@map("growth_step_histories")
+}
+
+model GrowthExpectation {
+  id         String   @id @default(uuid()) @db.Uuid
+  employeeId String   @map("employee_id") @db.Uuid
+  periodId   String   @map("period_id") @db.Uuid
+  content    String
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period   EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, periodId])
+  @@map("growth_expectations")
+}
+
+model InterviewSheet {
+  id          String    @id @default(uuid()) @db.Uuid
+  employeeId  String    @map("employee_id") @db.Uuid
+  periodId    String    @map("period_id") @db.Uuid
+  officeId    String?   @map("office_id") @db.Uuid
+  effort      String    @default("")
+  trouble     String    @default("")
+  growth      String    @default("")
+  vision      String    @default("")
+  proposal    String    @default("")
+  // null = 書きかけ (まだ出していない)
+  submittedAt DateTime? @map("submitted_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period   EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  office   Office?          @relation(fields: [officeId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, periodId])
+  @@map("interview_sheets")
+}
+
+model InterviewRecord {
+  id            String                @id @default(uuid()) @db.Uuid
+  employeeId    String                @map("employee_id") @db.Uuid
+  periodId      String                @map("period_id") @db.Uuid
+  officeId      String?               @map("office_id") @db.Uuid
+  interviewerId String?               @map("interviewer_id") @db.Uuid
+  interviewedOn DateTime?             @map("interviewed_on") @db.Date
+  strength      String                @default("")
+  issue         String                @default("")
+  expectation   String                @default("")
+  followUp      String                @default("") @map("follow_up")
+  // 今後期待する役割 (src/lib/growth/constants.ts の選択肢)
+  expectedRoles String[]              @default([]) @map("expected_roles")
+  supportPlan   String                @default("") @map("support_plan")
+  currentStep   GrowthStep?           @map("current_step")
+  nextStep      GrowthStep?           @map("next_step")
+  status        InterviewRecordStatus @default(IN_PROGRESS)
+  createdAt     DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee    Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period      EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  office      Office?          @relation(fields: [officeId], references: [id], onDelete: SetNull)
+  interviewer User?            @relation("InterviewRecordInterviewer", fields: [interviewerId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, periodId])
+  @@map("interview_records")
+}
+
+// 一次考課 (部署の管理者)。5 項目 × S/A/B/C + 根拠
+model HrAssessment {
+  id                            String             @id @default(uuid()) @db.Uuid
+  employeeId                    String             @map("employee_id") @db.Uuid
+  periodId                      String             @map("period_id") @db.Uuid
+  officeId                      String?            @map("office_id") @db.Uuid
+  assessorId                    String?            @map("assessor_id") @db.Uuid
+  userCenteredAction            EvalRank?          @map("user_centered_action")
+  userCenteredActionEvidence    String             @default("") @map("user_centered_action_evidence")
+  respectfulInteraction         EvalRank?          @map("respectful_interaction")
+  respectfulInteractionEvidence String             @default("") @map("respectful_interaction_evidence")
+  teamwork                      EvalRank?
+  teamworkEvidence              String             @default("") @map("teamwork_evidence")
+  initiativeImprovement         EvalRank?          @map("initiative_improvement")
+  initiativeImprovementEvidence String             @default("") @map("initiative_improvement_evidence")
+  responsibility                EvalRank?
+  responsibilityEvidence        String             @default("") @map("responsibility_evidence")
+  overallComment                String             @default("") @map("overall_comment")
+  status                        HrAssessmentStatus @default(DRAFT)
+  submittedAt                   DateTime?          @map("submitted_at") @db.Timestamptz(6)
+  createdAt                     DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                     DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period   EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  office   Office?          @relation(fields: [officeId], references: [id], onDelete: SetNull)
+  assessor User?            @relation("HrAssessmentAssessor", fields: [assessorId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, periodId])
+  @@map("hr_assessments")
+}
+
+// 最終考課 (社長)
+model HrFinalAssessment {
+  id                    String               @id @default(uuid()) @db.Uuid
+  employeeId            String               @map("employee_id") @db.Uuid
+  periodId              String               @map("period_id") @db.Uuid
+  officeId              String?              @map("office_id") @db.Uuid
+  userCenteredAction    EvalRank?            @map("user_centered_action")
+  respectfulInteraction EvalRank?            @map("respectful_interaction")
+  teamwork              EvalRank?
+  initiativeImprovement EvalRank?            @map("initiative_improvement")
+  responsibility        EvalRank?
+  // 一次考課から変えた理由
+  changeReason          String               @default("") @map("change_reason")
+  overallRank           EvalRank?            @map("overall_rank")
+  comment               String               @default("")
+  status                GrowthDecisionStatus @default(DRAFT)
+  confirmedAt           DateTime?            @map("confirmed_at") @db.Timestamptz(6)
+  createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period   EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  office   Office?          @relation(fields: [officeId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, periodId])
+  @@map("hr_final_assessments")
+}
+
+// 面談確認・育成判断・処遇判断 (社長)。選択肢系は text (src/lib/growth/constants.ts)
+model GrowthReview {
+  id                 String               @id @default(uuid()) @db.Uuid
+  employeeId         String               @map("employee_id") @db.Uuid
+  periodId           String               @map("period_id") @db.Uuid
+  officeId           String?              @map("office_id") @db.Uuid
+  presidentMemo      String               @default("") @map("president_memo")
+  needsFollowUp      Boolean              @default(false) @map("needs_follow_up")
+  followUpReason     String               @default("") @map("follow_up_reason")
+  expectationLevel   String?              @map("expectation_level")
+  developmentRank    String?              @map("development_rank")
+  talentPotential    String?              @map("talent_potential")
+  futureRole         String               @default("") @map("future_role")
+  lackingSkills      String               @default("") @map("lacking_skills")
+  nextAssignmentTags String[]             @default([]) @map("next_assignment_tags")
+  nextAssignments    String               @default("") @map("next_assignments")
+  developmentPolicy  String               @default("") @map("development_policy")
+  prevBaseSalary     Int?                 @map("prev_base_salary")
+  currentBaseSalary  Int?                 @map("current_base_salary")
+  prevBonus          Int?                 @map("prev_bonus")
+  currentBonus       Int?                 @map("current_bonus")
+  salaryReasons      String[]             @default([]) @map("salary_reasons")
+  bonusReasons       String[]             @default([]) @map("bonus_reasons")
+  compensationReason String               @default("") @map("compensation_reason")
+  // 社長コメント (本人への言葉)。本人画面への表示は未決 (docs/growth-review.md §9)
+  presidentMessage   String               @default("") @map("president_message")
+  status             GrowthDecisionStatus @default(DRAFT)
+  confirmedAt        DateTime?            @map("confirmed_at") @db.Timestamptz(6)
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period   EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  office   Office?          @relation(fields: [officeId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, periodId])
+  @@map("growth_reviews")
 }
