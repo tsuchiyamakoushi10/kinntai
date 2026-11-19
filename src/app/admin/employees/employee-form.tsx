@@ -27,6 +27,8 @@ type Props = {
     employeeCode: string;
     statusLabel: string;
     statusTone: "active" | "retired";
+    /** 退職処理の画面へのリンク (在籍中・休職中のとき) */
+    retireHref?: string;
   };
 };
 
@@ -54,6 +56,14 @@ export function EmployeeForm({ action, initial, offices, submitLabel, meta }: Pr
         <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
           <span className="font-mono text-xs text-slate-500">{meta.employeeCode}</span>
           <StatusChip label={meta.statusLabel} tone={meta.statusTone} />
+          {meta.retireHref && (
+            <Link
+              href={meta.retireHref}
+              className="ml-auto rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50"
+            >
+              退職処理
+            </Link>
+          )}
         </div>
       )}
 

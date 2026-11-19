@@ -88,6 +88,7 @@ export default async function EditEmployeePage({ params }: Props) {
           employeeCode: employee.employeeCode,
           statusLabel: EMPLOYMENT_STATUS_LABELS[employee.employmentStatus],
           statusTone: isRetired ? "retired" : "active",
+          retireHref: isRetired ? undefined : `/admin/employees/${employee.id}/retire`,
         }}
       />
     </div>

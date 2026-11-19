@@ -187,18 +187,6 @@ async function saveStaff(
   const joinedAt = s.joinedAt ? new Date(`${s.joinedAt}T00:00:00Z`) : null;
   const status = statusToDb(s.employmentStatus, s.retirementDate);
 
-  // 勤次郎コードは結いナビ側の項目 (クロスシフトの社員番号とは別)。重なりだけ確かめる
-  const kinjiro = s.kinjiroCode?.trim();
-  if (kinjiro) {
-    const others = await prisma.yuiStaffProfile.findMany({
-      where: { NOT: { id: s.id } },
-      select: { data: true },
-    });
-    if (others.some((o) => (o.data as StaffProfileData).kinjiroCode?.trim() === kinjiro)) {
-      return { ok: false, error: `勤次郎コード ${kinjiro} はすでに別の職員で使われています` };
-    }
-  }
-
   await prisma.$transaction(async (tx) => {
     if (current) {
       await tx.employee.update({

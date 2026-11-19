@@ -140,13 +140,21 @@ export default async function EmployeeListPage({ searchParams }: Props) {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{formatDate(e.joinedAt)}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
                     <Link
                       href={`/admin/employees/${e.id}/edit`}
                       className="text-sm font-medium text-slate-700 hover:text-slate-900 hover:underline"
                     >
                       編集
                     </Link>
+                    {!isRetired && (
+                      <Link
+                        href={`/admin/employees/${e.id}/retire`}
+                        className="ml-3 text-sm font-medium text-red-700 hover:text-red-800 hover:underline"
+                      >
+                        退職
+                      </Link>
+                    )}
                   </td>
                 </tr>
               );

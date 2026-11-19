@@ -37,7 +37,6 @@ import {
 } from "../../types";
 
 interface FormState {
-  kinjiroCode: string;
   name: string;
   furigana: string;
   jobType: JobType | "";
@@ -53,7 +52,6 @@ interface FormState {
 }
 
 const initialForm: FormState = {
-  kinjiroCode: "",
   name: "",
   furigana: "",
   jobType: "",
@@ -104,7 +102,6 @@ export default function StaffAdd() {
     setForm(
       s
         ? {
-            kinjiroCode: s.kinjiroCode ?? "",
             name: s.name,
             furigana: s.furigana ?? "",
             jobType: s.jobType,
@@ -142,7 +139,6 @@ export default function StaffAdd() {
 
   const validate = (): boolean => {
     const next: Partial<Record<keyof FormState, string>> = {};
-    if (!form.kinjiroCode.trim()) next.kinjiroCode = "勤次郎コードを入力してください";
     if (!form.name.trim()) next.name = "氏名を入力してください";
     if (!form.furigana.trim()) next.furigana = "フリガナを入力してください";
     if (!form.jobType) next.jobType = "主職種を選択してください";
@@ -167,7 +163,6 @@ export default function StaffAdd() {
       id: picked?.id ?? uid("user_staff"),
       name: form.name.trim(),
       furigana: form.furigana.trim(),
-      kinjiroCode: form.kinjiroCode.trim(),
       department: picked?.department ?? department,
       secondaryDepartments:
         form.secondaryDepartments.length > 0 ? form.secondaryDepartments : undefined,
@@ -286,14 +281,6 @@ export default function StaffAdd() {
 
         {/* 基本情報 */}
         <Section icon={IdCard} title="基本情報">
-          <Field label="勤次郎コード" required error={errors.kinjiroCode}>
-            <input
-              className="input-base"
-              placeholder="例：A0123"
-              value={form.kinjiroCode}
-              onChange={(e) => setForm((f) => ({ ...f, kinjiroCode: e.target.value }))}
-            />
-          </Field>
           <Field label="氏名" required error={errors.name}>
             <input
               className="input-base"

@@ -112,7 +112,6 @@ export default function StaffChart() {
       <Section icon={IdCard} title="基本情報">
         <Item label="氏名" value={staff.name} />
         <Item label="フリガナ" value={staff.furigana ?? "—"} />
-        <Item label="勤次郎コード" value={staff.kinjiroCode ?? "—"} />
       </Section>
 
       {/* 所属・役割 */}

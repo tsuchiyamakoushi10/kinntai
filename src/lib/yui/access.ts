@@ -51,7 +51,6 @@ export function claimableStaff(s: Staff): Staff {
   return {
     ...publicStaff(s),
     furigana: s.furigana,
-    kinjiroCode: s.kinjiroCode,
     secondaryDepartments: s.secondaryDepartments,
     position: s.position,
     joinedAt: s.joinedAt,

@@ -3,7 +3,7 @@
  *
  * - 氏名・フリガナ・入社日・在籍/退職は従業員マスタが正。
  *   結いナビの画面で直したときも従業員マスタへ書き戻す (二重管理にしない)。
- * - 勤次郎コード (クロスシフトの社員番号とは別)・部署・主職種・雇用形態 (夜勤専従を含む結いナビの区分)・職位・資格・成長STEP・担当管理者・メモは
+ * - 部署・主職種・雇用形態 (夜勤専従を含む結いナビの区分)・職位・資格・成長STEP・担当管理者・メモは
  *   結いナビ側だけで持つ (yui_staff_profiles.data)。未設定なら従業員マスタから初期値を作る。
  */
 import type {
@@ -27,7 +27,6 @@ export type StaffProfileData = Partial<
   Pick<
     Staff,
     | "email"
-    | "kinjiroCode"
     | "department"
     | "secondaryDepartments"
     | "jobType"
@@ -193,7 +192,6 @@ export function employeeToStaff(e: EmployeeRow, profile: StaffProfileData, today
     id: e.id,
     name: joinName(e.lastName, e.firstName),
     furigana: joinName(e.lastNameKana, e.firstNameKana) || undefined,
-    kinjiroCode: profile.kinjiroCode,
     email: profile.email ?? e.userEmail ?? undefined,
     department:
       (profile.department as Department | undefined) ??
@@ -246,7 +244,6 @@ export function presidentOnlyStaff(
 /** 結いナビの Staff から、結いナビ側だけで持つ項目を取り出す */
 export function profileFromStaff(s: Staff, withIdentity: boolean): StaffProfileData {
   const p: StaffProfileData = {
-    kinjiroCode: s.kinjiroCode?.trim() || undefined,
     email: s.email,
     department: s.department,
     secondaryDepartments: s.secondaryDepartments,

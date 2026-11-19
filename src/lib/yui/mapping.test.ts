@@ -45,13 +45,6 @@ describe("employeeToStaff", () => {
     });
   });
 
-  it("勤次郎コードは結いナビ側の値 (社員番号は使わない)", () => {
-    expect(employeeToStaff(row(), {}, "2026-11-19").kinjiroCode).toBeUndefined();
-    expect(employeeToStaff(row(), { kinjiroCode: "A0123" }, "2026-11-19").kinjiroCode).toBe(
-      "A0123",
-    );
-  });
-
   it("結いナビ側で決めた部署・職種・担当は従業員マスタより優先する", () => {
     const s = employeeToStaff(
       row(),

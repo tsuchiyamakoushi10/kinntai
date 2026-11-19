@@ -38,7 +38,6 @@ import {
 } from "../../types";
 
 interface FormState {
-  kinjiroCode: string;
   name: string;
   furigana: string;
   department: Department | "";
@@ -82,7 +81,6 @@ export default function StaffEdit() {
         .sort((a, b) => (a.furigana ?? a.name).localeCompare(b.furigana ?? b.name, "ja")),
     );
     setForm({
-      kinjiroCode: s.kinjiroCode ?? "",
       name: s.name,
       furigana: s.furigana ?? "",
       department: s.department,
@@ -163,7 +161,6 @@ export default function StaffEdit() {
       ...existing,
       name: form.name.trim(),
       furigana: form.furigana.trim() || undefined,
-      kinjiroCode: form.kinjiroCode.trim() || undefined,
       department: form.department as Department,
       secondaryDepartments:
         form.secondaryDepartments.length > 0 ? form.secondaryDepartments : undefined,
@@ -262,14 +259,6 @@ export default function StaffEdit() {
       <div className={saved ? "pointer-events-none opacity-60" : ""}>
         {/* 基本情報 */}
         <Section icon={IdCard} title="基本情報">
-          <Field label="勤次郎コード" required error={errors.kinjiroCode}>
-            <input
-              className="input-base"
-              placeholder="例：A0123"
-              value={form.kinjiroCode}
-              onChange={(e) => update({ kinjiroCode: e.target.value })}
-            />
-          </Field>
           <Field label="氏名" required error={errors.name}>
             <input
               className="input-base"
