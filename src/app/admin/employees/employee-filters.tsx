@@ -1,9 +1,18 @@
 import Link from "next/link";
 
+import {
+  EMPLOYEE_SORT_KEYS,
+  EMPLOYEE_SORT_LABELS,
+  type EmployeeSortKey,
+  type SortDir,
+} from "@/lib/employee-list-sort";
+
 export type EmployeeFilterValues = {
   officeId: string;
   status: "active" | "on_leave" | "retired" | "all";
   q: string;
+  sort: EmployeeSortKey;
+  dir: SortDir;
 };
 
 type Props = {
@@ -16,7 +25,12 @@ type Props = {
  * を真とする。クライアント JS なしで動く。
  */
 export function EmployeeFilters({ offices, values }: Props) {
-  const isFiltered = values.officeId !== "" || values.status !== "active" || values.q !== "";
+  const isFiltered =
+    values.officeId !== "" ||
+    values.status !== "active" ||
+    values.q !== "" ||
+    values.sort !== "code" ||
+    values.dir !== "asc";
 
   return (
     <form
@@ -61,6 +75,32 @@ export function EmployeeFilters({ offices, values }: Props) {
           placeholder="例: 山田 / ヤマダ"
           className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
         />
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-xs font-medium text-slate-600">並び順</span>
+        <span className="flex gap-1">
+          <select
+            name="sort"
+            defaultValue={values.sort}
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+          >
+            {EMPLOYEE_SORT_KEYS.map((k) => (
+              <option key={k} value={k}>
+                {EMPLOYEE_SORT_LABELS[k]}
+              </option>
+            ))}
+          </select>
+          <select
+            name="dir"
+            defaultValue={values.dir}
+            aria-label="順序"
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+          >
+            <option value="asc">上から順 (昇順)</option>
+            <option value="desc">逆順 (降順)</option>
+          </select>
+        </span>
       </label>
 
       <button

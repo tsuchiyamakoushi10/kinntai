@@ -8,6 +8,12 @@ import {
   EMPLOYMENT_TYPE_LABELS,
   JOB_CATEGORY_LABELS,
 } from "@/lib/employee-labels";
+import {
+  normalizeSort,
+  sortEmployees,
+  type EmployeeSortKey,
+  type SortDir,
+} from "@/lib/employee-list-sort";
 import { formatDate } from "@/lib/format";
 
 import { EmployeeFilters, type EmployeeFilterValues } from "./employee-filters";
@@ -18,6 +24,8 @@ type SearchParams = {
   officeId?: string;
   status?: string;
   q?: string;
+  sort?: string;
+  dir?: string;
 };
 
 type Props = {
@@ -37,6 +45,7 @@ export default async function EmployeeListPage({ searchParams }: Props) {
     officeId: sp.officeId ?? "",
     status: normalizeStatus(sp.status),
     q: (sp.q ?? "").trim(),
+    ...normalizeSort(sp.sort, sp.dir),
   };
 
   const where: Prisma.EmployeeWhereInput = {};
@@ -53,18 +62,58 @@ export default async function EmployeeListPage({ searchParams }: Props) {
     ];
   }
 
-  const [employees, offices] = await Promise.all([
+  const [rows, offices, officeOrder] = await Promise.all([
     prisma.employee.findMany({
       where,
       include: { office: { select: { code: true, name: true } } },
-      orderBy: [{ employmentStatus: "asc" }, { employeeCode: "asc" }],
     }),
     prisma.office.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
       select: { id: true, code: true, name: true },
     }),
+    prisma.office.findMany({ orderBy: { code: "asc" }, select: { id: true } }),
   ]);
+  const employees = sortEmployees(
+    rows.map((e) => {
+      const i = e.officeId ? officeOrder.findIndex((o) => o.id === e.officeId) : -1;
+      return { ...e, officeOrder: i >= 0 ? i : null };
+    }),
+    filters.sort,
+    filters.dir,
+  );
+
+  // 見出しを押したときの URL (同じ見出しをもう一度押すと逆順)
+  const sortHref = (key: EmployeeSortKey): string => {
+    const params = new URLSearchParams();
+    if (filters.officeId) params.set("officeId", filters.officeId);
+    if (filters.status !== "active") params.set("status", filters.status);
+    if (filters.q) params.set("q", filters.q);
+    const dir: SortDir = filters.sort === key && filters.dir === "asc" ? "desc" : "asc";
+    params.set("sort", key);
+    params.set("dir", dir);
+    return `/admin/employees?${params.toString()}`;
+  };
+  const SortTh = ({ k, label }: { k: EmployeeSortKey; label: string }) => {
+    const active = filters.sort === k;
+    return (
+      <th
+        className="px-4 py-3 font-medium"
+        aria-sort={active ? (filters.dir === "asc" ? "ascending" : "descending") : "none"}
+      >
+        <Link
+          href={sortHref(k)}
+          className={`inline-flex items-center gap-1 hover:text-slate-900 ${active ? "text-slate-900" : ""}`}
+          title="押すと並び替え (もう一度押すと逆順)"
+        >
+          {label}
+          <span aria-hidden className={active ? "text-pink-500" : "text-slate-300"}>
+            {active ? (filters.dir === "asc" ? "▲" : "▼") : "↕"}
+          </span>
+        </Link>
+      </th>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -101,12 +150,12 @@ export default async function EmployeeListPage({ searchParams }: Props) {
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-600">
             <tr>
-              <th className="px-4 py-3 font-medium">氏名</th>
-              <th className="px-4 py-3 font-medium">拠点</th>
-              <th className="px-4 py-3 font-medium">職種</th>
-              <th className="px-4 py-3 font-medium">雇用形態</th>
-              <th className="px-4 py-3 font-medium">在籍</th>
-              <th className="px-4 py-3 font-medium">入社日</th>
+              <SortTh k="kana" label="氏名" />
+              <SortTh k="office" label="拠点" />
+              <SortTh k="job" label="職種" />
+              <SortTh k="type" label="雇用形態" />
+              <SortTh k="status" label="在籍" />
+              <SortTh k="joined" label="入社日" />
               <th className="px-4 py-3" />
             </tr>
           </thead>
