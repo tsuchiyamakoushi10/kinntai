@@ -1,7 +1,7 @@
 "use client";
 
 import NextLink from "next/link";
-import { NavLink } from "@/yui/router";
+import { NavLink, useNavigate } from "@/yui/router";
 import {
   Heart,
   Home,
@@ -14,10 +14,13 @@ import {
   ArrowLeftRight,
   Settings,
   LayoutDashboard,
+  Repeat,
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/yui/auth";
-import type { Role } from "../types";
+import { staffStore } from "@/yui/storage";
+import type { Role, Staff } from "../types";
+import { homePath } from "./ProtectedRoute";
 
 const ROLE_LABEL: Record<Role, string> = {
   staff: "職員モード",
@@ -56,10 +59,47 @@ export default function Layout({
   homeHref: string;
   children: React.ReactNode;
 }) {
-  const { user, logout } = useAuth();
+  const { user, realUser, viewAs, setViewAs, logout } = useAuth();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
-  if (!user) return null;
+  if (!user || !realUser) return null;
+
+  // 社長だけ: 管理者・職員の画面を開くモード切替 (結いナビの「モード切替」を社長用に残したもの)
+  const isPresident = realUser.role === "president";
+  const byKana = (a: Staff, b: Staff) =>
+    (a.furigana ?? a.name).localeCompare(b.furigana ?? b.name, "ja");
+  const candidates: Record<"manager" | "staff", Staff[]> = isPresident
+    ? {
+        manager: staffStore
+          .list()
+          .filter((s) => s.role === "manager" && s.active)
+          .sort(byKana),
+        staff: staffStore
+          .list()
+          .filter((s) => s.role === "staff" && s.active)
+          .sort(byKana),
+      }
+    : { manager: [], staff: [] };
+
+  const switchToRole = (role: Role) => {
+    if (role === user.role) return;
+    if (role === "president") {
+      setViewAs(null);
+    } else {
+      const target = candidates[role][0];
+      if (!target) return;
+      setViewAs({ role, staffId: target.id });
+    }
+    setOpen(false);
+    navigate(homePath(role), { replace: true });
+  };
+
+  const switchPerson = (staffId: string) => {
+    if (!viewAs) return;
+    setViewAs({ ...viewAs, staffId });
+    navigate(homePath(viewAs.role), { replace: true });
+  };
 
   const items: NavItem[] = (() => {
     if (user.role === "staff") {
@@ -128,11 +168,11 @@ export default function Layout({
           <div className="text-ink-400 mb-2 text-xs">現在ログイン中</div>
           <div className="flex items-center gap-2">
             <div className="bg-warm-100 text-warm-600 flex h-10 w-10 items-center justify-center rounded-full font-bold">
-              {user.name.charAt(0)}
+              {realUser.name.charAt(0)}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-ink-800 truncate text-sm font-medium">{user.name}</div>
-              <div className="text-ink-400 truncate text-xs">{user.department}</div>
+              <div className="text-ink-800 truncate text-sm font-medium">{realUser.name}</div>
+              <div className="text-ink-400 truncate text-xs">{realUser.department}</div>
             </div>
           </div>
           <div className="mt-3">
@@ -158,6 +198,59 @@ export default function Layout({
             </NavLink>
           ))}
         </nav>
+
+        {/* モード切替 (社長だけ) */}
+        {isPresident && (
+          <div className="border-cream-200 border-t px-3 py-3">
+            <div className="text-ink-400 mb-2 flex items-center gap-1.5 px-2 text-[10px] font-semibold tracking-wider uppercase">
+              <Repeat className="h-3 w-3" />
+              モード切替
+            </div>
+            <div className="space-y-1">
+              {(["president", "manager", "staff"] as Role[]).map((r) => {
+                const active = user.role === r;
+                const disabled = r !== "president" && candidates[r].length === 0;
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => switchToRole(r)}
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition disabled:opacity-40 ${
+                      active
+                        ? "bg-cream-100 text-ink-800 cursor-default font-medium"
+                        : "text-ink-600 hover:bg-cream-50"
+                    }`}
+                  >
+                    <span>{ROLE_LABEL[r]}</span>
+                    {active && <span className="text-warm-500 text-xs font-bold">● 現在</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {viewAs && (
+              <div className="mt-2 px-2">
+                <label className="text-ink-400 mb-1 block text-[11px]">
+                  {viewAs.role === "manager" ? "表示する管理者" : "表示する職員"}
+                </label>
+                <select
+                  className="input-base !px-3 !py-1.5 text-sm"
+                  value={viewAs.staffId}
+                  onChange={(e) => switchPerson(e.target.value)}
+                >
+                  {candidates[viewAs.role].map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <p className="text-ink-400 mt-2 px-2 text-[10px] leading-relaxed">
+              ※ 管理者・職員の画面を、その人の立場で表示します
+            </p>
+          </div>
+        )}
 
         {/* CrossShift に戻る (結いナビの「モード切替（開発用）」の位置) */}
         <div className="border-cream-200 border-t px-3 py-3">
@@ -189,6 +282,7 @@ export default function Layout({
           <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5 text-sm md:px-8">
             <span className={`chip ${style.chip}`}>現在：{ROLE_LABEL[user.role]}</span>
             <span className={`font-medium ${style.accent}`}>{user.name}さん</span>
+            {viewAs && <span className="chip bg-ink-800 text-white">社長が表示中</span>}
             <span className="text-ink-400 hidden md:inline">
               ／ {user.department}
               {user.role === "staff" && ` ／ ${user.jobType}`}
