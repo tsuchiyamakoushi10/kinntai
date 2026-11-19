@@ -519,28 +519,32 @@ PDF 出力に必要な項目を追加する。既存カラムはそのまま維�
 - 生活相談員かどうかは `employees.job_category = life_counselor` で判定（自動配置では強制せず、午前/午後 各 N 名を満たすかの**チェック**に使う）
 - **旧 `office_shift_quotas`（パターン単位）は撤去済み（2026-06-09、[§2.11](#211-office_shift_quotas--拠点別-シフト必要人員数)）**。需要はこの午前/午後単位（デイ/ショート/NRS）と拠点専用 config（厨房・梨花）に一本化した
 
-### 2.24 育成面談・人事考課 (2026-11-19 追加)
+### 2.24 育成面談・人事考課 (結いナビ, 2026-11-19 作り直し)
 
-[growth-review.md](growth-review.md) 用。すべて `(employee_id, period_id)` で 1 件。期ごとの記録には絞り込み用に作成時の `office_id` を持つ (NULL 可)。
-将来の `tenant_id` は各テーブルに列追加で対応する。
+結いナビの画面をそのまま移植したため、記録は結いナビのデータの形 (JSON) のまま保存する。詳細は [growth-review.md](growth-review.md)。
 
-| テーブル                | 中身                                                                                                      |
-| ----------------------- | --------------------------------------------------------------------------------------------------------- |
-| `evaluation_periods`    | 評価期間。名前・開始日・終了日・`is_current` (いまの期間、1 件だけ true)                                  |
-| `growth_profiles`       | 従業員ごと 1 行。いまの STEP (`growth_step`)、担当の部署の管理者 (`manager_employee_id`)                  |
-| `growth_step_histories` | STEP の履歴 (日付・STEP・メモ)                                                                            |
-| `growth_expectations`   | 期ごとの「今期の期待目標」                                                                                |
-| `interview_sheets`      | 職員の面談シート (頑張ったこと・困っていること・成長目標・将来像・提案、`submitted_at`)                   |
-| `interview_records`     | 面談記録 (面談日・強み・課題・期待・フォロー・期待する役割・支援・いまの / 次の STEP、状態)               |
-| `hr_assessments`        | 一次考課 (5 項目の S/A/B/C と根拠、総評、`draft` / `submitted`)                                           |
-| `hr_final_assessments`  | 最終考課 (5 項目の最終評価、変更理由、総合評価、コメント、`draft` / `confirmed`)                          |
-| `growth_reviews`        | 面談確認・処遇 (社長メモ・育成判断・前期 / 今期の基本給と賞与・理由・本人への言葉、`draft` / `confirmed`) |
+**yui_staff_profiles** — 結いナビ側だけで持つ職員の情報
 
-- `users.role` に `manager` (部署の管理者) を追加。
-- 期待度・育成区分・人材ポテンシャル・理由タグなどの選択肢は enum にせず text で持ち、`src/lib/growth/constants.ts` で管理する (文言の差し替えでマイグレーション不要にするため)。
-- Supabase の RLS は他テーブルと同様に全テーブル有効化する。
+| カラム                  | 型          | 説明                                                                                              |
+| ----------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
+| id                      | text PK     | 従業員 ID。従業員に紐づかない社長 (admin ユーザー) はユーザー ID                                  |
+| data                    | jsonb       | 部署・兼務・主職種・職位・雇用形態(結いナビ区分)・資格・成長STEP・担当管理者 (managerId)・メモ 等 |
+| created_at / updated_at | timestamptz |                                                                                                   |
 
----
+**yui_records** — 結いナビの記録
+
+| カラム    | 型      | 説明                                                                                                         |
+| --------- | ------- | ------------------------------------------------------------------------------------------------------------ |
+| id        | text PK | UUID (画面で発行)                                                                                            |
+| kind      | text    | staffInterview / managerInterview / presidentReview / growthExpectation / growthPath / hrAssessment / period |
+| staff_id  | text    | 対象職員 (data.staffId の写し、絞り込み用)                                                                   |
+| period    | text    | 期間の名前 (例「2026年 下期」。結いナビは期間を名前で結びつける)                                             |
+| office_id | uuid    | 保存時の所属拠点 (絞り込み用)                                                                                |
+| data      | jsonb   | 結いナビの型 (src/yui/types) そのまま                                                                        |
+
+- index: (kind, staff_id)
+- TODO(multi-tenant): tenant_id を足すときは両テーブルに列追加
+- 旧版 (evaluation_periods, growth_profiles, interview_sheets 等 9 テーブル) は 20261119093229_yui_navi_port で削除
 
 ## 3. テーブル定義（Phase 3 以降、概念設計のみ）
 

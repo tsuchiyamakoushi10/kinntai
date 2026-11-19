@@ -44,12 +44,11 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    // 育成面談・人事考課 (旧「結いナビ」)。docs/growth-review.md
+    // 育成面談・人事考課 (結いナビ)。結いナビの画面 (/growth) を別のデザインのまま開く。docs/growth-review.md
     title: "面談・考課",
     items: [
-      { label: "面談・考課の状況", href: "/admin/growth" },
-      { label: "人材ダッシュボード", href: "/admin/growth/talent" },
-      { label: "期間・担当者の設定", href: "/admin/growth/settings" },
+      { label: "結いナビ (面談・考課)", href: "/growth/president/home" },
+      { label: "人材ダッシュボード", href: "/growth/president/talent" },
     ],
   },
   {
@@ -75,10 +74,6 @@ const SECTIONS: Section[] = [
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/admin") return pathname === "/admin";
-  // 「状況」は職員ごとの画面 (/admin/growth/staff/...) でも選択中にし、他の growth 配下では外す
-  if (href === "/admin/growth") {
-    return pathname === href || pathname.startsWith("/admin/growth/staff");
-  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

@@ -1,1 +1,105 @@
 @import "tailwindcss";
+
+/* ===========================================================================
+ * 結いナビ (育成面談・人事考課, /growth) のデザイン。元の tailwind.config.js / index.css を移植。
+ * 色の名前は結いナビ専用 (cream / warm / sage / ink) で、ほかの画面には影響しない。
+ * 角丸・フォントなど既存の値を変えるものは .yui の中だけで上書きする。
+ * =========================================================================== */
+@theme {
+  --color-cream-50: #fdfbf7;
+  --color-cream-100: #faf6ee;
+  --color-cream-200: #f4ebd9;
+
+  --color-warm-50: #fff8f3;
+  --color-warm-100: #fdeee0;
+  --color-warm-200: #f9d7b8;
+  --color-warm-300: #f2b98a;
+  --color-warm-400: #e89760;
+  --color-warm-500: #d97842;
+  --color-warm-600: #b85f31;
+
+  --color-sage-50: #f3f7f3;
+  --color-sage-100: #e2ece3;
+  --color-sage-200: #c4d9c7;
+  --color-sage-300: #9dbfa3;
+  --color-sage-400: #7aa481;
+  --color-sage-500: #5e8866;
+  --color-sage-600: #4a6e51;
+
+  --color-ink-50: #f5f4f1;
+  --color-ink-100: #e8e5dd;
+  --color-ink-400: #8a847a;
+  --color-ink-600: #5c564c;
+  --color-ink-800: #3a352d;
+  --color-ink-900: #23201b;
+
+  --shadow-soft: 0 2px 12px rgba(120, 100, 80, 0.08);
+  --shadow-card: 0 1px 3px rgba(120, 100, 80, 0.06), 0 4px 16px rgba(120, 100, 80, 0.05);
+}
+
+@layer base {
+  .yui {
+    --radius-2xl: 1.25rem;
+    --font-sans: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
+    font-family: var(--font-sans);
+    font-feature-settings: "palt";
+    background-color: var(--color-cream-50);
+    color: var(--color-ink-800);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* Tailwind v3 の既定値に合わせる (結いナビは v3 で作られている) */
+  .yui *,
+  .yui ::before,
+  .yui ::after {
+    border-color: var(--color-gray-200);
+  }
+  .yui input::placeholder,
+  .yui textarea::placeholder {
+    color: var(--color-gray-400);
+  }
+  .yui button:not(:disabled),
+  .yui [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  .yui input,
+  .yui textarea,
+  .yui select,
+  .yui button {
+    font-family: inherit;
+  }
+}
+
+@layer components {
+  .yui .card {
+    @apply border-cream-200 shadow-card rounded-2xl border bg-white p-5;
+  }
+  .yui .card-hover {
+    @apply hover:shadow-soft transition hover:-translate-y-0.5;
+  }
+  .yui .btn,
+  .yui .btn-primary,
+  .yui .btn-secondary,
+  .yui .btn-sage {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .yui .btn-primary {
+    @apply bg-warm-500 shadow-soft hover:bg-warm-600 text-white;
+  }
+  .yui .btn-secondary {
+    @apply border-cream-200 text-ink-800 hover:bg-cream-50 border bg-white;
+  }
+  .yui .btn-sage {
+    @apply bg-sage-500 hover:bg-sage-600 text-white;
+  }
+  .yui .input-base {
+    @apply border-cream-200 focus:border-warm-300 focus:ring-warm-200 w-full rounded-xl border bg-white px-4 py-2.5 transition outline-none focus:ring-2;
+  }
+  .yui .label-base {
+    @apply text-ink-600 mb-1.5 block text-sm font-medium;
+  }
+  .yui .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium;
+  }
+}
