@@ -13,6 +13,7 @@ import {
   Sparkles,
   NotebookPen,
   Building2,
+  Users,
 } from "lucide-react";
 import { useAuth } from "@/yui/auth";
 import { staffStore, uid } from "@/yui/storage";
@@ -81,6 +82,46 @@ export default function StaffAdd() {
   const managerName = user?.name ?? "";
   const department = (user?.department ?? "本部") as Department;
 
+  // CrossShift 追加: クロスシフトに登録済みの職員 (同じ部署・担当未定) を選んで自分の担当にする。
+  // 選ばなければ結いナビの元の動きどおり新しい職員を登録する (クロスシフトの従業員にも登録される)
+  const [pickId, setPickId] = useState("");
+  const candidates = staffStore
+    .list()
+    .filter(
+      (s) =>
+        s.role === "staff" &&
+        s.active &&
+        !s.managerId &&
+        s.id !== user?.id &&
+        [user?.department, ...(user?.secondaryDepartments ?? [])].includes(s.department),
+    )
+    .sort((a, b) => (a.furigana ?? a.name).localeCompare(b.furigana ?? b.name, "ja"));
+  const picked = pickId ? staffStore.get(pickId) : null;
+  const pickStaff = (id: string) => {
+    setPickId(id);
+    setErrors({});
+    const s = id ? staffStore.get(id) : null;
+    setForm(
+      s
+        ? {
+            kinjiroCode: s.kinjiroCode ?? "",
+            name: s.name,
+            furigana: s.furigana ?? "",
+            jobType: s.jobType,
+            secondaryDepartments: s.secondaryDepartments ?? [],
+            employmentType: s.employmentType,
+            joinedAt: s.joinedAt ?? "",
+            employmentStatus: s.employmentStatus ?? "在籍中",
+            returnDate: s.returnDate ?? "",
+            retirementDate: s.retirementDate ?? "",
+            qualifications: s.qualifications ?? [],
+            growthStep: s.growthStep ?? "",
+            managerMemo: "",
+          }
+        : initialForm,
+    );
+  };
+
   const toggleSecondary = (d: Department) => {
     setForm((f) => ({
       ...f,
@@ -122,11 +163,12 @@ export default function StaffAdd() {
       return;
     }
     const staff: Staff = {
-      id: uid("user_staff"),
+      ...(picked ?? {}),
+      id: picked?.id ?? uid("user_staff"),
       name: form.name.trim(),
       furigana: form.furigana.trim(),
       kinjiroCode: form.kinjiroCode.trim(),
-      department,
+      department: picked?.department ?? department,
       secondaryDepartments:
         form.secondaryDepartments.length > 0 ? form.secondaryDepartments : undefined,
       jobType: form.jobType as JobType,
@@ -148,6 +190,7 @@ export default function StaffAdd() {
   };
 
   const handleAddAnother = () => {
+    setPickId("");
     setForm(initialForm);
     setErrors({});
     setSavedStaff(null);
@@ -215,6 +258,32 @@ export default function StaffAdd() {
       )}
 
       <div className={savedStaff ? "pointer-events-none opacity-60" : ""}>
+        {/* CrossShift 追加: クロスシフトの職員から選ぶ */}
+        <Section icon={Users} title="クロスシフトの職員から選ぶ">
+          <Field
+            label="クロスシフトに登録済みの職員"
+            hint={
+              candidates.length > 0
+                ? "選ぶと、その職員をあなたの担当にします。新しい人を登録するときは空欄のまま"
+                : "同じ部署で、担当が決まっていない職員はいません。新しい人を登録するときはこのまま下へ"
+            }
+          >
+            <select
+              className="input-base"
+              value={pickId}
+              onChange={(e) => pickStaff(e.target.value)}
+              disabled={candidates.length === 0}
+            >
+              <option value="">（新しく登録する）</option>
+              {candidates.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}（{c.department}）
+                </option>
+              ))}
+            </select>
+          </Field>
+        </Section>
+
         {/* 基本情報 */}
         <Section icon={IdCard} title="基本情報">
           <Field label="勤次郎コード" required error={errors.kinjiroCode}>
@@ -246,7 +315,7 @@ export default function StaffAdd() {
         {/* 所属・役割 */}
         <Section icon={Building2} title="所属・役割">
           <Field label="主所属部署" hint="ログイン中の管理者の部署が自動設定されます">
-            <ReadOnlyValue value={department} />
+            <ReadOnlyValue value={picked?.department ?? department} />
           </Field>
           <Field label="担当管理者" hint="ログイン中の管理者が自動設定されます">
             <ReadOnlyValue value={managerName} />

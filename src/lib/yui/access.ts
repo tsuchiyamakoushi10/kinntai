@@ -27,6 +27,41 @@ export function publicStaff(s: Staff): Staff {
   };
 }
 
+/** 管理者の部署 (主所属 + 兼務) */
+export function managerDepartments(m: Staff | null | undefined): string[] {
+  if (!m) return [];
+  return [m.department, ...(m.secondaryDepartments ?? [])];
+}
+
+/**
+ * 管理者が「職員追加 → クロスシフトの職員から選ぶ」で自分の担当にできる人:
+ * 同じ部署の在籍中の職員で、まだ担当管理者が決まっていない人
+ */
+export function isClaimable(manager: Staff | null | undefined, s: Staff): boolean {
+  return (
+    s.role === "staff" &&
+    s.active &&
+    !s.managerId &&
+    managerDepartments(manager).includes(s.department)
+  );
+}
+
+/** 選ぶ欄に出す情報 (メモ・担当などは渡さない) */
+export function claimableStaff(s: Staff): Staff {
+  return {
+    ...publicStaff(s),
+    furigana: s.furigana,
+    kinjiroCode: s.kinjiroCode,
+    secondaryDepartments: s.secondaryDepartments,
+    position: s.position,
+    joinedAt: s.joinedAt,
+    returnDate: s.returnDate,
+    retirementDate: s.retirementDate,
+    qualifications: s.qualifications,
+    growthStep: s.growthStep,
+  };
+}
+
 /** 職員本人に見せる社長の確認 (処遇・メモは渡さない) */
 export function reviewForStaff(r: PresidentReview): PresidentReview {
   return {
@@ -60,6 +95,7 @@ export function scopeSnapshot(actor: YuiActor, all: YuiSnapshot): YuiSnapshot {
   const staff: Staff[] = [];
   for (const s of all.staff) {
     if (visible.has(s.id)) staff.push(s);
+    else if (actor.role === "manager" && isClaimable(me, s)) staff.push(claimableStaff(s));
     else if (
       // 担当者名・担当者の選択肢に出す人
       s.role !== "staff" ||
@@ -88,6 +124,8 @@ export interface WriteContext {
   existing: { kind: string; staffId: string | null } | null;
   /** (職員, 期間) の管理者面談がすでにあるか */
   managerInterviewExists?: boolean;
+  /** 保存する人 (管理者のときだけ。部署の確認に使う) */
+  actorStaff?: Staff | null;
 }
 
 /** 保存してよいか。だめなら理由 (画面に出す) を返す */
@@ -127,6 +165,12 @@ export function checkWrite(
   // 管理者
   if (kind === "staff") {
     if (ctx.target) {
+      // 同じ部署で担当が決まっていない職員を、自分の担当にする (職員追加 → クロスシフトの職員から選ぶ)
+      const claiming = ctx.target.managerId == null && isClaimable(ctx.actorStaff, ctx.target);
+      if (claiming) {
+        if (item.role !== "staff" || item.managerId !== actor.staffId) return deny;
+        return null;
+      }
       if (ctx.target.managerId !== actor.staffId) return deny;
       if (ctx.target.role !== "staff" || item.role !== "staff") return deny;
       return null;

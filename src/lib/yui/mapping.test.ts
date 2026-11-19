@@ -35,7 +35,6 @@ describe("employeeToStaff", () => {
       id: "e1",
       name: "山田 花子",
       furigana: "ヤマダ ハナコ",
-      kinjiroCode: "1001",
       department: "ナーシングホーム結いの心 Honjo",
       jobType: "看護職員",
       employmentType: "パート",
@@ -44,6 +43,13 @@ describe("employeeToStaff", () => {
       role: "staff",
       active: true,
     });
+  });
+
+  it("勤次郎コードは結いナビ側の値 (社員番号は使わない)", () => {
+    expect(employeeToStaff(row(), {}, "2026-11-19").kinjiroCode).toBeUndefined();
+    expect(employeeToStaff(row(), { kinjiroCode: "A0123" }, "2026-11-19").kinjiroCode).toBe(
+      "A0123",
+    );
   });
 
   it("結いナビ側で決めた部署・職種・担当は従業員マスタより優先する", () => {

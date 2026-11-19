@@ -31,6 +31,9 @@ const all: YuiSnapshot = {
     staff("m2", { role: "manager" }),
     staff("a", { managerId: "m" }),
     staff("b", { managerId: "m2" }),
+    staff("c"),
+    staff("d", { department: "厨房" }),
+    staff("r", { active: false }),
   ],
   staffInterviews: [
     {
@@ -80,7 +83,7 @@ const all: YuiSnapshot = {
 describe("scopeSnapshot", () => {
   it("社長はすべて見られる", () => {
     const s = scopeSnapshot(PRES, all);
-    expect(s.staff).toHaveLength(5);
+    expect(s.staff).toHaveLength(8);
     expect(s.presidentReviews).toHaveLength(1);
     expect(s.meId).toBe("p");
   });
@@ -89,8 +92,9 @@ describe("scopeSnapshot", () => {
     const s = scopeSnapshot(MGR, all);
     expect(s.staffInterviews.map((x) => x.id)).toEqual(["si-a"]);
     expect(s.presidentReviews).toHaveLength(0);
-    // 担当外の一般職員は名簿にも出さない
-    expect(s.staff.map((x) => x.id).sort()).toEqual(["a", "m", "m2", "p"]);
+    // 担当外の一般職員は名簿にも出さない (同じ部署で担当未定の在籍者だけ、職員追加の候補として出す)
+    expect(s.staff.map((x) => x.id).sort()).toEqual(["a", "c", "m", "m2", "p"]);
+    expect(s.staff.find((x) => x.id === "c")?.managerMemo).toBeUndefined();
     // 他の管理者は名前などだけ (メモは渡さない)
     expect(s.staff.find((x) => x.id === "m2")?.managerMemo).toBeUndefined();
     expect(s.staff.find((x) => x.id === "a")?.managerMemo).toBe("メモ");
@@ -155,6 +159,47 @@ describe("checkWrite", () => {
         "staff",
         { id: "a", role: "manager", managerId: "m" },
         { target: a, existing: { kind: "staff", staffId: "a" } },
+      ),
+    ).not.toBeNull();
+  });
+
+  it("管理者は同じ部署の担当未定の職員を、自分の担当にできる", () => {
+    const m = all.staff.find((x) => x.id === "m")!;
+    const c = all.staff.find((x) => x.id === "c")!;
+    const d = all.staff.find((x) => x.id === "d")!;
+    const ex = (id: string) => ({ kind: "staff", staffId: id });
+    expect(
+      checkWrite(
+        MGR,
+        "staff",
+        { id: "c", role: "staff", managerId: "m" },
+        { target: c, existing: ex("c"), actorStaff: m },
+      ),
+    ).toBeNull();
+    // 自分以外を担当にはできない
+    expect(
+      checkWrite(
+        MGR,
+        "staff",
+        { id: "c", role: "staff", managerId: "m2" },
+        { target: c, existing: ex("c"), actorStaff: m },
+      ),
+    ).not.toBeNull();
+    // 別の部署の人・担当が決まっている人はだめ
+    expect(
+      checkWrite(
+        MGR,
+        "staff",
+        { id: "d", role: "staff", managerId: "m" },
+        { target: d, existing: ex("d"), actorStaff: m },
+      ),
+    ).not.toBeNull();
+    expect(
+      checkWrite(
+        MGR,
+        "staff",
+        { id: "b", role: "staff", managerId: "m" },
+        { target: b, existing: ex("b"), actorStaff: m },
       ),
     ).not.toBeNull();
   });

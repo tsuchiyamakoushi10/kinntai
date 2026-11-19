@@ -74,10 +74,20 @@ export async function saveYuiItem(kind: YuiKind, raw: unknown): Promise<SaveResu
       }
     }
 
-    const denied = checkWrite(actor, kind, item, { target, existing, managerInterviewExists });
+    const actorStaff = actor.role === "manager" ? await loadStaff(actor.staffId) : null;
+    const denied = checkWrite(actor, kind, item, {
+      target,
+      existing,
+      managerInterviewExists,
+      actorStaff,
+    });
     if (denied) return { ok: false, error: denied };
 
-    if (kind === "staff") return await saveStaff(item as unknown as Staff, target);
+    if (kind === "staff") {
+      // 管理者が担当未定の職員を自分の担当にするときは、画面に渡していない項目 (メモ等) を消さない
+      const claiming = actor.role === "manager" && !!target && !target.managerId;
+      return await saveStaff(item as unknown as Staff, target, claiming);
+    }
     return await saveRecord(kind, item, target);
   } catch (e) {
     // 個人情報を出さないよう、エラーの種類だけ記録する
@@ -126,14 +136,30 @@ async function saveRecord(
   return { ok: true };
 }
 
+/** クロスシフトの従業員画面と同じ採番 (E + 4 桁の連番) */
+async function nextEmployeeCode(tx: Prisma.TransactionClient): Promise<string> {
+  const last = await tx.employee.findFirst({
+    where: { employeeCode: { startsWith: "E" } },
+    orderBy: { employeeCode: "desc" },
+    select: { employeeCode: true },
+  });
+  const lastNum = last ? Number.parseInt(last.employeeCode.slice(1), 10) : 0;
+  const next = Number.isFinite(lastNum) ? lastNum + 1 : 1;
+  return `E${String(next).padStart(4, "0")}`;
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * 職員の保存。氏名・フリガナ・勤次郎コード・入社日・在籍は従業員マスタへ書き戻し、
+ * 職員の保存。氏名・フリガナ・入社日・在籍は従業員マスタへ書き戻し、
  * それ以外は yui_staff_profiles に入れる。従業員マスタから作れる初期値と同じ項目は保存しない
  * (クロスシフト側で直したときに追従させるため)。
  */
-async function saveStaff(input: Staff, current: Staff | null): Promise<SaveResult> {
+async function saveStaff(
+  input: Staff,
+  current: Staff | null,
+  keepHidden = false,
+): Promise<SaveResult> {
   // 管理者マスターで「無効」にした管理者は、管理者から外す (職員に戻す)
   const s: Staff =
     input.role === "manager" && input.active === false
@@ -160,14 +186,17 @@ async function saveStaff(input: Staff, current: Staff | null): Promise<SaveResul
   const [lastKana, firstKana] = s.furigana?.trim() ? splitName(s.furigana) : [null, null];
   const joinedAt = s.joinedAt ? new Date(`${s.joinedAt}T00:00:00Z`) : null;
   const status = statusToDb(s.employmentStatus, s.retirementDate);
-  const code = s.kinjiroCode?.trim();
 
-  if (code) {
-    const dup = await prisma.employee.findFirst({
-      where: { employeeCode: code, NOT: { id: s.id } },
-      select: { id: true },
+  // 勤次郎コードは結いナビ側の項目 (クロスシフトの社員番号とは別)。重なりだけ確かめる
+  const kinjiro = s.kinjiroCode?.trim();
+  if (kinjiro) {
+    const others = await prisma.yuiStaffProfile.findMany({
+      where: { NOT: { id: s.id } },
+      select: { data: true },
     });
-    if (dup) return { ok: false, error: `勤次郎コード ${code} はすでに別の職員で使われています` };
+    if (others.some((o) => (o.data as StaffProfileData).kinjiroCode?.trim() === kinjiro)) {
+      return { ok: false, error: `勤次郎コード ${kinjiro} はすでに別の職員で使われています` };
+    }
   }
 
   await prisma.$transaction(async (tx) => {
@@ -180,32 +209,40 @@ async function saveStaff(input: Staff, current: Staff | null): Promise<SaveResul
           lastNameKana: lastKana,
           firstNameKana: firstKana,
           ...(joinedAt ? { joinedAt } : {}),
-          ...(code ? { employeeCode: code } : {}),
           employmentStatus: status.employmentStatus,
           retiredAt: status.retiredAt,
         },
       });
     } else {
+      // 新しい職員: クロスシフトの「従業員の新規登録」と同じ形で作る
+      // (社員番号は E0001 形式で自動採番、主所属の拠点配属も作る。ログイン ID は従業員画面で発行)
       if (!UUID_RE.test(s.id)) throw new Error("bad id");
       const offices = await tx.office.findMany({ select: { id: true, name: true } });
+      const officeId = officeIdForDepartment(s.department, offices);
       const type = employmentTypeToDb(s.employmentType);
       await tx.employee.create({
         data: {
           id: s.id,
-          employeeCode: code || `Y${Date.now().toString(36).toUpperCase()}`,
+          employeeCode: await nextEmployeeCode(tx),
           lastName: last,
           firstName: first,
           lastNameKana: lastKana,
           firstNameKana: firstKana,
           joinedAt,
-          officeId: officeIdForDepartment(s.department, offices),
+          officeId,
           jobCategory: jobCategoryFromJobType(s.jobType),
           employmentType: type.employmentType,
           nightShiftOnly: type.nightShiftOnly,
           employmentStatus: status.employmentStatus,
           retiredAt: status.retiredAt,
+          notes: "結いナビの職員追加で登録",
         },
       });
+      if (officeId) {
+        await tx.employeeOfficeAssignment.create({
+          data: { employeeId: s.id, officeId, role: "PRIMARY" },
+        });
+      }
     }
 
     // 管理者にする / 外す (社長だけが通る。access.ts)
@@ -240,6 +277,12 @@ async function saveStaff(input: Staff, current: Staff | null): Promise<SaveResul
     });
     const base = employeeToStaff(toEmployeeRow(emp), {}, todayJst());
     const profile: StaffProfileData = profileFromStaff(s, false);
+    if (keepHidden) {
+      const prev = await tx.yuiStaffProfile.findUnique({ where: { id: s.id } });
+      const p = (prev?.data ?? {}) as StaffProfileData;
+      if (p.managerMemo && !profile.managerMemo) profile.managerMemo = p.managerMemo;
+      if (p.email && !profile.email) profile.email = p.email;
+    }
     if (profile.department === base.department) delete profile.department;
     if (profile.jobType === base.jobType) delete profile.jobType;
     if (profile.employmentType === base.employmentType) delete profile.employmentType;
