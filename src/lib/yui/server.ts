@@ -9,6 +9,7 @@ import type { Staff } from "@/yui/types";
 
 import { scopeSnapshot } from "./access";
 import {
+  applyDefaultManagers,
   employeeToStaff,
   presidentOnlyStaff,
   type EmployeeRow,
@@ -35,6 +36,7 @@ const EMPLOYEE_SELECT = {
   jobCategory: true,
   employmentType: true,
   nightShiftOnly: true,
+  isManager: true,
   joinedAt: true,
   employmentStatus: true,
   retiredAt: true,
@@ -52,6 +54,7 @@ type EmployeeSelected = {
   jobCategory: EmployeeRow["jobCategory"];
   employmentType: EmployeeRow["employmentType"];
   nightShiftOnly: boolean;
+  isManager: boolean;
   joinedAt: Date | null;
   employmentStatus: EmployeeRow["employmentStatus"];
   retiredAt: Date | null;
@@ -70,6 +73,7 @@ export function toEmployeeRow(e: EmployeeSelected): EmployeeRow {
     jobCategory: e.jobCategory,
     employmentType: e.employmentType,
     nightShiftOnly: e.nightShiftOnly,
+    isManager: e.isManager,
     joinedAt: e.joinedAt,
     employmentStatus: e.employmentStatus,
     retiredAt: e.retiredAt,
@@ -100,7 +104,7 @@ export async function loadAllStaff(): Promise<Staff[]> {
   for (const a of admins) {
     list.push(presidentOnlyStaff(a.id, profiles.get(a.id) ?? {}, "社長"));
   }
-  return list;
+  return applyDefaultManagers(list, (id) => profiles.get(id)?.managerId !== undefined);
 }
 
 export async function loadStaff(id: string): Promise<Staff | null> {
@@ -122,6 +126,13 @@ export async function getYuiActor(): Promise<YuiActor | null> {
   }
   if (!user.employeeId) return null;
   let role: YuiActor["role"] = user.role === "MANAGER" ? "manager" : "staff";
+  if (role === "staff") {
+    const emp = await prisma.employee.findUnique({
+      where: { id: user.employeeId },
+      select: { isManager: true },
+    });
+    if (emp?.isManager) role = "manager";
+  }
   if (role === "staff") {
     const p = await prisma.yuiStaffProfile.findUnique({ where: { id: user.employeeId } });
     if ((p?.data as StaffProfileData | null)?.role === "manager") role = "manager";

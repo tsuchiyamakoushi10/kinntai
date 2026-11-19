@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyDefaultManagers,
+  defaultManagerId,
   departmentFromOffice,
   employeeToStaff,
   employmentTypeToDb,
@@ -25,6 +27,7 @@ const row = (over: Partial<EmployeeRow> = {}): EmployeeRow => ({
   officeName: "ナーシングホーム結いの心",
   userRole: "EMPLOYEE",
   userEmail: null,
+  isManager: false,
   ...over,
 });
 
@@ -118,5 +121,32 @@ describe("書き戻し", () => {
     expect(departmentFromOffice("ショートステイ結いの心")).toBe("ショートステイ結いの心");
     expect(departmentFromOffice("どこか")).toBeNull();
     expect(departmentFromOffice(null)).toBeNull();
+  });
+});
+
+describe("管理者 (従業員マスタの「管理者」チェックと連動)", () => {
+  it("「管理者」チェックがある人は結いナビの管理者", () => {
+    expect(employeeToStaff(row({ isManager: true }), {}, "2026-11-19").role).toBe("manager");
+    // 結いナビで以前「職員」として保存していても、チェックが優先
+    expect(employeeToStaff(row({ isManager: true }), { role: "staff" }, "2026-11-19").role).toBe(
+      "manager",
+    );
+  });
+
+  it("担当が決まっていない職員には、同じ部署の管理者が担当として付く", () => {
+    const today = "2026-11-19";
+    const mgr = employeeToStaff(row({ id: "m", isManager: true }), {}, today);
+    const a = employeeToStaff(row({ id: "a" }), {}, today);
+    const b = employeeToStaff(row({ id: "b" }), { managerId: null }, today);
+    const c = employeeToStaff(row({ id: "c", officeName: "厨房" }), {}, today);
+    const list = applyDefaultManagers([mgr, a, b, c], (id) => id === "b");
+    expect(list.find((x) => x.id === "a")?.managerId).toBe("m");
+    // 結いナビで「担当なし」にした人はそのまま
+    expect(list.find((x) => x.id === "b")?.managerId).toBeNull();
+    // 部署に管理者がいなければ担当なし
+    expect(list.find((x) => x.id === "c")?.managerId).toBeNull();
+    // 管理者自身には付けない
+    expect(list.find((x) => x.id === "m")?.managerId).toBeNull();
+    expect(defaultManagerId(a, [mgr, a])).toBe("m");
   });
 });

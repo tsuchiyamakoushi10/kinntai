@@ -64,6 +64,8 @@ export interface EmployeeRow {
   retiredAt: Date | null;
   officeName: string | null;
   userRole: "ADMIN" | "EMPLOYEE" | "MANAGER" | null;
+  /** 従業員マスタの「管理者」チェック (シフト用)。結いナビの管理者と同じにする */
+  isManager: boolean;
   userEmail: string | null;
 }
 
@@ -168,9 +170,13 @@ export function statusToDb(
   }
 }
 
-export function roleFrom(userRole: EmployeeRow["userRole"], profile: StaffProfileData): Role {
+export function roleFrom(
+  userRole: EmployeeRow["userRole"],
+  profile: StaffProfileData,
+  isManager = false,
+): Role {
   if (userRole === "ADMIN") return "president";
-  if (userRole === "MANAGER" || profile.role === "manager") return "manager";
+  if (isManager || userRole === "MANAGER" || profile.role === "manager") return "manager";
   return "staff";
 }
 
@@ -212,7 +218,7 @@ export function employeeToStaff(e: EmployeeRow, profile: StaffProfileData, today
     growthStep: profile.growthStep,
     managerMemo: profile.managerMemo,
     titleLabel: profile.titleLabel,
-    role: roleFrom(e.userRole, profile),
+    role: roleFrom(e.userRole, profile, e.isManager),
     managerId: profile.managerId ?? null,
     active: employmentStatus !== "退職済",
   };
@@ -267,4 +273,26 @@ export function profileFromStaff(s: Staff, withIdentity: boolean): StaffProfileD
   }
   // undefined は JSON に残らないので落とす
   return JSON.parse(JSON.stringify(p)) as StaffProfileData;
+}
+
+/**
+ * 担当管理者が決まっていない職員に、同じ部署の管理者を担当として付ける (初期値)。
+ * 結いナビで担当を選び直した職員 (yui_staff_profiles に managerId がある人) はそのまま。
+ * 同じ部署に管理者が複数いるときは並び順 (社員番号順) で先の人。
+ */
+export function defaultManagerId(s: Staff, all: Staff[]): string | null {
+  if (s.role !== "staff") return null;
+  const m = all.find(
+    (x) => x.id !== s.id && x.role === "manager" && x.active && x.department === s.department,
+  );
+  return m?.id ?? null;
+}
+
+export function applyDefaultManagers(
+  list: Staff[],
+  hasExplicitManager: (id: string) => boolean,
+): Staff[] {
+  return list.map((s) =>
+    hasExplicitManager(s.id) ? s : { ...s, managerId: defaultManagerId(s, list) },
+  );
 }

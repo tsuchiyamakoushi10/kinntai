@@ -12,6 +12,7 @@ import type { Staff } from "@/yui/types";
 
 import { checkWrite } from "./access";
 import {
+  defaultManagerId,
   employeeToStaff,
   employmentTypeToDb,
   jobCategoryFromJobType,
@@ -21,7 +22,7 @@ import {
   statusToDb,
   type StaffProfileData,
 } from "./mapping";
-import { getYuiActor, loadStaff, todayJst, toEmployeeRow } from "./server";
+import { getYuiActor, loadAllStaff, loadStaff, todayJst, toEmployeeRow } from "./server";
 import { YUI_RECORD_KINDS, type SaveResult, type YuiKind, type YuiRecordKind } from "./types";
 
 type Item = { id: string; staffId?: string } & Record<string, unknown>;
@@ -187,6 +188,8 @@ async function saveStaff(
   const joinedAt = s.joinedAt ? new Date(`${s.joinedAt}T00:00:00Z`) : null;
   const status = statusToDb(s.employmentStatus, s.retirementDate);
 
+  const allStaff = await loadAllStaff();
+
   await prisma.$transaction(async (tx) => {
     if (current) {
       await tx.employee.update({
@@ -233,14 +236,19 @@ async function saveStaff(
       }
     }
 
-    // 管理者にする / 外す (社長だけが通る。access.ts)
+    // 管理者にする / 外す (社長だけが通る。access.ts)。
+    // ログイン権限と、従業員マスタの「管理者」チェック (シフト用) を両方そろえる
     const user = await tx.user.findUnique({
       where: { employeeId: s.id },
       select: { id: true, role: true },
     });
-    if (user && user.role !== "ADMIN") {
-      const role = s.role === "manager" ? "MANAGER" : "EMPLOYEE";
-      if (user.role !== role) await tx.user.update({ where: { id: user.id }, data: { role } });
+    if (user?.role !== "ADMIN" && s.role !== "president") {
+      const isMgr = s.role === "manager";
+      if (user) {
+        const role = isMgr ? "MANAGER" : "EMPLOYEE";
+        if (user.role !== role) await tx.user.update({ where: { id: user.id }, data: { role } });
+      }
+      await tx.employee.update({ where: { id: s.id }, data: { isManager: isMgr } });
     }
 
     // 従業員マスタから作れる値と同じものは保存しない
@@ -256,6 +264,7 @@ async function saveStaff(
         jobCategory: true,
         employmentType: true,
         nightShiftOnly: true,
+        isManager: true,
         joinedAt: true,
         employmentStatus: true,
         retiredAt: true,
@@ -275,6 +284,16 @@ async function saveStaff(
     if (profile.jobType === base.jobType) delete profile.jobType;
     if (profile.employmentType === base.employmentType) delete profile.employmentType;
     if (profile.email && profile.email === base.email) delete profile.email;
+    // 担当管理者が「同じ部署の管理者」(初期値) と同じなら保存しない (部署や管理者が変わったら追従させる)
+    if (
+      (profile.managerId ?? null) ===
+      defaultManagerId(
+        s,
+        allStaff.map((x) => (x.id === s.id ? s : x)),
+      )
+    ) {
+      delete profile.managerId;
+    }
     await tx.yuiStaffProfile.upsert({
       where: { id: s.id },
       create: { id: s.id, data: profile as Prisma.InputJsonValue },
