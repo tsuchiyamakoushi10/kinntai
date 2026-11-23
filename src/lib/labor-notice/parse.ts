@@ -10,6 +10,7 @@ import type {
   NoticeEmploymentType,
   NoticeInput,
   NoticeIssueCode,
+  NoticePatternTime,
   NoticeQualification,
   NoticeWageInput,
   PresetTexts,
@@ -53,6 +54,29 @@ const num = (v: unknown, min = 0, max = 10_000_000): number | null =>
 const bool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null);
 const oneOf = <T extends string>(v: unknown, list: ReadonlyArray<T>): T | null =>
   typeof v === "string" && (list as ReadonlyArray<string>).includes(v) ? (v as T) : null;
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** 通知書ごとの時間の書き換え。古い下書き (項目なし) は {} */
+function parsePatternTimes(v: unknown): Record<string, NoticePatternTime> | null {
+  if (v === undefined || v === null) return {};
+  if (!isObj(v)) return null;
+  const out: Record<string, NoticePatternTime> = {};
+  const entries = Object.entries(v);
+  if (entries.length > 50) return null;
+  for (const [code, t] of entries) {
+    if (code.length > 32 || !isObj(t)) return null;
+    const start = typeof t.start === "string" && HHMM.test(t.start) ? t.start : null;
+    const end = typeof t.end === "string" && HHMM.test(t.end) ? t.end : null;
+    const endsNextDay = bool(t.endsNextDay);
+    const breakMinutes = num(t.breakMinutes, 0, 240);
+    if (start === null || end === null || endsNextDay === null || breakMinutes === null) {
+      return null;
+    }
+    out[code] = { start, end, endsNextDay, breakMinutes: Math.round(breakMinutes) };
+  }
+  return out;
+}
 
 function parseWage(v: unknown): NoticeWageInput | null {
   if (!isObj(v)) return null;
@@ -163,6 +187,7 @@ export function parseNoticeInput(v: unknown): NoticeInput | null {
     v.patternCodes.every((c) => typeof c === "string" && c.length <= 32)
       ? (v.patternCodes as string[])
       : null;
+  const patternTimes = parsePatternTimes(v.patternTimes);
   const daysPerWeek = num(v.daysPerWeek, 0, 7);
   const hoursPerWeek = num(v.hoursPerWeek, 0, 80);
   const monthlyHours = v.monthlyHours === null ? null : num(v.monthlyHours, 0, 400);
@@ -185,6 +210,7 @@ export function parseNoticeInput(v: unknown): NoticeInput | null {
     wage === null ||
     allowances === null ||
     patternCodes === null ||
+    patternTimes === null ||
     daysPerWeek === null ||
     hoursPerWeek === null ||
     (v.monthlyHours !== null && monthlyHours === null) ||
@@ -209,6 +235,7 @@ export function parseNoticeInput(v: unknown): NoticeInput | null {
     wage,
     allowances,
     patternCodes,
+    patternTimes,
     daysPerWeek,
     hoursPerWeek,
     monthlyHours,

@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import { computeNotice } from "@/lib/labor-notice/compute";
 import { EMPLOYMENT_TYPE_LABEL, QUALIFICATION_LABEL } from "@/lib/labor-notice/constants";
+import { workHours } from "@/lib/labor-notice/calc";
 import { applyPreset } from "@/lib/labor-notice/defaults";
 import { renderNoticeDocument } from "@/lib/labor-notice/html";
 import { allowanceTypesFor, PRESET_TEXT_LABEL, setAllowanceYen } from "@/lib/labor-notice/masters";
@@ -14,6 +15,7 @@ import type {
   NoticeInput,
   NoticeIssueCode,
   NoticeMasters,
+  NoticePatternTime,
   NoticeQualification,
   NoticeWageInput,
   PresetTexts,
@@ -122,14 +124,41 @@ export function NoticeEditor(props: Props) {
   }
 
   function togglePattern(code: string) {
-    setInput((prev) => ({
-      ...prev,
-      patternCodes: prev.patternCodes.includes(code)
-        ? prev.patternCodes.filter((c) => c !== code)
-        : masters.patterns
-            .map((p) => p.code)
-            .filter((c) => c === code || prev.patternCodes.includes(c)),
-    }));
+    setInput((prev) => {
+      const removing = prev.patternCodes.includes(code);
+      const restTimes = withoutKey(prev.patternTimes, code);
+      return {
+        ...prev,
+        patternCodes: removing
+          ? prev.patternCodes.filter((c) => c !== code)
+          : masters.patterns
+              .map((p) => p.code)
+              .filter((c) => c === code || prev.patternCodes.includes(c)),
+        // 外したパターンの書き換えは捨てる (選び直したら設定どおりから)
+        patternTimes: removing ? restTimes : prev.patternTimes,
+      };
+    });
+  }
+
+  /** この通知書だけ時間を書き換える。設定どおりに戻ったら書き換えを消す */
+  function setPatternTime(code: string, patch: Partial<NoticePatternTime>) {
+    const base = masters.patterns.find((p) => p.code === code);
+    if (!base) return;
+    setInput((prev) => {
+      const current = { ...pickTime(base), ...prev.patternTimes[code], ...patch };
+      const rest = withoutKey(prev.patternTimes, code);
+      return {
+        ...prev,
+        patternTimes: sameTime(current, pickTime(base)) ? rest : { ...rest, [code]: current },
+      };
+    });
+  }
+
+  function resetPatternTime(code: string) {
+    setInput((prev) => {
+      const rest = withoutKey(prev.patternTimes, code);
+      return { ...prev, patternTimes: rest };
+    });
   }
 
   function setOverride(key: keyof PresetTexts, value: string) {
@@ -455,6 +484,14 @@ export function NoticeEditor(props: Props) {
               );
             })}
           </div>
+          {input.patternCodes.length > 0 && (
+            <PatternTimesTable
+              masters={masters}
+              input={input}
+              onChange={setPatternTime}
+              onReset={resetPatternTime}
+            />
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="週に何日">
               <input
@@ -620,6 +657,139 @@ export function NoticeEditor(props: Props) {
 }
 
 const inputCls = "rounded-md border border-slate-300 px-3 py-2 text-base";
+
+function withoutKey<T>(obj: Readonly<Record<string, T>>, key: string): Record<string, T> {
+  return Object.fromEntries(Object.entries(obj).filter(([k]) => k !== key));
+}
+
+function pickTime(p: NoticePatternTime): NoticePatternTime {
+  return { start: p.start, end: p.end, endsNextDay: p.endsNextDay, breakMinutes: p.breakMinutes };
+}
+
+function sameTime(a: NoticePatternTime, b: NoticePatternTime): boolean {
+  return (
+    a.start === b.start &&
+    a.end === b.end &&
+    a.endsNextDay === b.endsNextDay &&
+    a.breakMinutes === b.breakMinutes
+  );
+}
+
+/** 選んだ勤務パターンの時間を、この人の通知書だけ書き換える表 */
+function PatternTimesTable({
+  masters,
+  input,
+  onChange,
+  onReset,
+}: {
+  masters: NoticeMasters;
+  input: NoticeInput;
+  onChange: (code: string, patch: Partial<NoticePatternTime>) => void;
+  onReset: (code: string) => void;
+}) {
+  const rows = masters.patterns.filter((p) => input.patternCodes.includes(p.code));
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-slate-600">
+        この人だけ時間が違うときは、下の表で書き換えてください。書き換えはこの通知書だけで、「労働条件通知書の設定」の勤務パターンは変わりません。
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[36rem] text-sm">
+          <thead className="text-left text-xs text-slate-600">
+            <tr>
+              <th className="px-2 py-1">名前</th>
+              <th className="px-2 py-1">始まり</th>
+              <th className="px-2 py-1">終わり</th>
+              <th className="px-2 py-1">翌日に終わる</th>
+              <th className="px-2 py-1">休憩（分）</th>
+              <th className="px-2 py-1">実働</th>
+              <th className="px-2 py-1" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p) => {
+              const t = { ...pickTime(p), ...input.patternTimes[p.code] };
+              const changed = input.patternTimes[p.code] !== undefined;
+              const hours = workHours(t);
+              return (
+                <tr
+                  key={p.code}
+                  className={`border-t border-slate-100 ${changed ? "bg-amber-50" : ""}`}
+                >
+                  <td className="px-2 py-1.5 font-medium text-slate-800">{p.label}</td>
+                  <td className="px-2 py-1.5">
+                    <input
+                      type="time"
+                      aria-label={`${p.label}の始まり`}
+                      value={t.start}
+                      onChange={(e) =>
+                        e.target.value && onChange(p.code, { start: e.target.value })
+                      }
+                      className={inputCls}
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input
+                      type="time"
+                      aria-label={`${p.label}の終わり`}
+                      value={t.end}
+                      onChange={(e) => e.target.value && onChange(p.code, { end: e.target.value })}
+                      className={inputCls}
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
+                    <input
+                      type="checkbox"
+                      aria-label={`${p.label}は翌日に終わる`}
+                      checked={t.endsNextDay}
+                      onChange={(e) => onChange(p.code, { endsNextDay: e.target.checked })}
+                      className="size-5"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input
+                      type="number"
+                      min={0}
+                      max={240}
+                      step={5}
+                      aria-label={`${p.label}の休憩（分）`}
+                      value={t.breakMinutes}
+                      onChange={(e) =>
+                        onChange(p.code, {
+                          breakMinutes: Math.min(
+                            240,
+                            Math.max(0, Number.parseInt(e.target.value, 10) || 0),
+                          ),
+                        })
+                      }
+                      className={`${inputCls} w-24`}
+                    />
+                  </td>
+                  <td
+                    className={`px-2 py-1.5 whitespace-nowrap ${hours > 0 ? "text-slate-700" : "font-semibold text-red-600"}`}
+                  >
+                    {hours > 0 ? `${Math.round(hours * 100) / 100}時間` : "時間を確認"}
+                  </td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">
+                    {changed && (
+                      <button
+                        type="button"
+                        onClick={() => onReset(p.code)}
+                        className="text-sm text-slate-600 underline hover:text-slate-900"
+                      >
+                        設定どおりに戻す
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 function label(s: "ENROLLED" | "NOT_ENROLLED"): string {
   return s === "ENROLLED" ? "加入" : "対象外";

@@ -109,10 +109,18 @@ export function computeNotice(input: NoticeInput, masters: NoticeMasters): Notic
   const patterns: NoticeWorkPattern[] = [];
   for (const code of input.patternCodes) {
     const p = masters.patterns.find((x) => x.code === code);
-    if (p) patterns.push(p);
+    if (p) patterns.push({ ...p, ...input.patternTimes[code] });
   }
   if (patterns.length === 0) {
     errors.push({ field: "patternCodes", message: "勤務パターンを1つ以上選んでください" });
+  }
+  for (const p of patterns) {
+    if (!(workHours(p) > 0)) {
+      errors.push({
+        field: "patternTimes",
+        message: `「${p.label}」の時間を見直してください（終わりが始まりより前なら「翌日」にチェック）`,
+      });
+    }
   }
   const patternRows: NoticePatternRow[] = patterns.map((p) => ({
     label: p.label,

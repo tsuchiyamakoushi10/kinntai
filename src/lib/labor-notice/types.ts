@@ -123,6 +123,11 @@ export type NoticeInput = {
   allowances: ReadonlyArray<NoticeAllowanceInput>;
   /** 勤務パターンのコード (NoticeWorkPattern.code) */
   patternCodes: ReadonlyArray<string>;
+  /**
+   * この通知書だけの時間の書き換え (code → 時間)。無い code は設定の勤務パターンどおり。
+   * 古い下書きには無いので、parse で {} を補う。
+   */
+  patternTimes: Readonly<Record<string, NoticePatternTime>>;
   daysPerWeek: number;
   hoursPerWeek: number;
   /** 正社員の 1 か月平均所定労働時間 */
@@ -175,6 +180,12 @@ export type NoticeWorkPattern = {
   endsNextDay: boolean;
   breakMinutes: number;
 };
+
+/** 勤務パターンの時間部分。通知書ごとの書き換えに使う */
+export type NoticePatternTime = Pick<
+  NoticeWorkPattern,
+  "start" | "end" | "endsNextDay" | "breakMinutes"
+>;
 
 export type MinWage = { prefecture: string; yen: number; effectiveFrom: string };
 

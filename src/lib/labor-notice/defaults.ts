@@ -78,6 +78,7 @@ export function applyPreset(
     wage: defaultWage(type),
     allowances: [],
     patternCodes: preset.defaultPatternCodes,
+    patternTimes: {},
     ...DEFAULT_TIME[type],
     weeklyHoursText: null,
     overrides: {},
