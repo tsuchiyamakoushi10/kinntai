@@ -57,6 +57,12 @@ function raw(s: string): string {
   return s;
 }
 
+/** 健保・厚年は別々に入る・入らないがある (70 歳以上は健保のみ など) */
+export function socialInsuranceText(health: boolean | null, pension: boolean | null): string {
+  const enrolled = [health ? "健康保険" : null, pension ? "厚生年金" : null].filter(Boolean);
+  return enrolled.length > 0 ? `${enrolled.join("・")} 加入` : "加入なし";
+}
+
 function row(label: string, body: string): string {
   return `<tr><th>${escapeHtml(label)}</th><td>${body}</td></tr>`;
 }
@@ -167,7 +173,7 @@ export function renderContractHtml(vm: ContractViewModel): string {
   rows.push(
     row(
       "その他",
-      h`社会保険の加入: ${c.hasSocialInsurance ? "厚生年金・健康保険 加入" : "加入なし"}<br>雇用保険の適用: ${c.hasEmploymentInsurance ? "有" : "無"}<br>相談窓口: ${co.contactDepartment}　${co.contactPersonTitle} ${co.contactPersonName}　TEL ${co.contactPhone}<br>適用される就業規則: ${co.workRulesName} / ${co.partTimeWorkRulesName}`,
+      h`社会保険の加入: ${socialInsuranceText(c.hasHealthInsurance, c.hasPensionInsurance)}<br>雇用保険の適用: ${c.hasEmploymentInsurance ? "有" : "無"}<br>相談窓口: ${co.contactDepartment}　${co.contactPersonTitle} ${co.contactPersonName}　TEL ${co.contactPhone}<br>適用される就業規則: ${co.workRulesName} / ${co.partTimeWorkRulesName}`,
     ),
   );
 

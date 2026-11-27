@@ -539,7 +539,8 @@ function ContractsTab({
               value={
                 [
                   current.hasEmploymentInsurance ? "雇用保険" : null,
-                  current.hasSocialInsurance ? "社会保険" : null,
+                  current.hasHealthInsurance ? "健康保険" : null,
+                  current.hasPensionInsurance ? "厚生年金" : null,
                 ]
                   .filter(Boolean)
                   .join(" / ") || "—"

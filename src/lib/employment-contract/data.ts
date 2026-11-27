@@ -36,7 +36,8 @@ export type ContractViewModel = {
     wageType: "HOURLY" | "MONTHLY" | "DAILY" | null;
     wageAmount: number | null;
     hasEmploymentInsurance: boolean | null;
-    hasSocialInsurance: boolean | null;
+    hasHealthInsurance: boolean | null;
+    hasPensionInsurance: boolean | null;
     workplaceInitial: string;
     workplaceScope: string;
     jobDescriptionInitial: string;
@@ -114,7 +115,8 @@ export async function loadContractViewModel(
       wageType: contract.wageType,
       wageAmount: contract.wageAmount,
       hasEmploymentInsurance: contract.hasEmploymentInsurance,
-      hasSocialInsurance: contract.hasSocialInsurance,
+      hasHealthInsurance: contract.hasHealthInsurance,
+      hasPensionInsurance: contract.hasPensionInsurance,
       workplaceInitial: contract.workplaceInitial ?? "",
       workplaceScope: contract.workplaceScope ?? "",
       jobDescriptionInitial: contract.jobDescriptionInitial ?? "",

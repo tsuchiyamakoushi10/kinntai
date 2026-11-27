@@ -105,7 +105,7 @@ company_profile
 | special_measure_end_on          | date (nullable)                                     | 特定有期業務の完了日                                                                                      |
 
 - `is_renewable` / `hasRenewalLimit` / `renewalLimitCount` / `renewalCriteria` は既存。新規追加なし。
-- `has_employment_insurance` / `has_social_insurance` は既存。`weekly_hours_category` から自動推奨値を出すヘルパを書く (UI 補助、保存時の上書きは可)。
+- `has_employment_insurance` / `has_health_insurance` / `has_pension_insurance` は既存 (2026-11-27 に `has_social_insurance` を健保・厚年の 2 列に分けた)。`weekly_hours_category` から自動推奨値を出すヘルパを書く (UI 補助、保存時の上書きは可)。
 
 ### 2.3 `employment_contract_allowances` — 諸手当 (新規)
 

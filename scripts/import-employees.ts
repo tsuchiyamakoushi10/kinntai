@@ -756,7 +756,9 @@ async function applyToDb(results: RowResult[]): Promise<void> {
               : null,
             employmentType: r.contract.employmentType,
             hasEmploymentInsurance: r.contract.hasEmploymentInsurance,
-            hasSocialInsurance: r.contract.hasSocialInsurance,
+            // CSV の「社保加入」は健保・厚年をまとめた列なので両方に入れる
+            hasHealthInsurance: r.contract.hasSocialInsurance,
+            hasPensionInsurance: r.contract.hasSocialInsurance,
             retirementAllowanceEligible: r.contract.retirementAllowanceEligible,
           },
         });

@@ -100,4 +100,40 @@ describe("発行時に契約データへ写す値", () => {
     });
     expect(toEmployeeSnapshot(input, c).nightShiftOnly).toBe(true);
   });
+  it("健保・厚年・雇保は別々に写す (70 歳以上: 健保だけ加入・厚年なし)", () => {
+    const input = {
+      ...partTimeInput(),
+      insuranceOverride: {
+        health: "ENROLLED",
+        pension: "NOT_ENROLLED",
+        employment: "ENROLLED",
+      } as const,
+    };
+    const { view } = computeNotice(input, masters());
+    const c = toContractData(input, view!);
+    expect(c).toMatchObject({
+      employmentType: "PART_TIME_INSURED",
+      hasHealthInsurance: true,
+      hasPensionInsurance: false,
+      hasEmploymentInsurance: true,
+    });
+  });
+  it("75 歳以上: 健保・厚年なしで雇保だけ加入", () => {
+    const input = {
+      ...partTimeInput(),
+      insuranceOverride: {
+        health: "NOT_ENROLLED",
+        pension: "NOT_ENROLLED",
+        employment: "ENROLLED",
+      } as const,
+    };
+    const { view } = computeNotice(input, masters());
+    const c = toContractData(input, view!);
+    expect(c).toMatchObject({
+      employmentType: "PART_TIME_UNINSURED",
+      hasHealthInsurance: false,
+      hasPensionInsurance: false,
+      hasEmploymentInsurance: true,
+    });
+  });
 });

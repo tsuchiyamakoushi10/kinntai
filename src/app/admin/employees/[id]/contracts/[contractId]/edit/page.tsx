@@ -55,7 +55,8 @@ export default async function EditContractPage({ params }: Props) {
     renewalLimitCount: contract.renewalLimitCount?.toString() ?? "",
     renewalCriteria: contract.renewalCriteria ?? "",
     hasEmploymentInsurance: contract.hasEmploymentInsurance ? "on" : "",
-    hasSocialInsurance: contract.hasSocialInsurance ? "on" : "",
+    hasHealthInsurance: contract.hasHealthInsurance ? "on" : "",
+    hasPensionInsurance: contract.hasPensionInsurance ? "on" : "",
     retirementAllowanceEligible:
       contract.retirementAllowanceEligible === null
         ? "auto"

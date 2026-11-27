@@ -69,7 +69,8 @@ export default async function NewContractPage({ params }: Props) {
     renewalLimitCount: latestContract?.renewalLimitCount?.toString() ?? "",
     renewalCriteria: latestContract?.renewalCriteria ?? "",
     hasEmploymentInsurance: latestContract?.hasEmploymentInsurance ? "on" : "on",
-    hasSocialInsurance: latestContract?.hasSocialInsurance ? "on" : "",
+    hasHealthInsurance: latestContract?.hasHealthInsurance ? "on" : "",
+    hasPensionInsurance: latestContract?.hasPensionInsurance ? "on" : "",
     retirementAllowanceEligible:
       latestContract?.retirementAllowanceEligible === null ||
       latestContract?.retirementAllowanceEligible === undefined

@@ -254,9 +254,14 @@ export function ContractForm({ action, initial, employeeId, submitLabel }: Props
           defaultChecked={v.hasEmploymentInsurance === "on"}
         />
         <CheckboxRow
-          name="hasSocialInsurance"
-          label="社会保険 加入"
-          defaultChecked={v.hasSocialInsurance === "on"}
+          name="hasHealthInsurance"
+          label="健康保険 加入"
+          defaultChecked={v.hasHealthInsurance === "on"}
+        />
+        <CheckboxRow
+          name="hasPensionInsurance"
+          label="厚生年金 加入"
+          defaultChecked={v.hasPensionInsurance === "on"}
         />
       </Section>
 

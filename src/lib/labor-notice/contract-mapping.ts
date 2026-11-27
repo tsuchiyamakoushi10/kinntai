@@ -19,7 +19,8 @@ export type ContractData = {
   isRenewable: boolean | null;
   renewalCriteria: string | null;
   hasEmploymentInsurance: boolean;
-  hasSocialInsurance: boolean;
+  hasHealthInsurance: boolean;
+  hasPensionInsurance: boolean;
   workplaceInitial: string;
   workplaceScope: string;
   jobDescriptionInitial: string;
@@ -70,7 +71,8 @@ export function toContractData(input: NoticeInput, view: NoticeView): ContractDa
     isRenewable: isFixed ? !view.contract.convertsToIndefinite : null,
     renewalCriteria: isFixed ? view.contract.renewalCriteria.join("、") : null,
     hasEmploymentInsurance: view.insurance.employment === "ENROLLED",
-    hasSocialInsurance: socialInsured,
+    hasHealthInsurance: socialInsured,
+    hasPensionInsurance: view.insurance.pension === "ENROLLED",
     workplaceInitial: view.office.name,
     workplaceScope: view.workplaceScope,
     jobDescriptionInitial: view.jobDescription,

@@ -28,7 +28,8 @@ export type EmploymentContractFormValues = {
   renewalLimitCount: string;
   renewalCriteria: string;
   hasEmploymentInsurance: string;
-  hasSocialInsurance: string;
+  hasHealthInsurance: string;
+  hasPensionInsurance: string;
   // "auto" / "true" / "false" (auto = NULL 保存)
   retirementAllowanceEligible: string;
   careerSubsidyTarget: string;
@@ -73,7 +74,8 @@ type Parsed = {
   renewalLimitCount: number | null;
   renewalCriteria: string;
   hasEmploymentInsurance: boolean;
-  hasSocialInsurance: boolean;
+  hasHealthInsurance: boolean;
+  hasPensionInsurance: boolean;
   retirementAllowanceEligible: boolean | null;
   careerSubsidyTarget: boolean;
   careerSubsidyNotes: string;
@@ -112,7 +114,8 @@ function readForm(formData: FormData): EmploymentContractFormValues {
     renewalLimitCount: String(formData.get("renewalLimitCount") ?? "").trim(),
     renewalCriteria: String(formData.get("renewalCriteria") ?? "").trim(),
     hasEmploymentInsurance: formData.get("hasEmploymentInsurance") ? "on" : "",
-    hasSocialInsurance: formData.get("hasSocialInsurance") ? "on" : "",
+    hasHealthInsurance: formData.get("hasHealthInsurance") ? "on" : "",
+    hasPensionInsurance: formData.get("hasPensionInsurance") ? "on" : "",
     retirementAllowanceEligible: String(formData.get("retirementAllowanceEligible") ?? "auto"),
     careerSubsidyTarget: formData.get("careerSubsidyTarget") ? "on" : "",
     careerSubsidyNotes: String(formData.get("careerSubsidyNotes") ?? "").trim(),
@@ -305,7 +308,8 @@ function parseAndValidate(
       renewalLimitCount,
       renewalCriteria: values.renewalCriteria,
       hasEmploymentInsurance: values.hasEmploymentInsurance === "on",
-      hasSocialInsurance: values.hasSocialInsurance === "on",
+      hasHealthInsurance: values.hasHealthInsurance === "on",
+      hasPensionInsurance: values.hasPensionInsurance === "on",
       retirementAllowanceEligible,
       careerSubsidyTarget: values.careerSubsidyTarget === "on",
       careerSubsidyNotes: values.careerSubsidyNotes,

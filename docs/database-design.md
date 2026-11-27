@@ -156,7 +156,8 @@ users ──── employees   (1:1、users.role で管理者/従業員を区別
 | renewal_limit_count           | integer (nullable)                         | 上限回数                                                       |
 | renewal_criteria              | text (nullable)                            | 更新判断基準                                                   |
 | has_employment_insurance      | boolean                                    | 雇用保険加入                                                   |
-| has_social_insurance          | boolean                                    | 社会保険加入                                                   |
+| has_health_insurance          | boolean (nullable)                         | 健康保険加入 (75 歳以上は後期高齢者医療のため false)           |
+| has_pension_insurance         | boolean (nullable)                         | 厚生年金加入 (70 歳以上は false。健保だけ加入があり得る)       |
 | retirement_allowance_eligible | boolean (nullable)                         | 退職金対象。NULL = 自動判定にまかせる、true/false で手動上書き |
 | career_subsidy_target         | boolean default false                      | キャリアアップ助成金 対象として記録                            |
 | career_subsidy_notes          | text (nullable)                            | 社労士確認用メモ                                               |
